@@ -29,13 +29,13 @@ jobs:
         run: dotnet build ${{ env.PROJECT_PATH }} -c Release --no-restore
 
       - name: Publish
-        run: dotnet publish ${{ env.PROJECT_PATH }} -c Release --self-contained -r win-x64 --no-build -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -p:RuntimeIdentifier=win-x64
+        run: dotnet publish ${{ env.PROJECT_PATH }} -c Release --self-contained -r win-x64 --no-build -o publish
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
-          files: PhotoBooth/bin/Release/net8.0-windows/win-x64/publish/*.exe
+          files: publish/*.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
