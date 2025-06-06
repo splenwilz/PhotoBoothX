@@ -29,41 +29,34 @@ jobs:
         run: dotnet restore ${{ env.PROJECT_PATH }}
 
       - name: Publish
-        run: dotnet publish ${{ env.PROJECT_PATH }} -c Release --self-contained -r win-x64 -o publish
+        run: dotnet publish ${{ env.PROJECT_PATH }} -c Release -r win-x64 -o publish
 
       - name: Create ZIP package
-        run: Compress-Archive -Path "publish\*" -DestinationPath "PhotoBoothX-Commercial-win-x64.zip"
+        run: Compress-Archive -Path "publish\*" -DestinationPath "PhotoBoothX-win-x64.zip"
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.ref_name }}
-          name: PhotoBooth Commercial Release ${{ github.ref_name }}
-          files: PhotoBoothX-Commercial-win-x64.zip
+          name: PhotoBooth Release ${{ github.ref_name }}
+          files: PhotoBoothX-win-x64.zip
           body: |
-            ## PhotoBooth Commercial Software Release ${{ github.ref_name }}
+            ## PhotoBooth Software Release ${{ github.ref_name }}
             
-            **🏪 Commercial Grade Photobooth Software**
+            **Package Contents:**
+            - PhotoBooth.exe
+            - Templates/ folder (fully customizable)
+            - Database_Schema.sql
+            - Application dependencies
+            - Configuration files
             
-            **Features:**
-            - Complete kiosk interface with strips & 4x6 templates
-            - Hardware integration (Arduino, DNP printer, camera, payment systems)
-            - Administrative backend with licensing
-            - Cloud connectivity for remote management
-            - Self-contained - no dependencies required
-            
-            **Hardware Requirements:**
-            - Windows PC (kiosk mode)
-            - DNP RX1hs Printer
-            - Logitech C920 Camera
-            - Arduino Uno Rev 3
-            - Payment systems (bill acceptor, credit card reader)
+            **System Requirements:**
+            - Windows 10/11
+            - [.NET 8.0 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)
             
             **Installation:**
-            1. Extract ZIP to kiosk PC
-            2. Configure hardware connections
-            3. Run PhotoBooth.exe in kiosk mode
-            
-            **⚠️ Commercial License Required**
+            1. Install .NET 8.0 Desktop Runtime (one-time setup)
+            2. Extract ZIP to desired location
+            3. Run PhotoBooth.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
