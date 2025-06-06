@@ -67,14 +67,16 @@ jobs:
           "@ | Out-File "deployment/PhotoBoothX/README.txt"
 
       - name: Create ZIP package
-        run: Compress-Archive -Path "deployment\*" -DestinationPath "PhotoBoothX-${{ github.ref_name }}-win-x64.zip"
+        run: |
+          $tagName = "${{ github.ref_name }}" -replace "/", "-"
+          Compress-Archive -Path "deployment\*" -DestinationPath "PhotoBoothX-$tagName-win-x64.zip"
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.ref_name }}
           name: PhotoBooth Release ${{ github.ref_name }}
-          files: PhotoBoothX-${{ github.ref_name }}-win-x64.zip
+          files: PhotoBoothX-*-win-x64.zip
           body: |
             ## PhotoBooth Software ${{ github.ref_name }}
             
