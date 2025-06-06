@@ -31,32 +31,76 @@ jobs:
       - name: Publish
         run: dotnet publish ${{ env.PROJECT_PATH }} -c Release -r win-x64 -o publish
 
+      - name: Create deployment structure
+        run: |
+          New-Item -ItemType Directory -Path "deployment/PhotoBoothX" -Force
+          New-Item -ItemType Directory -Path "deployment/PhotoBoothX/data" -Force
+          New-Item -ItemType Directory -Path "deployment/PhotoBoothX/logs" -Force
+          New-Item -ItemType Directory -Path "deployment/PhotoBoothX/config" -Force
+          
+          # Copy application files (must stay together for .NET)
+          Copy-Item "publish/*" "deployment/PhotoBoothX/" -Recurse -Force
+          
+          # Move user data to separate folders
+          Move-Item "deployment/PhotoBoothX/Database_Schema.sql" "deployment/PhotoBoothX/data/" -Force
+          
+          # Create version file
+          "${{ github.ref_name }}" | Out-File "deployment/PhotoBoothX/VERSION.txt"
+          
+          # Create README for deployment
+          @"
+          PhotoBooth Application ${{ github.ref_name }}
+          
+          INSTALLATION:
+          1. Install .NET 8.0 Desktop Runtime
+          2. Copy entire PhotoBoothX folder to desired location
+          3. Run PhotoBooth.exe
+          
+          DIRECTORIES:
+          - PhotoBooth.exe + DLLs: Main application (do not separate)
+          - Templates/: Customizable print templates
+          - data/: Database schema and static data
+          - logs/: Application logs (created at runtime)
+          - config/: Runtime configuration (created at runtime)
+          
+          NOTE: DLLs and config files must remain with PhotoBooth.exe
+          "@ | Out-File "deployment/PhotoBoothX/README.txt"
+
       - name: Create ZIP package
-        run: Compress-Archive -Path "publish\*" -DestinationPath "PhotoBoothX-win-x64.zip"
+        run: Compress-Archive -Path "deployment\*" -DestinationPath "PhotoBoothX-${{ github.ref_name }}-win-x64.zip"
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.ref_name }}
           name: PhotoBooth Release ${{ github.ref_name }}
-          files: PhotoBoothX-win-x64.zip
+          files: PhotoBoothX-${{ github.ref_name }}-win-x64.zip
           body: |
-            ## PhotoBooth Software Release ${{ github.ref_name }}
+            ## PhotoBooth Software ${{ github.ref_name }}
             
-            **Package Contents:**
-            - PhotoBooth.exe
-            - Templates/ folder (fully customizable)
-            - Database_Schema.sql
-            - Application dependencies
-            - Configuration files
+            **🎯 Professional kiosk photobooth software**
+            
+            **Package Structure:**
+            ```
+            PhotoBoothX/
+            ├── PhotoBooth.exe          # Main application
+            ├── *.dll                   # Required dependencies  
+            ├── Templates/              # Customizable templates
+            ├── data/                   # Database schema
+            ├── logs/                   # Runtime logs
+            ├── config/                 # Runtime config
+            └── README.txt              # Deployment guide
+            ```
             
             **System Requirements:**
             - Windows 10/11
             - [.NET 8.0 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)
             
             **Installation:**
-            1. Install .NET 8.0 Desktop Runtime (one-time setup)
-            2. Extract ZIP to desired location
+            1. Install .NET 8.0 Desktop Runtime (one-time)
+            2. Extract ZIP to desired location  
             3. Run PhotoBooth.exe
+            
+            ⚠️ **Note:** Do not separate DLLs from PhotoBooth.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
