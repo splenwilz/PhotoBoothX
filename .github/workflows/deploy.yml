@@ -36,10 +36,29 @@ jobs:
           Remove-Item "publish\*.pdb" -Force -ErrorAction SilentlyContinue
           Remove-Item "publish\*.xml" -Force -ErrorAction SilentlyContinue
 
-      - name: Setup Inno Setup
+      - name: Setup Inno Setup (Fast)
         run: |
-          Invoke-WebRequest -Uri "https://files.jrsoftware.org/is/6/innosetup-6.2.2.exe" -OutFile "innosetup.exe"
-          Start-Process "innosetup.exe" -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait
+          Write-Host "Installing Inno Setup via Chocolatey..."
+          try {
+            # Use Chocolatey for faster, more reliable installation
+            Set-ExecutionPolicy Bypass -Scope Process -Force
+            [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+            iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+            choco install innosetup -y --timeout=300
+            echo "INNO_AVAILABLE=true" >> $env:GITHUB_ENV
+          } catch {
+            Write-Host "Chocolatey installation failed, trying direct download..."
+            try {
+              $ProgressPreference = 'SilentlyContinue'
+              Invoke-WebRequest -Uri "https://files.jrsoftware.org/is/6/innosetup-6.2.2.exe" -OutFile "innosetup.exe" -TimeoutSec 120
+              Start-Process "innosetup.exe" -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS" -Wait -TimeoutSec 300
+              echo "INNO_AVAILABLE=true" >> $env:GITHUB_ENV
+            } catch {
+              Write-Host "Inno Setup installation failed. Will create ZIP only."
+              echo "INNO_AVAILABLE=false" >> $env:GITHUB_ENV
+            }
+          }
+        timeout-minutes: 10
 
       - name: Create deployment structure
         run: |
@@ -71,9 +90,9 @@ jobs:
           
           INSTALLATION:
           1. Install .NET 8.0 Desktop Runtime (if not already installed)
-          2. Run PhotoBooth-Professional-Setup.exe as Administrator
-          3. Follow installation wizard
-          4. Launch PhotoBooth Professional from Start Menu
+          2. Extract this folder to desired location (e.g., C:\PhotoBooth)
+          3. Run PhotoBooth.exe as Administrator
+          4. Follow license activation prompts
           
           DIRECTORY STRUCTURE:
           - PhotoBooth.exe + DLLs: Main application (do not separate)
@@ -86,7 +105,7 @@ jobs:
           - Windows 10/11 (64-bit)
           - .NET 8.0 Desktop Runtime
           - 500MB free disk space
-          - Administrator privileges for installation
+          - Administrator privileges
           
           SUPPORT:
           - Email: support@yourcompany.com
@@ -100,16 +119,61 @@ jobs:
           NOTE: DLLs and config files must remain with PhotoBooth.exe
           "@ | Out-File "deployment/PhotoBoothX/README.txt"
 
-      - name: Build Installer
+      - name: Build Installer (if available)
+        if: env.INNO_AVAILABLE == 'true'
         run: |
-          # Copy installer script to deployment folder
-          Copy-Item "installer/setup.iss" "deployment/" -Force
+          Write-Host "Building professional installer..."
+          try {
+            # Create basic installer script since our complex one might have issues
+            $issContent = @"
+          [Setup]
+          AppName=PhotoBooth Professional
+          AppVersion=${{ github.ref_name }}
+          AppPublisher=Your Company Name
+          DefaultDirName={autopf}\PhotoBooth
+          DefaultGroupName=PhotoBooth Professional
+          OutputDir=installer-output
+          OutputBaseFilename=PhotoBooth-Professional-Setup
+          Compression=lzma
+          SolidCompression=yes
+          PrivilegesRequired=admin
           
-          # Build installer with Inno Setup
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "deployment/setup.iss"
-        continue-on-error: true
+          [Files]
+          Source: "PhotoBoothX\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+          
+          [Icons]
+          Name: "{group}\PhotoBooth Professional"; Filename: "{app}\PhotoBooth.exe"
+          Name: "{autodesktop}\PhotoBooth Professional"; Filename: "{app}\PhotoBooth.exe"
+          
+          [Run]
+          Filename: "{app}\PhotoBooth.exe"; Description: "Launch PhotoBooth Professional"; Flags: nowait postinstall skipifsilent
+          "@
+            
+            $issContent | Out-File "deployment/simple-setup.iss" -Encoding UTF8
+            
+            # Find Inno Setup compiler
+            $isccPath = @(
+              "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
+              "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+              "${env:ChocolateyInstall}\bin\ISCC.exe"
+            ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+            
+            if ($isccPath) {
+              Push-Location "deployment"
+              & $isccPath "simple-setup.iss"
+              Pop-Location
+              echo "INSTALLER_CREATED=true" >> $env:GITHUB_ENV
+            } else {
+              Write-Host "ISCC.exe not found"
+              echo "INSTALLER_CREATED=false" >> $env:GITHUB_ENV
+            }
+          } catch {
+            Write-Host "Installer build failed: $_"
+            echo "INSTALLER_CREATED=false" >> $env:GITHUB_ENV
+          }
+        timeout-minutes: 5
 
-      - name: Create ZIP Fallback
+      - name: Create ZIP Package
         run: |
           $tagName = "${{ github.ref_name }}" -replace "/", "-"
           Compress-Archive -Path "deployment\PhotoBoothX\*" -DestinationPath "PhotoBoothX-$tagName-win-x64.zip"
@@ -119,13 +183,14 @@ jobs:
           $tagName = "${{ github.ref_name }}" -replace "/", "-"
           
           # Check if installer was created
-          $installerPath = "deployment/installer-output/PhotoBooth-Professional-Setup-*.exe"
-          if (Test-Path $installerPath) {
-            $installerFile = Get-ChildItem $installerPath | Select-Object -First 1
-            Copy-Item $installerFile.FullName "PhotoBooth-Professional-Setup-$tagName.exe"
-            echo "INSTALLER_CREATED=true" >> $env:GITHUB_ENV
+          if ($env:INSTALLER_CREATED -eq "true") {
+            $installerPath = "deployment/installer-output/PhotoBooth-Professional-Setup.exe"
+            if (Test-Path $installerPath) {
+              Copy-Item $installerPath "PhotoBooth-Professional-Setup-$tagName.exe"
+              Write-Host "✅ Professional installer created"
+            }
           } else {
-            echo "INSTALLER_CREATED=false" >> $env:GITHUB_ENV
+            Write-Host "⚠️ Installer not available - ZIP package only"
           }
 
       - name: Create Release
@@ -141,44 +206,37 @@ jobs:
             
             **🏪 Commercial Grade Photobooth Software**
             
-            ### 📦 Installation Options:
+            ### 📦 Download Options:
             
-            **🥇 RECOMMENDED: Professional Installer**
-            - `PhotoBooth-Professional-Setup-[version].exe` - Full installer with:
-              - ✅ Automatic .NET 8 Runtime check
-              - ✅ Start Menu shortcuts
-              - ✅ Proper uninstaller
-              - ✅ Registry integration
-              - ✅ Administrator privileges handling
-              - ✅ Automatic updates support
+            ${{ env.INSTALLER_CREATED == 'true' && '**🥇 RECOMMENDED: Professional Installer**' || '**📁 Manual Installation**' }}
+            ${{ env.INSTALLER_CREATED == 'true' && '- `PhotoBooth-Professional-Setup-[version].exe` - Complete installer' || '- Professional installer temporarily unavailable' }}
             
-            **📁 Manual Installation (Advanced Users)**
-            - `PhotoBoothX-[version]-win-x64.zip` - Manual deployment package
+            **📁 Manual Installation Package**
+            - `PhotoBoothX-[version]-win-x64.zip` - Full application package
             
             ### 🎯 Professional Features:
-            - **✅ Commercial licensing system**
-            - **✅ Professional installer with EULA**
-            - **✅ Clean, organized file structure**
-            - **✅ Version tracking and support**
-            - **✅ Debug-free production build**
-            - **✅ Comprehensive documentation**
+            - ✅ Commercial licensing system
+            - ✅ Professional deployment package  
+            - ✅ Clean, organized file structure
+            - ✅ Version tracking and support
+            - ✅ Production-optimized build
+            - ✅ Comprehensive documentation
             
             ### 📋 System Requirements:
             - Windows 10/11 (64-bit)
             - .NET 8.0 Desktop Runtime
             - 500MB free disk space
-            - Administrator privileges (for installation)
+            - Administrator privileges
             
             ### 🚀 Quick Start:
-            1. Download `PhotoBooth-Professional-Setup-[version].exe`
-            2. Run as Administrator
-            3. Follow installation wizard
-            4. Launch from Start Menu
+            1. Download ZIP package above
+            2. Extract to desired location (e.g., C:\PhotoBooth)
+            3. Install .NET 8.0 Desktop Runtime if needed
+            4. Run PhotoBooth.exe as Administrator
             
             ### 📞 Support:
             - 📧 Technical Support: support@yourcompany.com
             - 💰 Sales & Licensing: sales@yourcompany.com
-            - 📖 Documentation: https://yourcompany.com/docs
             
             ---
             **⚠️ Commercial License Required - Annual Subscription**
