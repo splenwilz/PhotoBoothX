@@ -1,0 +1,324 @@
+﻿<UserControl x:Class="Photobooth.ProductSelectionScreen"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <UserControl.Resources>
+
+        <!-- Exact match to original background gradient -->
+        <LinearGradientBrush x:Key="MainBackgroundGradient" StartPoint="0,0" EndPoint="1,1">
+            <GradientStop Color="#581C87" Offset="0"/>
+            <!-- purple-900 -->
+            <GradientStop Color="#1E3A8A" Offset="0.5"/>
+            <!-- blue-900 -->
+            <GradientStop Color="#312E81" Offset="1"/>
+            <!-- indigo-900 -->
+        </LinearGradientBrush>
+
+        <!-- Floating Orb Style -->
+        <Style x:Key="FloatingOrbStyle" TargetType="Ellipse">
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <BlurEffect Radius="15"/>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Product Card Style -->
+        <Style x:Key="ProductCardStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Margin" Value="20"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                CornerRadius="20"
+                                Effect="{TemplateBinding Effect}">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Effect">
+                                    <Setter.Value>
+                                        <DropShadowEffect BlurRadius="20" Opacity="0.3" ShadowDepth="5"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="RenderTransform">
+                                    <Setter.Value>
+                                        <ScaleTransform ScaleX="0.98" ScaleY="0.98"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Back Button Style -->
+        <Style x:Key="BackButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontSize" Value="18"/>
+            <Setter Property="FontWeight" Value="Normal"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                Padding="10">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="←" FontSize="20" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Back" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background">
+                                    <Setter.Value>
+                                        <SolidColorBrush Color="White" Opacity="0.1"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Credits Display Style -->
+        <Style x:Key="CreditsStyle" TargetType="Border">
+            <Setter Property="Background">
+                <Setter.Value>
+                    <SolidColorBrush Color="White" Opacity="0.15"/>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="CornerRadius" Value="20"/>
+            <Setter Property="Padding" Value="16,8"/>
+        </Style>
+
+        <!-- Phone Print Button Style -->
+        <Style x:Key="PhonePrintButtonStyle" TargetType="Button">
+            <Setter Property="Background">
+                <Setter.Value>
+                    <SolidColorBrush Color="White" Opacity="0.15"/>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontSize" Value="18"/>
+            <Setter Property="FontWeight" Value="Normal"/>
+            <Setter Property="Padding" Value="20,12"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                CornerRadius="25"
+                                Padding="{TemplateBinding Padding}">
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                <TextBlock Text="📱" FontSize="20" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Print from Phone • $2" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background">
+                                    <Setter.Value>
+                                        <SolidColorBrush Color="White" Opacity="0.2"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+    </UserControl.Resources>
+
+    <!-- Main Container -->
+    <Grid Background="{StaticResource MainBackgroundGradient}" ClipToBounds="True">
+
+        <!-- Grid.RowDefinitions MUST come FIRST -->
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <!-- Header -->
+            <RowDefinition Height="Auto"/>
+            <!-- Title -->
+            <RowDefinition Height="*"/>
+            <!-- Product Cards -->
+            <RowDefinition Height="Auto"/>
+            <!-- Phone Print -->
+            <RowDefinition Height="80"/>
+            <!-- Bottom Spacing -->
+        </Grid.RowDefinitions>
+
+        <!-- Floating Orbs Layer -->
+        <Canvas Name="FloatingOrbsCanvas">
+            <!-- Purple orb: top-32 left-32 w-24 h-24 bg-purple-500/20 blur-xl -->
+            <Ellipse Width="96" Height="96" 
+                     Fill="#A855F7" Opacity="0.2" 
+                     Style="{StaticResource FloatingOrbStyle}"
+                     Canvas.Left="128" Canvas.Top="128"/>
+
+            <!-- Blue orb: top-20 right-40 w-20 h-20 bg-blue-500/25 blur-lg -->
+            <Ellipse Width="80" Height="80" 
+                     Fill="#3B82F6" Opacity="0.25" 
+                     Style="{StaticResource FloatingOrbStyle}"
+                     Canvas.Right="160" Canvas.Top="80"/>
+
+            <!-- Pink orb: bottom-40 left-1/4 w-32 h-32 bg-pink-500/15 blur-2xl -->
+            <Ellipse Width="128" Height="128" 
+                     Fill="#EC4899" Opacity="0.15" 
+                     Style="{StaticResource FloatingOrbStyle}"
+                     Canvas.Left="480" Canvas.Bottom="160"/>
+
+            <!-- Cyan orb: bottom-32 right-32 w-20 h-20 bg-cyan-500/20 blur-xl -->
+            <Ellipse Width="80" Height="80" 
+                     Fill="#06B6D4" Opacity="0.2" 
+                     Style="{StaticResource FloatingOrbStyle}"
+                     Canvas.Right="128" Canvas.Bottom="128"/>
+        </Canvas>
+
+        <!-- Floating Particles Canvas -->
+        <Canvas Name="ParticlesCanvas" ClipToBounds="True">
+            <!-- Particles will be added programmatically -->
+        </Canvas>
+
+        <!-- Header Row -->
+        <Grid Grid.Row="0" Margin="40,40,40,20">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Back Button -->
+            <Button Grid.Column="0" 
+                    Style="{StaticResource BackButtonStyle}"
+                    Click="BackButton_Click"
+                    VerticalAlignment="Center"/>
+
+            <!-- Credits Display -->
+            <Border Grid.Column="2" 
+                    Style="{StaticResource CreditsStyle}"
+                    VerticalAlignment="Center">
+                <TextBlock Text="Credits: $0" 
+                           Foreground="White" 
+                           FontSize="16"
+                           Name="CreditsDisplay"/>
+            </Border>
+        </Grid>
+
+        <!-- Title -->
+        <TextBlock Grid.Row="1" 
+                   Text="Choose Your Style" 
+                   FontSize="64" 
+                   FontWeight="Bold" 
+                   Foreground="White" 
+                   HorizontalAlignment="Center"
+                   Margin="0,0,0,60"/>
+
+        <!-- Product Cards -->
+        <Grid Grid.Row="2" HorizontalAlignment="Center" VerticalAlignment="Center">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Photo Strips Card -->
+            <Button Grid.Column="0" 
+                    Style="{StaticResource ProductCardStyle}"
+                    Click="ProductCard_Click"
+                    Tag="strips">
+                <Button.Effect>
+                    <DropShadowEffect BlurRadius="15" Opacity="0.2" ShadowDepth="3"/>
+                </Button.Effect>
+
+                <Border Width="320" Height="400" CornerRadius="20">
+                    <Border.Background>
+                        <ImageBrush ImageSource="/Assets/Images/strip-sample.jpg" 
+                                    Stretch="UniformToFill"/>
+                    </Border.Background>
+
+                    <!-- Single Grid container to hold multiple children -->
+                    <Grid>
+                        <!-- Overlay for text readability -->
+                        <Border Background="Black" Opacity="0.4" CornerRadius="20"/>
+
+                        <!-- Content -->
+                        <StackPanel VerticalAlignment="Bottom" Margin="30,0,30,40">
+                            <TextBlock Text="Photo Strips" 
+                                       FontSize="36" 
+                                       FontWeight="Bold" 
+                                       Foreground="White"
+                                       Margin="0,0,0,8"/>
+                            <TextBlock Text="Classic 4-photo strip" 
+                                       FontSize="18" 
+                                       Foreground="#E5E5E5"
+                                       Margin="0,0,0,16"/>
+                            <TextBlock Text="$5" 
+                                       FontSize="48" 
+                                       FontWeight="Bold" 
+                                       Foreground="White"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </Button>
+
+            <!-- 4x6 Photos Card -->
+            <Button Grid.Column="1" 
+                    Style="{StaticResource ProductCardStyle}"
+                    Click="ProductCard_Click"
+                    Tag="4x6">
+                <Button.Effect>
+                    <DropShadowEffect BlurRadius="15" Opacity="0.2" ShadowDepth="3"/>
+                </Button.Effect>
+
+                <Border Width="320" Height="400" CornerRadius="20">
+                    <Border.Background>
+                        <ImageBrush ImageSource="/Assets/Images/4x6-sample.jpg" 
+                                    Stretch="UniformToFill"/>
+                    </Border.Background>
+
+                    <!-- Single Grid container to hold multiple children -->
+                    <Grid>
+                        <!-- Overlay for text readability -->
+                        <Border Background="Black" Opacity="0.4" CornerRadius="20"/>
+
+                        <!-- Content -->
+                        <StackPanel VerticalAlignment="Bottom" Margin="30,0,30,40">
+                            <TextBlock Text="4x6 Photos" 
+                                       FontSize="36" 
+                                       FontWeight="Bold" 
+                                       Foreground="White"
+                                       Margin="0,0,0,8"/>
+                            <TextBlock Text="High-quality print" 
+                                       FontSize="18" 
+                                       Foreground="#E5E5E5"
+                                       Margin="0,0,0,16"/>
+                            <TextBlock Text="$3" 
+                                       FontSize="48" 
+                                       FontWeight="Bold" 
+                                       Foreground="White"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </Button>
+        </Grid>
+
+        <!-- Phone Print Button -->
+        <Button Grid.Row="3" 
+                Style="{StaticResource PhonePrintButtonStyle}"
+                HorizontalAlignment="Center"
+                Margin="0,40,0,0"
+                Click="PhonePrint_Click"/>
+
+    </Grid>
+
+</UserControl>

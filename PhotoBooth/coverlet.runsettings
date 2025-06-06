@@ -1,0 +1,23 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="XPlat code coverage">
+        <Configuration>
+          <Format>opencover,cobertura,json,lcov,teamcity,html</Format>
+          <Exclude>[*.Tests]*,[*]*.Designer,[*]*AssemblyInfo.cs</Exclude>
+          <ExcludeByAttribute>Obsolete,GeneratedCodeAttribute,CompilerGeneratedAttribute</ExcludeByAttribute>
+          <ExcludeByFile>**/Views/**/*.xaml.cs,**/Generated/**/*</ExcludeByFile>
+          <IncludeDirectory>../Photobooth/</IncludeDirectory>
+          <SingleHit>false</SingleHit>
+          <UseSourceLink>true</UseSourceLink>
+          <IncludeTestAssembly>false</IncludeTestAssembly>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+  <RunConfiguration>
+    <MaxCpuCount>0</MaxCpuCount>
+    <ResultsDirectory>.\TestResults</ResultsDirectory>
+  </RunConfiguration>
+</RunSettings>

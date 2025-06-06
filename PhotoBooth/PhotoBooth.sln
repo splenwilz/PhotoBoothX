@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.36121.58 d17.14
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PhotoBooth", "PhotoBooth.csproj", "{516A77EF-7572-4DED-98D0-51EE38EFEC7F}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Photobooth.Tests", "..\Photobooth.Tests\Photobooth.Tests.csproj", "{52D1E173-3A4A-4EE1-A7DF-72BC01C1986E}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{516A77EF-7572-4DED-98D0-51EE38EFEC7F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{516A77EF-7572-4DED-98D0-51EE38EFEC7F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{516A77EF-7572-4DED-98D0-51EE38EFEC7F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{516A77EF-7572-4DED-98D0-51EE38EFEC7F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{52D1E173-3A4A-4EE1-A7DF-72BC01C1986E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{52D1E173-3A4A-4EE1-A7DF-72BC01C1986E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{52D1E173-3A4A-4EE1-A7DF-72BC01C1986E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{52D1E173-3A4A-4EE1-A7DF-72BC01C1986E}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {5B30A175-860C-42DC-803B-A2972471956F}
+	EndGlobalSection
+EndGlobal

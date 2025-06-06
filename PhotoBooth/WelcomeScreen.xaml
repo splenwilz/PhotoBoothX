@@ -1,0 +1,347 @@
+﻿<UserControl x:Class="Photobooth.WelcomeScreen"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <UserControl.Resources>
+
+        <!-- Main Background Gradient: from-purple-900 via-blue-900 to-indigo-900 -->
+        <LinearGradientBrush x:Key="MainBackgroundGradient" StartPoint="0,0" EndPoint="1,1">
+            <GradientStop Color="#581C87" Offset="0"/>
+            <!-- purple-900 -->
+            <GradientStop Color="#1E3A8A" Offset="0.5"/>
+            <!-- blue-900 -->
+            <GradientStop Color="#312E81" Offset="1"/>
+            <!-- indigo-900 -->
+        </LinearGradientBrush>
+
+        <!-- Welcome Title Gradient: from-white via-purple-200 to-blue-200 -->
+        <LinearGradientBrush x:Key="TitleGradient" StartPoint="0,0" EndPoint="1,0">
+            <GradientStop Color="#FFFFFF" Offset="0"/>
+            <!-- white -->
+            <GradientStop Color="#DDD6FE" Offset="0.5"/>
+            <!-- purple-200 -->
+            <GradientStop Color="#BFDBFE" Offset="1"/>
+            <!-- blue-200 -->
+        </LinearGradientBrush>
+
+        <!-- Photo Memories Gradient: from-cyan-200 to-blue-200 -->
+        <LinearGradientBrush x:Key="MemoriesGradient" StartPoint="0,0" EndPoint="1,0">
+            <GradientStop Color="#A5F3FC" Offset="0"/>
+            <!-- cyan-200 -->
+            <GradientStop Color="#BFDBFE" Offset="1"/>
+            <!-- blue-200 -->
+        </LinearGradientBrush>
+
+        <!-- Touch to Start Gradient: from-cyan-200 to-blue-200 -->
+        <LinearGradientBrush x:Key="TouchGradient" StartPoint="0,0" EndPoint="1,0">
+            <GradientStop Color="#A5F3FC" Offset="0"/>
+            <!-- cyan-200 -->
+            <GradientStop Color="#BFDBFE" Offset="1"/>
+            <!-- blue-200 -->
+        </LinearGradientBrush>
+
+        <!-- Floating Orb Styles -->
+        <Style x:Key="FloatingOrbStyle" TargetType="Ellipse">
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <BlurEffect Radius="15"/>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Product Button Style: bg-white/10 backdrop-blur-sm rounded-full -->
+        <Style x:Key="ProductButtonStyle" TargetType="Button">
+            <Setter Property="Background">
+                <Setter.Value>
+                    <SolidColorBrush Color="White" Opacity="0.1"/>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Foreground" Value="#DDD6FE"/>
+            <!-- purple-100 -->
+            <Setter Property="FontSize" Value="20"/>
+            <Setter Property="FontWeight" Value="Normal"/>
+            <Setter Property="Padding" Value="16,8"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush">
+                <Setter.Value>
+                    <SolidColorBrush Color="White" Opacity="0.2"/>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <DropShadowEffect BlurRadius="8" Opacity="0.1" ShadowDepth="2"/>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="20"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" 
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background">
+                                    <Setter.Value>
+                                        <SolidColorBrush Color="White" Opacity="0.15"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="Background">
+                                    <Setter.Value>
+                                        <SolidColorBrush Color="White" Opacity="0.2"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+    </UserControl.Resources>
+
+    <!-- Main Container -->
+    <Grid Background="{StaticResource MainBackgroundGradient}" ClipToBounds="True">
+
+        <!-- Floating Orbs Layer -->
+        <Canvas Name="FloatingOrbsCanvas">
+            <!-- Purple orb: top-32 left-32 w-24 h-24 bg-purple-500/20 -->
+            <Ellipse Width="96" Height="96" 
+                     Fill="#A855F7" Opacity="0.2" 
+                     Style="{StaticResource FloatingOrbStyle}"
+                     Canvas.Left="128" Canvas.Top="128"/>
+
+            <!-- Blue orb: top-20 right-40 w-20 h-20 bg-blue-500/25 -->
+            <Ellipse Width="80" Height="80" 
+                     Fill="#3B82F6" Opacity="0.25" 
+                     Style="{StaticResource FloatingOrbStyle}"
+                     Canvas.Right="160" Canvas.Top="80"/>
+
+            <!-- Pink orb: bottom-40 left-1/4 w-32 h-32 bg-pink-500/15 -->
+            <Ellipse Width="128" Height="128" 
+                     Fill="#EC4899" Opacity="0.15" 
+                     Style="{StaticResource FloatingOrbStyle}"
+                     Canvas.Left="480" Canvas.Bottom="160"/>
+
+            <!-- Cyan orb: bottom-32 right-32 w-20 h-20 bg-cyan-500/20 -->
+            <Ellipse Width="80" Height="80" 
+                     Fill="#06B6D4" Opacity="0.2" 
+                     Style="{StaticResource FloatingOrbStyle}"
+                     Canvas.Right="128" Canvas.Bottom="128"/>
+        </Canvas>
+
+        <!-- Floating Particles Canvas -->
+        <Canvas Name="ParticlesCanvas" ClipToBounds="True">
+            <!-- Particles will be added programmatically -->
+        </Canvas>
+
+        <!-- Main Content Area with Adjusted Spacing -->
+        <Grid>
+
+
+            <Grid.RowDefinitions>
+                <RowDefinition Height="0.5*"/>
+                <!-- Even smaller for welcome -->
+                <RowDefinition Height="Auto"/>
+                <!-- Welcome text section -->
+                <RowDefinition Height="1.5*"/>
+                <!-- More space for touch area -->
+                <RowDefinition Height="Auto"/>
+                <!-- Product buttons section -->
+                <RowDefinition Height="30"/>
+                <!-- Bottom spacing -->
+            </Grid.RowDefinitions>
+
+            <!-- Welcome Text Section - Moved up -->
+            <StackPanel Grid.Row="1" 
+                        HorizontalAlignment="Center" 
+                        VerticalAlignment="Center"
+                        Margin="0,-50,0,0">
+                <!-- Negative top margin to move up -->
+
+                <!-- Main Welcome Title: text-8xl font-black -->
+                <TextBlock Text="Welcome!" 
+                           FontSize="144" 
+                           FontWeight="Black" 
+                           Foreground="{StaticResource TitleGradient}" 
+                           HorizontalAlignment="Center"
+                           Margin="0,0,0,32"
+                           Name="WelcomeTitle">
+                    <!-- Glow Effect -->
+                    <TextBlock.Effect>
+                        <DropShadowEffect Color="White" Opacity="0.1" BlurRadius="20" ShadowDepth="0"/>
+                    </TextBlock.Effect>
+                </TextBlock>
+
+                <!-- Subtitle: Create Amazing - text-4xl font-light text-purple-100 -->
+                <TextBlock Text="Create Amazing" 
+                           FontSize="60" 
+                           FontWeight="Light" 
+                           Foreground="#DDD6FE" 
+                           HorizontalAlignment="Center"
+                           Margin="0,0,0,8"
+                           Name="CreateText"/>
+
+                <!-- Photo Memories: text-4xl font-bold gradient -->
+                <TextBlock Text="Photo Memories" 
+                           FontSize="60" 
+                           FontWeight="Bold" 
+                           Foreground="{StaticResource MemoriesGradient}" 
+                           HorizontalAlignment="Center"
+                           Name="MemoriesText"/>
+
+            </StackPanel>
+
+            <!-- Touch to Start Section -->
+            <StackPanel Grid.Row="2" 
+            HorizontalAlignment="Center" 
+            VerticalAlignment="Center"
+            Margin="0,40,0,0">
+
+                <!-- Touch Zone Container - Increased height and width -->
+                <Grid Width="500" Height="450" 
+          HorizontalAlignment="Center"
+          Name="TouchZone">
+
+                    <!-- Sparkles around touch zone -->
+                    <Canvas Name="SparklesCanvas" ClipToBounds="False">
+                        <!-- Sparkles will be added programmatically -->
+                    </Canvas>
+
+                    <!-- Main Touch Content with more space -->
+                    <StackPanel HorizontalAlignment="Center" 
+                    VerticalAlignment="Center"
+                    Width="450">
+
+                        <!-- Touch instruction text with more spacing -->
+                        <StackPanel HorizontalAlignment="Center" 
+                       Margin="0,0,0,40">
+
+                            <!-- "Touch the screen" line -->
+                            <TextBlock Text="Touch the screen" 
+                           FontSize="32" 
+                           FontWeight="Light" 
+                           Foreground="#E5E5E5"
+                           HorizontalAlignment="Center"
+                           TextAlignment="Center"
+                           Margin="0,0,0,8"
+                           TextWrapping="NoWrap"/>
+
+                            <!-- "to start" line with gradient -->
+                            <TextBlock Text="to start" 
+                           FontSize="32" 
+                           FontWeight="SemiBold" 
+                           Foreground="{StaticResource TouchGradient}"
+                           HorizontalAlignment="Center"
+                           TextAlignment="Center"
+                           TextWrapping="NoWrap"/>
+
+                        </StackPanel>
+
+                        <!-- Hand Emoji with Glow -->
+                        <Grid HorizontalAlignment="Center">
+                            <!-- Glow behind hand -->
+                            <TextBlock Text="👆" 
+                           FontSize="96" 
+                           HorizontalAlignment="Center"
+                           Opacity="0.3"
+                           Name="HandGlow">
+                                <TextBlock.Effect>
+                                    <BlurEffect Radius="8"/>
+                                </TextBlock.Effect>
+                            </TextBlock>
+
+                            <!-- Main hand icon -->
+                            <TextBlock Text="👆" 
+                           FontSize="96" 
+                           HorizontalAlignment="Center"
+                           Name="HandIcon">
+                                <TextBlock.RenderTransform>
+                                    <TranslateTransform/>
+                                </TextBlock.RenderTransform>
+                            </TextBlock>
+
+                            <!-- Sparkles around hand -->
+                            <Canvas Name="HandSparklesCanvas" ClipToBounds="False">
+                                <!-- Hand sparkles will be added programmatically -->
+                            </Canvas>
+                        </Grid>
+
+                    </StackPanel>
+
+                    <!-- Ripple effect container -->
+                    <Ellipse Name="RippleEffect" 
+                 Fill="White" 
+                 Opacity="0" 
+                 Margin="60"/>
+
+                </Grid>
+
+            </StackPanel>
+
+            <!-- Product Category Buttons - Pushed Down -->
+            <StackPanel Grid.Row="3" 
+                        Orientation="Horizontal" 
+                        HorizontalAlignment="Center"
+                        Margin="0,80,0,0">
+                <!-- Increased top margin to push down -->
+
+                <!-- Photo Strips Button -->
+                <Button Content="📸 Photo Strips"
+                        Style="{StaticResource ProductButtonStyle}"
+                        Click="ProductButton_Click"
+                        Tag="strips"
+                        Margin="0,0,24,0"/>
+
+                <!-- 4x6 Prints Button -->
+                <Button Content="🖼️ 4x6 Prints"
+                        Style="{StaticResource ProductButtonStyle}"
+                        Click="ProductButton_Click"
+                        Tag="4x6"
+                        Margin="0,0,24,0"/>
+
+                <!-- Phone Prints Button -->
+                <Button Content="📱 Phone Prints"
+                        Style="{StaticResource ProductButtonStyle}"
+                        Click="ProductButton_Click"
+                        Tag="phone"/>
+
+            </StackPanel>
+
+        </Grid>
+
+        <!-- Bottom Gradient Overlay: h-32 bg-gradient-to-t from-black/20 -->
+        <Border VerticalAlignment="Bottom" Height="128">
+            <Border.Background>
+                <LinearGradientBrush StartPoint="0,1" EndPoint="0,0">
+                    <GradientStop Color="#33000000" Offset="0"/>
+                    <!-- black/20 -->
+                    <GradientStop Color="Transparent" Offset="1"/>
+                </LinearGradientBrush>
+            </Border.Background>
+        </Border>
+
+        <!-- Invisible overlay for touch anywhere functionality (excluding admin zone) -->
+        <Button Name="StartOverlayBtn" 
+                Background="Transparent" 
+                BorderThickness="0"
+                Click="StartOverlay_Click"
+                Cursor="Hand"
+                Margin="150,150,0,0">
+            <Button.Template>
+                <ControlTemplate>
+                    <Border Background="Transparent"/>
+                </ControlTemplate>
+            </Button.Template>
+        </Button>
+
+    </Grid>
+
+</UserControl>

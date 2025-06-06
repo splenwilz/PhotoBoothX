@@ -1,0 +1,34 @@
+﻿{
+  "TemplateName": "Classic Black Strip",
+  "TemplateId": "black-strip",
+  "Dimensions": {
+    "Width": 614,
+    "Height": 1864
+  },
+  "PhotoAreas": [
+    {
+      "Id": "photo1",
+      "X": 45,
+      "Y": 80,
+      "Width": 521,
+      "Height": 388
+    },
+    {
+      "Id": "photo2",
+      "X": 45,
+      "Y": 521,
+      "Width": 521,
+      "Height": 388
+    },
+    {
+      "Id": "photo3",
+      "X": 45,
+      "Y": 1403,
+      "Width": 521,
+      "Height": 388
+    }
+  ],
+  "PhotoCount": 3,
+  "Category": "strip",
+  "Description": "Classic 3-photo black strip layout"
+}
