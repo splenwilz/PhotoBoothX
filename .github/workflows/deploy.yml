@@ -28,8 +28,18 @@ jobs:
       - name: Restore
         run: dotnet restore ${{ env.PROJECT_PATH }}
 
-      - name: Publish
-        run: dotnet publish ${{ env.PROJECT_PATH }} -c Release -r win-x64 -o publish
+      - name: Publish (Release - No Debug Files)
+        run: dotnet publish ${{ env.PROJECT_PATH }} -c Release -r win-x64 -o publish --self-contained false -p:DebugType=None -p:DebugSymbols=false
+
+      - name: Remove Debug Files
+        run: |
+          Remove-Item "publish\*.pdb" -Force -ErrorAction SilentlyContinue
+          Remove-Item "publish\*.xml" -Force -ErrorAction SilentlyContinue
+
+      - name: Setup Inno Setup
+        run: |
+          Invoke-WebRequest -Uri "https://files.jrsoftware.org/is/6/innosetup-6.2.2.exe" -OutFile "innosetup.exe"
+          Start-Process "innosetup.exe" -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait
 
       - name: Create deployment structure
         run: |
@@ -38,71 +48,139 @@ jobs:
           New-Item -ItemType Directory -Path "deployment/PhotoBoothX/logs" -Force
           New-Item -ItemType Directory -Path "deployment/PhotoBoothX/config" -Force
           
-          # Copy application files (must stay together for .NET)
+          # Copy application files
           Copy-Item "publish/*" "deployment/PhotoBoothX/" -Recurse -Force
           
           # Move user data to separate folders
-          Move-Item "deployment/PhotoBoothX/Database_Schema.sql" "deployment/PhotoBoothX/data/" -Force
+          if (Test-Path "deployment/PhotoBoothX/Database_Schema.sql") {
+            Move-Item "deployment/PhotoBoothX/Database_Schema.sql" "deployment/PhotoBoothX/data/" -Force
+          }
           
           # Create version file
           "${{ github.ref_name }}" | Out-File "deployment/PhotoBoothX/VERSION.txt"
           
-          # Create README for deployment
+          # Copy license files
+          Copy-Item "LICENSE.txt" "deployment/PhotoBoothX/" -Force
+          Copy-Item "EULA.txt" "deployment/PhotoBoothX/" -Force
+          
+          # Create professional README
           @"
-          PhotoBooth Application ${{ github.ref_name }}
+          PhotoBooth Professional ${{ github.ref_name }}
+          
+          COMMERCIAL PHOTOBOOTH SOFTWARE
           
           INSTALLATION:
-          1. Install .NET 8.0 Desktop Runtime
-          2. Copy entire PhotoBoothX folder to desired location
-          3. Run PhotoBooth.exe
+          1. Install .NET 8.0 Desktop Runtime (if not already installed)
+          2. Run PhotoBooth-Professional-Setup.exe as Administrator
+          3. Follow installation wizard
+          4. Launch PhotoBooth Professional from Start Menu
           
-          DIRECTORIES:
+          DIRECTORY STRUCTURE:
           - PhotoBooth.exe + DLLs: Main application (do not separate)
           - Templates/: Customizable print templates
           - data/: Database schema and static data
           - logs/: Application logs (created at runtime)
           - config/: Runtime configuration (created at runtime)
           
+          SYSTEM REQUIREMENTS:
+          - Windows 10/11 (64-bit)
+          - .NET 8.0 Desktop Runtime
+          - 500MB free disk space
+          - Administrator privileges for installation
+          
+          SUPPORT:
+          - Email: support@yourcompany.com
+          - Documentation: https://yourcompany.com/docs
+          - License: Valid commercial license required
+          
+          COPYRIGHT:
+          © 2025 [Your Company Name]. All rights reserved.
+          This software is protected by copyright law and international treaties.
+          
           NOTE: DLLs and config files must remain with PhotoBooth.exe
           "@ | Out-File "deployment/PhotoBoothX/README.txt"
 
-      - name: Create ZIP package
+      - name: Build Installer
+        run: |
+          # Copy installer script to deployment folder
+          Copy-Item "installer/setup.iss" "deployment/" -Force
+          
+          # Build installer with Inno Setup
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "deployment/setup.iss"
+        continue-on-error: true
+
+      - name: Create ZIP Fallback
         run: |
           $tagName = "${{ github.ref_name }}" -replace "/", "-"
-          Compress-Archive -Path "deployment\*" -DestinationPath "PhotoBoothX-$tagName-win-x64.zip"
+          Compress-Archive -Path "deployment\PhotoBoothX\*" -DestinationPath "PhotoBoothX-$tagName-win-x64.zip"
+
+      - name: Prepare Release Assets
+        run: |
+          $tagName = "${{ github.ref_name }}" -replace "/", "-"
+          
+          # Check if installer was created
+          $installerPath = "deployment/installer-output/PhotoBooth-Professional-Setup-*.exe"
+          if (Test-Path $installerPath) {
+            $installerFile = Get-ChildItem $installerPath | Select-Object -First 1
+            Copy-Item $installerFile.FullName "PhotoBooth-Professional-Setup-$tagName.exe"
+            echo "INSTALLER_CREATED=true" >> $env:GITHUB_ENV
+          } else {
+            echo "INSTALLER_CREATED=false" >> $env:GITHUB_ENV
+          }
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.ref_name }}
-          name: PhotoBooth Release ${{ github.ref_name }}
-          files: PhotoBoothX-*-win-x64.zip
+          name: PhotoBooth Professional ${{ github.ref_name }}
+          files: |
+            PhotoBooth-Professional-Setup-*.exe
+            PhotoBoothX-*-win-x64.zip
           body: |
-            ## PhotoBooth Software ${{ github.ref_name }}
+            ## PhotoBooth Professional ${{ github.ref_name }}
             
-            **🎯 Professional kiosk photobooth software**
+            **🏪 Commercial Grade Photobooth Software**
             
-            **Package Structure:**
-            ```
-            PhotoBoothX/
-            ├── PhotoBooth.exe          # Main application
-            ├── *.dll                   # Required dependencies  
-            ├── Templates/              # Customizable templates
-            ├── data/                   # Database schema
-            ├── logs/                   # Runtime logs
-            ├── config/                 # Runtime config
-            └── README.txt              # Deployment guide
-            ```
+            ### 📦 Installation Options:
             
-            **System Requirements:**
-            - Windows 10/11
-            - [.NET 8.0 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)
+            **🥇 RECOMMENDED: Professional Installer**
+            - `PhotoBooth-Professional-Setup-[version].exe` - Full installer with:
+              - ✅ Automatic .NET 8 Runtime check
+              - ✅ Start Menu shortcuts
+              - ✅ Proper uninstaller
+              - ✅ Registry integration
+              - ✅ Administrator privileges handling
+              - ✅ Automatic updates support
             
-            **Installation:**
-            1. Install .NET 8.0 Desktop Runtime (one-time)
-            2. Extract ZIP to desired location  
-            3. Run PhotoBooth.exe
+            **📁 Manual Installation (Advanced Users)**
+            - `PhotoBoothX-[version]-win-x64.zip` - Manual deployment package
             
-            ⚠️ **Note:** Do not separate DLLs from PhotoBooth.exe
+            ### 🎯 Professional Features:
+            - **✅ Commercial licensing system**
+            - **✅ Professional installer with EULA**
+            - **✅ Clean, organized file structure**
+            - **✅ Version tracking and support**
+            - **✅ Debug-free production build**
+            - **✅ Comprehensive documentation**
+            
+            ### 📋 System Requirements:
+            - Windows 10/11 (64-bit)
+            - .NET 8.0 Desktop Runtime
+            - 500MB free disk space
+            - Administrator privileges (for installation)
+            
+            ### 🚀 Quick Start:
+            1. Download `PhotoBooth-Professional-Setup-[version].exe`
+            2. Run as Administrator
+            3. Follow installation wizard
+            4. Launch from Start Menu
+            
+            ### 📞 Support:
+            - 📧 Technical Support: support@yourcompany.com
+            - 💰 Sales & Licensing: sales@yourcompany.com
+            - 📖 Documentation: https://yourcompany.com/docs
+            
+            ---
+            **⚠️ Commercial License Required - Annual Subscription**
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 

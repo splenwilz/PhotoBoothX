@@ -1,0 +1,64 @@
+END USER LICENSE AGREEMENT (EULA)
+PHOTOBOOTH PROFESSIONAL SOFTWARE
+
+PLEASE READ THIS END USER LICENSE AGREEMENT ("EULA") CAREFULLY BEFORE USING THE SOFTWARE.
+
+This EULA is a legal agreement between you and [Your Company Name] for the use of PhotoBooth Professional software. By installing, copying, or using this software, you agree to be bound by the terms of this EULA.
+
+DEFINITIONS:
+- "Software" means the PhotoBooth Professional application and all related components
+- "License" means this EULA and your right to use the Software
+- "You" means the individual or organization using the Software
+
+LICENSED USES AND RESTRICTIONS:
+
+WHAT YOU CAN DO:
+✓ Install and use the Software on ONE (1) kiosk system per license
+✓ Use the Software for commercial photobooth operations
+✓ Customize templates and settings within the Software
+✓ Make one backup copy for archival purposes
+
+WHAT YOU CANNOT DO:
+✗ Install the Software on multiple systems without additional licenses
+✗ Copy, distribute, or share the Software with others
+✗ Reverse engineer, decompile, or modify the Software
+✗ Remove copyright notices or licensing information
+✗ Use the Software for illegal activities
+✗ Circumvent any licensing or security features
+
+COMMERCIAL LICENSE:
+- This is commercial software requiring payment for use
+- Each kiosk installation requires a separate license
+- Annual licensing renewal is required for continued use
+- Proof of license may be requested during support interactions
+
+INTELLECTUAL PROPERTY:
+The Software is protected by copyright laws and international copyright treaties. [Your Company Name] retains all rights, title, and interest in the Software.
+
+SUPPORT AND UPDATES:
+- Technical support is provided during active license periods
+- Software updates are provided at no additional cost during license period
+- Support is provided via email and remote assistance when possible
+
+DATA AND PRIVACY:
+- The Software may collect usage statistics for improvement purposes
+- No personal data from photobooth customers is transmitted
+- Local data remains on your kiosk system
+
+LIMITATION OF LIABILITY:
+THE SOFTWARE IS PROVIDED "AS IS" WITHOUT ANY WARRANTIES. [Your Company Name] SHALL NOT BE LIABLE FOR ANY DAMAGES ARISING FROM THE USE OF THIS SOFTWARE.
+
+TERMINATION:
+This license terminates automatically if you breach any terms. Upon termination, you must cease all use and destroy all copies of the Software.
+
+GOVERNING LAW:
+This EULA is governed by the laws of [Your State/Country].
+
+By using this Software, you acknowledge that you have read and understood this EULA and agree to be bound by its terms.
+
+© 2025 [Your Company Name]. All rights reserved.
+
+Contact Information:
+Technical Support: support@yourcompany.com
+Sales & Licensing: sales@yourcompany.com
+Website: https://yourcompany.com 
