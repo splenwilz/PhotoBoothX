@@ -92,18 +92,17 @@ jobs:
         Write-Host "Installing Inno Setup..."
         Start-Process -FilePath $output -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait
         Write-Host "Inno Setup installation completed"
-        # Verify installation
+        
+        # Verify installation by checking file existence
         if (Test-Path "C:\Program Files (x86)\Inno Setup 6\ISCC.exe") {
-          Write-Host "✅ Inno Setup 6 found at expected location"
-          try {
-            $version = & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" 2>&1 | Select-Object -First 1
-            Write-Host "Version: $version"
-          } catch {
-            Write-Host "Version check failed, but ISCC.exe exists"
-          }
+          Write-Host "✅ Inno Setup 6 installed successfully"
+          Write-Host "📍 Location: C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
         } else {
           Write-Host "❌ Inno Setup not found at expected location"
-          Get-ChildItem "C:\Program Files (x86)" | Where-Object Name -like "*Inno*"
+          Write-Host "Searching for Inno Setup installations..."
+          Get-ChildItem "C:\Program Files*" -Recurse -Name "ISCC.exe" -ErrorAction SilentlyContinue | ForEach-Object {
+            Write-Host "Found ISCC.exe at: $_"
+          }
           throw "Inno Setup installation failed"
         }
       shell: powershell
