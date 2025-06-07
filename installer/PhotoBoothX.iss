@@ -32,7 +32,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 ; Testing Tasks section - NO FLAGS FIRST
-Name: "startupentry"; Description: "Launch {#MyAppName} automatically when Windows starts"
+Name: "startupentry"; Description: "Launch {#MyAppName} automatically when Windows starts"; Flags: checkedbydefault
 Name: "desktopicon"; Description: "Create a desktop icon"
 
 [Files]
