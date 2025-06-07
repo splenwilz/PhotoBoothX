@@ -83,27 +83,35 @@ jobs:
         path: ${{ env.PUBLISH_PATH }}
         
     - name: Setup Inno Setup
-      run: |
-        # Download and install latest Inno Setup directly
-        $url = "https://jrsoftware.org/download.php/is.exe"
-        $output = "$env:TEMP\innosetup.exe"
-        Write-Host "Downloading Inno Setup from $url"
-        Invoke-WebRequest -Uri $url -OutFile $output
-        Write-Host "Installing Inno Setup..."
-        Start-Process -FilePath $output -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait
-        Write-Host "Inno Setup installation completed"
+      uses: crazy-max/ghaction-chocolatey@v3
+      with:
+        args: install innosetup -y
         
-        # Verify installation by checking file existence
-        if (Test-Path "C:\Program Files (x86)\Inno Setup 6\ISCC.exe") {
-          Write-Host "✅ Inno Setup 6 installed successfully"
-          Write-Host "📍 Location: C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-        } else {
-          Write-Host "❌ Inno Setup not found at expected location"
-          Write-Host "Searching for Inno Setup installations..."
-          Get-ChildItem "C:\Program Files*" -Recurse -Name "ISCC.exe" -ErrorAction SilentlyContinue | ForEach-Object {
-            Write-Host "Found ISCC.exe at: $_"
+    - name: Verify Inno Setup Installation
+      run: |
+        # Check if Inno Setup was installed successfully
+        $isccPaths = @(
+          "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
+          "C:\Program Files\Inno Setup 6\ISCC.exe",
+          "C:\tools\innosetup\ISCC.exe"
+        )
+        
+        $isccPath = $null
+        foreach ($path in $isccPaths) {
+          if (Test-Path $path) {
+            $isccPath = $path
+            Write-Host "✅ Found ISCC.exe at: $path"
+            break
           }
-          throw "Inno Setup installation failed"
+        }
+        
+        if (-not $isccPath) {
+          Write-Host "❌ ISCC.exe not found in expected locations"
+          Write-Host "Searching for ISCC.exe..."
+          Get-ChildItem "C:\" -Recurse -Name "ISCC.exe" -ErrorAction SilentlyContinue | ForEach-Object {
+            Write-Host "Found: $_"
+          }
+          throw "Inno Setup not found"
         }
       shell: powershell
         
