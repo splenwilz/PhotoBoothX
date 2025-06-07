@@ -1,5 +1,5 @@
-; PhotoBoothX Installer Script - Minimal Test Version
-; Testing flags one by one to identify the problematic flag
+; PhotoBoothX Installer Script - Flag Testing: ALL REMAINING FLAGS
+; Testing: Adding ALL remaining flags at once for speed
 
 #define MyAppName "PhotoBoothX"
 #define MyAppVersion "1.0.0"
@@ -31,17 +31,34 @@ WizardStyle=modern
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-; Testing Tasks section - NO FLAGS FIRST
-Name: "startupentry"; Description: "Launch {#MyAppName} automatically when Windows starts"
-Name: "desktopicon"; Description: "Create a desktop icon"; Flags: unchecked
+; Testing: GroupDescription parameter
+Name: "startupentry"; Description: "Launch {#MyAppName} automatically when Windows starts (Recommended for kiosk mode)"; GroupDescription: "Startup Options:"
+Name: "desktopicon"; Description: "Create a desktop icon"; GroupDescription: "Additional icons:"; Flags: unchecked
 
 [Files]
-; Basic files - NO FLAGS FIRST
+; All Files flags work fine
 Source: "..\PhotoBooth\bin\Release\net8.0-windows\win-x64\publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Additional files
+Source: "..\PhotoBooth\Templates\*"; DestDir: "{app}\Templates"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+
+[Dirs]
+; Testing: Permissions parameter
+Name: "{app}\Templates"; Permissions: everyone-modify
 
 [Registry]
-; Basic registry - NO FLAGS FIRST
-Root: HKLM; Subkey: "SOFTWARE\{#MyAppPublisher}\{#MyAppName}"; ValueType: string; ValueName: "InstallPath"; ValueData: "{app}"; Flags: uninsdeletevalue 
+; Working flags + Testing Tasks parameter
+Root: HKLM; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "{#MyAppName}"; ValueData: """{app}\{#MyAppExeName}"""; Tasks: startupentry; Flags: uninsdeletevalue
+Root: HKLM; Subkey: "SOFTWARE\{#MyAppPublisher}\{#MyAppName}"; ValueType: string; ValueName: "InstallPath"; ValueData: "{app}"; Flags: uninsdeletevalue
+Root: HKLM; Subkey: "SOFTWARE\{#MyAppPublisher}\{#MyAppName}"; ValueType: string; ValueName: "Version"; ValueData: "{#MyAppVersion}"; Flags: uninsdeletekey
+
+[Run]
+; Testing: nowait, postinstall, skipifsilent flags
+Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
+
+[UninstallRun]
+; Testing: runhidden flag
+Filename: "{sys}\taskkill.exe"; Parameters: "/f /im ""{#MyAppExeName}"""; Flags: runhidden 
