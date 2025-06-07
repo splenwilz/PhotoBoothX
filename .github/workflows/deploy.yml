@@ -83,9 +83,24 @@ jobs:
         path: ${{ env.PUBLISH_PATH }}
         
     - name: Setup Inno Setup
-      uses: crazy-max/ghaction-chocolatey@v3
-      with:
-        args: install innosetup -y
+      run: |
+        # Download and install latest Inno Setup directly
+        $url = "https://jrsoftware.org/download.php/is.exe"
+        $output = "$env:TEMP\innosetup.exe"
+        Write-Host "Downloading Inno Setup from $url"
+        Invoke-WebRequest -Uri $url -OutFile $output
+        Write-Host "Installing Inno Setup..."
+        Start-Process -FilePath $output -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait
+        Write-Host "Inno Setup installation completed"
+        # Verify installation
+        if (Test-Path "C:\Program Files (x86)\Inno Setup 6\ISCC.exe") {
+          Write-Host "✅ Inno Setup 6 found at expected location"
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /? 2>&1 | Select-Object -First 3
+        } else {
+          Write-Host "❌ Inno Setup not found at expected location"
+          Get-ChildItem "C:\Program Files (x86)" | Where-Object Name -like "*Inno*"
+        }
+      shell: powershell
         
     - name: Get version from project
       id: get_version
@@ -113,7 +128,35 @@ jobs:
       
     - name: Build installer
       run: |
-        & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" ${{ env.INSTALLER_PATH }}
+        # Try multiple possible paths for Inno Setup
+        $isccPaths = @(
+          "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
+          "C:\Program Files\Inno Setup 6\ISCC.exe",
+          "C:\tools\Inno Setup 6\ISCC.exe"
+        )
+        
+        $isccPath = $null
+        foreach ($path in $isccPaths) {
+          if (Test-Path $path) {
+            $isccPath = $path
+            Write-Host "Found ISCC.exe at: $path"
+            break
+          }
+        }
+        
+        if (-not $isccPath) {
+          Write-Host "Searching for ISCC.exe in all Program Files directories..."
+          Get-ChildItem -Path "C:\Program Files*" -Recurse -Name "ISCC.exe" -ErrorAction SilentlyContinue | ForEach-Object {
+            Write-Host "Found: $_"
+          }
+          throw "ISCC.exe not found"
+        }
+        
+        Write-Host "Building installer with: $isccPath"
+        & $isccPath ${{ env.INSTALLER_PATH }}
+        if ($LASTEXITCODE -ne 0) {
+          throw "Installer build failed with exit code $LASTEXITCODE"
+        }
       shell: powershell
       
     - name: Upload installer artifact
