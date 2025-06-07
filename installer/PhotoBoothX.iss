@@ -55,7 +55,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "A
 ; Main application files
 Source: "..\PhotoBooth\bin\Release\net8.0-windows\win-x64\publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; Templates folder - user-updatable
-Source: "..\PhotoBooth\Templates\*"; DestDir: "{app}\Templates"; Flags: ignoreversion recursesubdirs createallsubdirs uninsneveruninstall
+Source: "..\PhotoBooth\Templates\*"; DestDir: "{app}\Templates"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; Database schema
 Source: "..\PhotoBooth\Database_Schema.sql"; DestDir: "{app}"; Flags: ignoreversion
 ; License files
@@ -93,7 +93,7 @@ Filename: "{sys}\taskkill.exe"; Parameters: "/f /im ""{#MyAppExeName}"""; Flags:
 // Get current date/time for registry
 function GetDateTimeString(Param: String): String;
 begin
-  Result := GetDateTimeString('yyyy-mm-dd hh:nn:ss', #0, #0);
+  Result := FormatDateTime('yyyy-mm-dd hh:nn:ss', Now);
 end;
 
 // Check if application is running
@@ -149,6 +149,8 @@ end;
 
 // Pre-uninstall cleanup
 function InitializeUninstall(): Boolean;
+var
+  ResultCode: Integer;
 begin
   Result := true;
   
