@@ -71,6 +71,9 @@ dotnet test --verbosity normal
 # Run tests with code coverage
 dotnet test --collect:"XPlat Code Coverage" --results-directory:"./TestResults"
 
+# Start 
+start CoverageReport/index.html
+
 # Generate coverage report
 reportgenerator -reports:"TestResults/*/coverage.cobertura.xml" -targetdir:"CoverageReport" -reporttypes:Html
 

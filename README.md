@@ -1,87 +1,130 @@
-# PhotoBoothX - Professional Kiosk Application
+# PhotoBoothX - Professional Photobooth Software
 
-## 🚀 Quick Start for Client
+**Transform any Windows PC into a professional photobooth kiosk with PhotoBoothX - the complete solution for events, venues, and entertainment businesses.**
 
-### Download Latest Release
-1. Go to: **[Releases Page](../../releases/latest)**
-2. Download `PhotoBoothX-Setup-{version}.exe`
-3. Run as Administrator
-4. Follow installation wizard
-5. Application auto-launches and starts on Windows boot
+## 🎯 Key Features
 
-### Default Login Credentials
-- **Master Admin**: `admin` / `admin123` (full access)
-- **User Admin**: `user` / `user123` (view-only + volume)
-- **⚠️ Change passwords immediately after installation!**
+- **Touchscreen Interface**: Intuitive, finger-friendly design for all ages
+- **Professional Templates**: Customizable layouts for any event or brand
+- **Instant Printing**: High-quality prints with thermal printer support
+- **Complete Kiosk Mode**: Full-screen operation with Windows integration
+- **Sales Tracking**: Built-in analytics and reporting for business insights
+- **Multi-Level Admin**: Secure access controls for staff and management
+- **Auto-Launch**: Starts automatically on system boot - perfect for unattended operation
 
-## 🏗️ Development & Deployment
+## 🚀 Installation
 
-### Automated CI/CD Pipeline
-- **Push to `production` branch** → Automatic build, test, and release
-- **GitHub Releases** → Client downloads installer automatically
-- **Version Management** → Update `PhotoBooth/PhotoBooth.csproj` version
+### System Requirements
+- **Operating System**: Windows 10 or Windows 11 (64-bit)
+- **Memory**: 4GB RAM minimum, 8GB recommended
+- **Storage**: 500MB available space plus room for photos and database
+- **Hardware**: USB ports for camera, printer, and accessories
+- **Permissions**: Administrator access required for installation
 
-### Local Development
-```powershell
-# Build application only
-.\build.ps1 -SkipInstaller
+### Quick Installation
+1. **Download**: Get the latest installer from our [**Releases Page**](../../releases/latest)
+2. **Install**: Run `PhotoBoothX-Setup-{version}.exe` as Administrator
+3. **Setup**: Follow the installation wizard prompts
+4. **Launch**: PhotoBoothX will start automatically and configure itself for kiosk operation
 
-# Build with installer (requires Inno Setup)
-.\build.ps1
+## 🔐 First-Time Setup
 
-# Build specific version
-.\build.ps1 -Version "1.2.0"
-```
+### Default Administrator Credentials
+After installation, access the admin panel using these default credentials:
 
-### Prerequisites for Local Building
-- Visual Studio 2022 or VS Code
-- .NET 8.0 SDK
-- Inno Setup 6 (for installer creation)
+- **Master Admin**: Username `admin`, Password `admin123`
+- **Operator**: Username `user`, Password `user123`
 
-## 📋 Current Implementation Status
+**⚠️ Important**: Change these passwords immediately after first login for security.
 
-### ✅ Completed Features
-- **Complete UI Framework**: Welcome, Product Selection, Template Selection, Admin Dashboard
-- **Database System**: SQLite with comprehensive schema for sales, templates, settings
-- **Admin Backend**: Two-level access, sales reports, template management, settings
-- **Professional Installer**: Auto-launch, proper permissions, kiosk-friendly
-- **CI/CD Pipeline**: Automated building and releases on GitHub
+### Initial Configuration
+1. **License**: Enter your PhotoBoothX license key
+2. **Templates**: Upload your custom photo templates
+3. **Pricing**: Set your per-print pricing structure
+4. **Hardware**: Configure camera, printer, and payment systems
+5. **Branding**: Customize colors, logos, and welcome messages
 
-### 🔄 Next Phase (Hardware Integration)
-- Camera Service (Logitech C920)
-- Printer Service (DNP RX1hs)
-- Arduino Service (LED control, payment detection)
-- Photo Capture Flow (Payment → Camera → Review → Print)
+## 💼 Business Features
 
-## 📁 Project Structure
-```
-PhotoBoothX/
-├── PhotoBooth/              # Main WPF application
-│   ├── Services/            # Database, License, Notification services
-│   ├── Models/              # Data models and DTOs
-│   ├── Controls/            # Custom UI controls
-│   ├── Templates/           # Photo templates (user-updatable)
-│   └── *.xaml/.cs          # UI screens and logic
-├── installer/               # Inno Setup installer configuration
-├── .github/workflows/       # CI/CD pipeline
-├── build.ps1               # Local build script
-└── DEPLOYMENT.md           # Detailed deployment guide
-```
+### Sales & Analytics
+- Real-time sales tracking and reporting
+- Daily, weekly, and monthly revenue summaries
+- Print volume and template popularity metrics
+- Export data for accounting and analysis
 
-## 🔧 System Requirements
-- **OS**: Windows 10/11 (64-bit)
-- **RAM**: 4GB minimum, 8GB recommended
-- **Storage**: 500MB + space for photos/database
-- **Hardware**: USB ports for camera, Arduino, printer
-- **Installation**: Administrator privileges required
+### Template Management
+- Upload and manage custom photo layouts
+- Seasonal template rotation
+- Brand-specific designs for different events
+- Easy template preview and testing
+
+### Kiosk Operation
+- Automatic startup on system boot
+- Secure kiosk mode prevents unauthorized access
+- Inactivity timeout returns to welcome screen
+- Remote monitoring capabilities for fleet management
+
+## 🛠️ Hardware Compatibility
+
+### Supported Cameras
+- Logitech C920 (recommended)
+- Most USB webcams with Windows drivers
+
+### Supported Printers
+- DNP RX1hs Thermal Printer (professional grade)
+- Standard photo printers with Windows drivers
+
+### Payment Systems
+- Bill acceptors with pulse output
+- Credit card readers with pulse output
+- Arduino-based control systems
 
 ## 📞 Support & Documentation
-- **Deployment Guide**: [DEPLOYMENT.md](DEPLOYMENT.md)
-- **Latest Releases**: [GitHub Releases](../../releases)
-- **Issues & Support**: [GitHub Issues](../../issues)
+
+### Getting Help
+- **Quick Reference**: [Essential commands and troubleshooting](docs/quick-reference.md)
+- **User Manual**: Comprehensive operation guide built into the application
+- **Technical Support**: Contact information provided with license
+- **Developer Docs**: [Complete development documentation](docs/)
+- **Community**: User forums and knowledge base
+
+### Updates
+PhotoBoothX automatically checks for updates and notifies administrators when new versions are available. Updates include:
+- New features and improvements
+- Bug fixes and security patches
+- Additional templates and themes
+- Hardware driver updates
+
+## 📋 What's Included
+
+### Software License
+- Full PhotoBoothX application
+- Automatic Windows startup configuration
+- Database and settings management
+- Basic photo templates
+- First-year support and updates
+
+### Professional Installation
+- Guided setup wizard
+- Kiosk mode configuration
+- Hardware detection and setup
+- Security configuration
+- Performance optimization
+
+## 🌟 Perfect For
+
+- **Event Venues**: Weddings, parties, corporate events
+- **Entertainment Centers**: Arcades, malls, family entertainment
+- **Retail Locations**: Stores, restaurants, waiting areas
+- **Photo Studios**: Automated photo services
+- **Corporate Events**: Trade shows, conferences, team building
 
 ---
 
-**Ready for client deployment!** 🎉
+**Ready to transform your business with professional photobooth technology?**
 
-Your client can now download and install PhotoBoothX from GitHub releases while you continue development on hardware integration.
+[**Download PhotoBoothX Now**](../../releases/latest) | [**View Documentation**](docs/) | [**Get Support**](../../issues)
+
+---
+
+*PhotoBoothX - Professional photobooth software designed for business success.*
