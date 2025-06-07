@@ -23,6 +23,8 @@ DisableProgramGroupPage=yes
 PrivilegesRequired=admin
 OutputDir=..\dist
 OutputBaseFilename=PhotoBoothX-Setup-{#MyAppVersion}
+SetupIconFile=icon.ico
+UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
@@ -33,7 +35,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Tasks]
 ; Testing: GroupDescription parameter
 Name: "startupentry"; Description: "Launch {#MyAppName} automatically when Windows starts (Recommended for kiosk mode)"; GroupDescription: "Startup Options:"
-Name: "desktopicon"; Description: "Create a desktop icon"; GroupDescription: "Additional icons:"; Flags: unchecked
+Name: "desktopicon"; Description: "Create a desktop icon"; GroupDescription: "Additional icons:"
 
 [Files]
 ; All Files flags work fine

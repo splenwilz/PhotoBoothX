@@ -8,6 +8,9 @@
     <UseWPF>true</UseWPF>
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
     
+    <!-- Application Icon -->
+    <ApplicationIcon>..\installer\icon.ico</ApplicationIcon>
+    
     <!-- Version Information -->
     <Version>1.0.0</Version>
     <AssemblyVersion>1.0.0.0</AssemblyVersion>
