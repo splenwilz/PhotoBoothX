@@ -95,10 +95,16 @@ jobs:
         # Verify installation
         if (Test-Path "C:\Program Files (x86)\Inno Setup 6\ISCC.exe") {
           Write-Host "✅ Inno Setup 6 found at expected location"
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /? 2>&1 | Select-Object -First 3
+          try {
+            $version = & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" 2>&1 | Select-Object -First 1
+            Write-Host "Version: $version"
+          } catch {
+            Write-Host "Version check failed, but ISCC.exe exists"
+          }
         } else {
           Write-Host "❌ Inno Setup not found at expected location"
           Get-ChildItem "C:\Program Files (x86)" | Where-Object Name -like "*Inno*"
+          throw "Inno Setup installation failed"
         }
       shell: powershell
         
@@ -152,10 +158,31 @@ jobs:
           throw "ISCC.exe not found"
         }
         
+        # Verify installer script exists
+        $installerScript = "${{ env.INSTALLER_PATH }}"
+        if (-not (Test-Path $installerScript)) {
+          throw "Installer script not found: $installerScript"
+        }
+        
         Write-Host "Building installer with: $isccPath"
-        & $isccPath ${{ env.INSTALLER_PATH }}
-        if ($LASTEXITCODE -ne 0) {
-          throw "Installer build failed with exit code $LASTEXITCODE"
+        Write-Host "Installer script: $installerScript"
+        
+        # Run the compiler and capture output
+        try {
+          $output = & $isccPath $installerScript 2>&1
+          Write-Host "Compiler output:"
+          $output | ForEach-Object { Write-Host "  $_" }
+          
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "Exit code: $LASTEXITCODE"
+            throw "Installer build failed with exit code $LASTEXITCODE"
+          }
+          
+          Write-Host "✅ Installer built successfully"
+        } catch {
+          Write-Host "❌ Error during compilation:"
+          Write-Host $_.Exception.Message
+          throw
         }
       shell: powershell
       
