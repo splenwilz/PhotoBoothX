@@ -1,338 +1,222 @@
-name: "Deploy Photobooth"
+name: "Build and Deploy PhotoBoothX"
 
 on:
   push:
-    # branches:
-    #   - production
-    tags:
-      - "photobooth-x/v*"
-
-permissions:
-  contents: write
+    branches:
+      - production
+      - main  # Also trigger on main for testing
+  pull_request:
+    branches:
+      - production
+  release:
+    types: [published]
 
 env:
-  PROJECT_PATH: PhotoBooth/PhotoBooth.csproj
+  DOTNET_VERSION: '8.0.x'
+  PROJECT_PATH: 'PhotoBooth/PhotoBooth.csproj'
+  INSTALLER_PATH: 'installer/PhotoBoothX.iss'
+  PUBLISH_PATH: 'PhotoBooth/bin/Release/net8.0-windows/win-x64/publish'
 
 jobs:
-  deploy:
+  build-and-test:
+    name: Build and Test
     runs-on: windows-latest
-    steps:  
-      - name: Checkout
-        uses: actions/checkout@v4
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Needed for version calculation
+        
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+        
+    - name: Cache NuGet packages
+      uses: actions/cache@v3
+      with:
+        path: ~/.nuget/packages
+        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+        restore-keys: |
+          ${{ runner.os }}-nuget-
+          
+    - name: Restore dependencies
+      run: dotnet restore ${{ env.PROJECT_PATH }}
+      
+    - name: Build application
+      run: dotnet build ${{ env.PROJECT_PATH }} --configuration Release --no-restore
+      
+    - name: Run tests
+      run: |
+        if (Test-Path "Photobooth.Tests/Photobooth.Tests.csproj") {
+          dotnet test Photobooth.Tests/Photobooth.Tests.csproj --configuration Release --no-build --verbosity normal --collect:"XPlat Code Coverage" --logger trx --results-directory coverage
+        } else {
+          Write-Host "No tests found, skipping test execution"
+        }
+      shell: powershell
+      
+    - name: Publish application
+      run: dotnet publish ${{ env.PROJECT_PATH }} --configuration Release --output ${{ env.PUBLISH_PATH }} --self-contained true --runtime win-x64 /p:PublishSingleFile=true /p:PublishReadyToRun=true
+      
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: published-app
+        path: ${{ env.PUBLISH_PATH }}
+        retention-days: 30
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 8.x
+  create-installer:
+    name: Create Installer
+    needs: build-and-test
+    runs-on: windows-latest
+    if: github.ref == 'refs/heads/production' || github.event_name == 'release'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Download build artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: published-app
+        path: ${{ env.PUBLISH_PATH }}
+        
+    - name: Setup Inno Setup
+      uses: crazy-max/ghaction-chocolatey@v3
+      with:
+        args: install innosetup -y
+        
+    - name: Get version from project
+      id: get_version
+      run: |
+        $xml = [xml](Get-Content ${{ env.PROJECT_PATH }})
+        $version = $xml.Project.PropertyGroup.Version
+        if (-not $version) {
+          $version = "1.0.0"
+        }
+        echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+        echo "Version: $version"
+      shell: powershell
+      
+    - name: Update installer version
+      run: |
+        $version = "${{ steps.get_version.outputs.VERSION }}"
+        $installerContent = Get-Content ${{ env.INSTALLER_PATH }} -Raw
+        $installerContent = $installerContent -replace '#define MyAppVersion ".*"', "#define MyAppVersion `"$version`""
+        Set-Content ${{ env.INSTALLER_PATH }} -Value $installerContent
+      shell: powershell
+      
+    - name: Create dist directory
+      run: New-Item -ItemType Directory -Force -Path "dist"
+      shell: powershell
+      
+    - name: Build installer
+      run: |
+        & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" ${{ env.INSTALLER_PATH }}
+      shell: powershell
+      
+    - name: Upload installer artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: installer
+        path: dist/*.exe
+        retention-days: 90
+        
+    - name: List installer files
+      run: Get-ChildItem -Path "dist" -Recurse
+      shell: powershell
 
-      - name: Download Inno Setup Compiler
-        run: |
-          Write-Host "Downloading precompiled Inno Setup..."
-          try {
-            # Download latest Inno Setup from official site
-            $ProgressPreference = 'SilentlyContinue'
-            Invoke-WebRequest -Uri "https://files.jrsoftware.org/is/6/innosetup-6.2.2.exe" -OutFile "innosetup.exe" -TimeoutSec 60
-            
-            # Silent install
-            Start-Process "innosetup.exe" -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/DIR=C:\InnoSetup" -Wait -TimeoutSec 180
-            
-            # Verify installation
-            if (Test-Path "C:\InnoSetup\ISCC.exe") {
-              Write-Host "✅ Inno Setup installed successfully"
-              echo "INNO_AVAILABLE=true" >> $env:GITHUB_ENV
-              echo "ISCC_PATH=C:\InnoSetup\ISCC.exe" >> $env:GITHUB_ENV
-            } else {
-              Write-Host "❌ Inno Setup installation failed"
-              echo "INNO_AVAILABLE=false" >> $env:GITHUB_ENV
-            }
-          } catch {
-            Write-Host "❌ Failed to download/install Inno Setup: $_"
-            echo "INNO_AVAILABLE=false" >> $env:GITHUB_ENV
-          }
-        timeout-minutes: 5
+  create-release:
+    name: Create GitHub Release
+    needs: [build-and-test, create-installer]
+    runs-on: windows-latest
+    if: github.ref == 'refs/heads/production'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Get version from project
+      id: get_version
+      run: |
+        $xml = [xml](Get-Content ${{ env.PROJECT_PATH }})
+        $version = $xml.Project.PropertyGroup.Version
+        if (-not $version) {
+          $version = "1.0.0"
+        }
+        echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+        echo "RELEASE_TAG=v$version" >> $env:GITHUB_OUTPUT
+      shell: powershell
+      
+    - name: Download installer artifact
+      uses: actions/download-artifact@v3
+      with:
+        name: installer
+        path: installer-files
+        
+    - name: Generate release notes
+      id: release_notes
+      run: |
+        $releaseNotes = @"
+        ## PhotoBoothX Release ${{ steps.get_version.outputs.VERSION }}
+        
+        ### 🚀 What's New
+        - Latest build from production branch
+        - Updated application with recent changes
+        - Professional installer with auto-launch support
+        
+        ### 📦 Installation
+        1. Download ``PhotoBoothX-Setup-${{ steps.get_version.outputs.VERSION }}.exe``
+        2. Run as Administrator
+        3. Follow the installation wizard
+        4. The application will auto-launch on Windows startup (recommended for kiosk mode)
+        
+        ### 🔧 System Requirements
+        - Windows 10/11 (64-bit)
+        - .NET 8.0 Runtime (included in installer)
+        - Administrator privileges for installation
+        - USB ports for camera and hardware
+        
+        ### 📝 Notes
+        - Database stored in AppData (survives reinstalls)
+        - Templates are user-updatable in Program Files
+        - Check hardware connections after installation
+        
+        ---
+        **Build:** ${{ github.sha }}
+        **Date:** $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')
+        "@
+        
+        $releaseNotes | Out-File -FilePath release_notes.txt -Encoding utf8
+        echo "RELEASE_BODY<<EOF" >> $env:GITHUB_OUTPUT
+        Get-Content release_notes.txt | ForEach-Object { echo $_ >> $env:GITHUB_OUTPUT }
+        echo "EOF" >> $env:GITHUB_OUTPUT
+      shell: powershell
+      
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ steps.get_version.outputs.RELEASE_TAG }}
+        name: PhotoBoothX ${{ steps.get_version.outputs.VERSION }}
+        body: ${{ steps.release_notes.outputs.RELEASE_BODY }}
+        draft: false
+        prerelease: false
+        files: |
+          installer-files/*.exe
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Restore
-        run: dotnet restore ${{ env.PROJECT_PATH }}
-
-      - name: Publish (Production Build)
-        run: dotnet publish ${{ env.PROJECT_PATH }} -c Release -r win-x64 -o publish --self-contained false -p:DebugType=None -p:DebugSymbols=false
-
-      - name: Clean Production Build
-        run: |
-          Write-Host "Cleaning production build..."
-          Remove-Item "publish\*.pdb" -Force -ErrorAction SilentlyContinue
-          Remove-Item "publish\*.xml" -Force -ErrorAction SilentlyContinue
-          Write-Host "✅ Debug files removed"
-
-      - name: Create Professional Deployment Package
-        run: |
-          Write-Host "Creating professional deployment structure..."
-          
-          New-Item -ItemType Directory -Path "deployment/PhotoBoothX" -Force
-          New-Item -ItemType Directory -Path "deployment/PhotoBoothX/data" -Force
-          New-Item -ItemType Directory -Path "deployment/PhotoBoothX/logs" -Force
-          New-Item -ItemType Directory -Path "deployment/PhotoBoothX/config" -Force
-          
-          # Copy application files
-          Copy-Item "publish/*" "deployment/PhotoBoothX/" -Recurse -Force
-          
-          # Move user data to separate folders
-          if (Test-Path "deployment/PhotoBoothX/Database_Schema.sql") {
-            Move-Item "deployment/PhotoBoothX/Database_Schema.sql" "deployment/PhotoBoothX/data/" -Force
-          }
-          
-          # Create version file
-          "${{ github.ref_name }}" | Out-File "deployment/PhotoBoothX/VERSION.txt"
-          
-          # Copy license files
-          Copy-Item "LICENSE.txt" "deployment/PhotoBoothX/" -Force
-          Copy-Item "EULA.txt" "deployment/PhotoBoothX/" -Force
-          
-          # Create professional installation guide
-          @"
-          PhotoBooth Professional ${{ github.ref_name }}
-          ==========================================
-          
-          🏪 COMMERCIAL PHOTOBOOTH SOFTWARE
-          
-          📋 SYSTEM REQUIREMENTS:
-          - Windows 10/11 (64-bit)
-          - .NET 8.0 Desktop Runtime (Required - see link below)
-          - 500MB free disk space
-          - Administrator privileges for initial setup
-          
-          🚀 INSTALLATION INSTRUCTIONS:
-          
-          1. INSTALL .NET RUNTIME FIRST:
-             Download and install .NET 8.0 Desktop Runtime:
-             https://dotnet.microsoft.com/download/dotnet/8.0
-             (Choose "Desktop Runtime" for Windows x64)
-          
-          2. EXTRACT THIS FOLDER:
-             Extract the entire PhotoBoothX folder to your desired location:
-             Recommended: C:\PhotoBooth\
-          
-          3. RUN THE APPLICATION:
-             - Navigate to the PhotoBoothX folder
-             - Right-click PhotoBooth.exe
-             - Select "Run as administrator"
-             - Follow license activation prompts
-          
-          📁 FOLDER STRUCTURE:
-          PhotoBoothX/
-          ├── PhotoBooth.exe          # Main application
-          ├── *.dll                   # Required .NET dependencies
-          ├── Templates/              # Print templates (customizable)
-          ├── data/                   # Database schema
-          ├── logs/                   # Application logs (auto-created)
-          ├── config/                 # Settings (auto-created)
-          ├── LICENSE.txt             # Software license
-          ├── EULA.txt                # End user agreement
-          └── README.txt              # This file
-          
-          ⚠️  IMPORTANT NOTES:
-          - Do NOT separate PhotoBooth.exe from the DLL files
-          - Templates folder can be customized for your business
-          - Keep all files together in the same directory
-          - Run as Administrator for hardware access
-          
-          💼 COMMERCIAL LICENSING:
-          This software requires a valid commercial license.
-          Contact sales@yourcompany.com for licensing information.
-          
-          🔧 TECHNICAL SUPPORT:
-          Email: support@yourcompany.com
-          Include your version number: ${{ github.ref_name }}
-          
-          📜 COPYRIGHT:
-          © 2025 [Your Company Name]. All rights reserved.
-          This software is protected by copyright law and international treaties.
-          "@ | Out-File "deployment/PhotoBoothX/README.txt"
-          
-          Write-Host "✅ Professional deployment package created"
-
-      - name: Create Professional Installer
-        if: env.INNO_AVAILABLE == 'true'
-        run: |
-          Write-Host "Creating professional Windows installer..."
-          
-          # Create comprehensive installer script based on Inno Setup examples
-          $issScript = @"
-          ; PhotoBooth Professional Installer
-          ; Generated from official Inno Setup patterns
-          
-          [Setup]
-          AppName=PhotoBooth Professional
-          AppVersion=${{ github.ref_name }}
-          AppPublisher=Your Company Name
-          AppPublisherURL=https://yourcompany.com
-          AppSupportURL=https://yourcompany.com/support
-          AppUpdatesURL=https://yourcompany.com/updates
-          DefaultDirName={autopf}\PhotoBooth Professional
-          DefaultGroupName=PhotoBooth Professional
-          AllowNoIcons=yes
-          LicenseFile=EULA.txt
-          InfoBeforeFile=README.txt
-          OutputDir=installer-output
-          OutputBaseFilename=PhotoBooth-Professional-Setup-${{ github.ref_name }}
-          Compression=lzma2
-          SolidCompression=yes
-          WizardStyle=modern
-          PrivilegesRequired=admin
-          ArchitecturesAllowed=x64
-          ArchitecturesInstallIn64BitMode=x64
-          MinVersion=10.0
-          DisableProgramGroupPage=yes
-          SetupLogging=yes
-          
-          [Languages]
-          Name: "english"; MessagesFile: "compiler:Default.isl"
-          
-          [Tasks]
-          Name: "desktopicon"; Description: "Create a desktop icon"; GroupDescription: "Additional icons:"; Flags: unchecked
-          
-          [Files]
-          Source: "PhotoBoothX\PhotoBooth.exe"; DestDir: "{app}"; Flags: ignoreversion
-          Source: "PhotoBoothX\*.dll"; DestDir: "{app}"; Flags: ignoreversion
-          Source: "PhotoBoothX\*.json"; DestDir: "{app}"; Flags: ignoreversion
-          Source: "PhotoBoothX\Templates\*"; DestDir: "{app}\Templates"; Flags: ignoreversion recursesubdirs createallsubdirs
-          Source: "PhotoBoothX\data\*"; DestDir: "{app}\data"; Flags: ignoreversion recursesubdirs createallsubdirs
-          Source: "PhotoBoothX\README.txt"; DestDir: "{app}"; Flags: ignoreversion
-          Source: "PhotoBoothX\VERSION.txt"; DestDir: "{app}"; Flags: ignoreversion
-          Source: "PhotoBoothX\LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion
-          Source: "PhotoBoothX\EULA.txt"; DestDir: "{app}"; Flags: ignoreversion
-          
-          [Dirs]
-          Name: "{app}\logs"; Permissions: everyone-full
-          Name: "{app}\config"; Permissions: everyone-full
-          Name: "{localappdata}\PhotoBooth"; Permissions: everyone-full
-          
-          [Icons]
-          Name: "{group}\PhotoBooth Professional"; Filename: "{app}\PhotoBooth.exe"
-          Name: "{group}\Uninstall PhotoBooth Professional"; Filename: "{uninstallexe}"
-          Name: "{autodesktop}\PhotoBooth Professional"; Filename: "{app}\PhotoBooth.exe"; Tasks: desktopicon
-          
-          [Registry]
-          Root: HKLM; Subkey: "SOFTWARE\PhotoBooth"; ValueType: string; ValueName: "InstallPath"; ValueData: "{app}"
-          Root: HKLM; Subkey: "SOFTWARE\PhotoBooth"; ValueType: string; ValueName: "Version"; ValueData: "${{ github.ref_name }}"
-          
-          [Run]
-          Filename: "{app}\PhotoBooth.exe"; Description: "Launch PhotoBooth Professional"; Flags: nowait postinstall skipifsilent
-          
-          [UninstallDelete]
-          Type: filesandordirs; Name: "{app}\logs"
-          Type: filesandordirs; Name: "{app}\config"
-          Type: filesandordirs; Name: "{localappdata}\PhotoBooth"
-          
-          [Messages]
-          WelcomeLabel2=This will install PhotoBooth Professional on your computer.%n%nIt is recommended that you close all other applications before continuing.%n%nThis software requires .NET 8.0 Desktop Runtime to be installed.
-          "@
-          
-          # Save installer script
-          New-Item -ItemType Directory -Path "deployment/installer-output" -Force
-          $issScript | Out-File "deployment/photobooth-setup.iss" -Encoding UTF8
-          
-          # Build installer
-          try {
-            Push-Location "deployment"
-            $result = & $env:ISCC_PATH "photobooth-setup.iss"
-            Write-Host "ISCC Result: $result"
-            Pop-Location
-            
-            # Verify installer was created
-            $installerPath = "deployment/installer-output/PhotoBooth-Professional-Setup-${{ github.ref_name }}.exe"
-            if (Test-Path $installerPath) {
-              $fileSize = (Get-Item $installerPath).Length / 1MB
-              Write-Host "✅ Professional installer created: $([math]::Round($fileSize, 2)) MB"
-              echo "INSTALLER_CREATED=true" >> $env:GITHUB_ENV
-              echo "INSTALLER_PATH=$installerPath" >> $env:GITHUB_ENV
-            } else {
-              Write-Host "❌ Installer not found at expected location"
-              echo "INSTALLER_CREATED=false" >> $env:GITHUB_ENV
-            }
-          } catch {
-            Write-Host "❌ Failed to build installer: $_"
-            echo "INSTALLER_CREATED=false" >> $env:GITHUB_ENV
-          }
-
-      - name: Create Production ZIP
-        run: |
-          $tagName = "${{ github.ref_name }}" -replace "/", "-"
-          $zipName = "PhotoBoothX-Professional-$tagName-win-x64.zip"
-          
-          Compress-Archive -Path "deployment\PhotoBoothX\*" -DestinationPath $zipName
-          
-          $zipSize = (Get-Item $zipName).Length / 1MB
-          Write-Host "✅ Production package created: $zipName ($([math]::Round($zipSize, 2)) MB)"
-
-      - name: Prepare Release Assets
-        run: |
-          $tagName = "${{ github.ref_name }}" -replace "/", "-"
-          
-          if ($env:INSTALLER_CREATED -eq "true" -and $env:INSTALLER_PATH) {
-            if (Test-Path $env:INSTALLER_PATH) {
-              Copy-Item $env:INSTALLER_PATH "PhotoBooth-Professional-Setup-$tagName.exe"
-              Write-Host "✅ Professional installer ready for release"
-            }
-          }
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ github.ref_name }}
-          name: PhotoBooth Professional ${{ github.ref_name }}
-          files: |
-            ${{ env.INSTALLER_CREATED == 'true' && 'PhotoBooth-Professional-Setup-*.exe' || '' }}
-            PhotoBoothX-Professional-*-win-x64.zip
-          body: |
-            ## PhotoBooth Professional ${{ github.ref_name }}
-            
-            **🏪 Commercial Grade Photobooth Software - Professional Release**
-            
-            ### 📦 Installation Options:
-            
-            ${{ env.INSTALLER_CREATED == 'true' && '**🥇 PROFESSIONAL WINDOWS INSTALLER** ⭐' || '**📁 MANUAL INSTALLATION**' }}
-            ${{ env.INSTALLER_CREATED == 'true' && '- `PhotoBooth-Professional-Setup-[version].exe` - **Complete Windows installer**' || '- Professional installer not available this release' }}
-            ${{ env.INSTALLER_CREATED == 'true' && '  - ✅ Automatic .NET runtime detection' || '' }}
-            ${{ env.INSTALLER_CREATED == 'true' && '  - ✅ Start Menu & Desktop shortcuts' || '' }}
-            ${{ env.INSTALLER_CREATED == 'true' && '  - ✅ Professional uninstaller included' || '' }}
-            ${{ env.INSTALLER_CREATED == 'true' && '  - ✅ Registry integration for licensing' || '' }}
-            ${{ env.INSTALLER_CREATED == 'true' && '  - ✅ EULA acceptance during install' || '' }}
-            
-            **📁 Manual Installation Package**
-            - `PhotoBoothX-Professional-[version]-win-x64.zip` - Complete application package
-            
-            ### 🎯 Professional Features:
-            - ✅ **Commercial licensing system** with activation
-            - ✅ **Professional Windows installer** (when available)
-            - ✅ **Enterprise-grade file structure** 
-            - ✅ **Version tracking & support**
-            - ✅ **Production-optimized build**
-            - ✅ **Legal documentation** included
-            - ✅ **Hardware integration ready**
-            
-            ### 📋 System Requirements:
-            - **Windows 10/11** (64-bit)
-            - **[.NET 8.0 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)** (required)
-            - **500MB** free disk space
-            - **Administrator privileges** for installation
-            
-            ### 🚀 Quick Start:
-            ${{ env.INSTALLER_CREATED == 'true' && '1. **Download installer** above' || '1. **Download ZIP** above' }}
-            ${{ env.INSTALLER_CREATED == 'true' && '2. **Run as Administrator**' || '2. **Install .NET 8.0 Desktop Runtime**' }}
-            ${{ env.INSTALLER_CREATED == 'true' && '3. **Follow setup wizard**' || '3. **Extract to desired location**' }}
-            ${{ env.INSTALLER_CREATED == 'true' && '4. **Launch from Start Menu**' || '4. **Run PhotoBooth.exe as Administrator**' }}
-            
-            ### 📞 Professional Support:
-            - 📧 **Technical Support**: support@yourcompany.com
-            - 💰 **Sales & Licensing**: sales@yourcompany.com
-            - 📖 **Documentation**: Complete guides included
-            
-            ### 🔒 Commercial Licensing:
-            **Professional License Required** - Annual subscription model  
-            Contact sales team for enterprise pricing and volume discounts.
-            
-            ---
-            **Built with official [Inno Setup](https://github.com/jrsoftware/issrc) - Industry standard Windows installer**
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
+  notify-success:
+    name: Notify Deployment Success
+    needs: [create-release]
+    runs-on: windows-latest
+    if: success() && github.ref == 'refs/heads/production'
+    
+    steps:
+    - name: Success notification
+      run: |
+        Write-Host "🎉 PhotoBoothX deployment successful!"
+        Write-Host "📦 Installer available in GitHub Releases"
+        Write-Host "🔗 Your client can download from: ${{ github.server_url }}/${{ github.repository }}/releases/latest"
+      shell: powershell

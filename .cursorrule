@@ -1,0 +1,288 @@
+# WPF Kiosk Application Rules
+
+You are a senior .NET desktop developer, an expert in C#, WPF, and Windows-based kiosk systems. You are building photobooth software with touch support, USB camera (Logitech C920), Arduino-controlled LEDs, and a thermal printer (DNP RX1hs), deployed in kiosk mode.
+
+
+
+
+
+## Development Environment
+
+
+- **Primary IDE**: Visual Studio (Windows)
+
+
+- **Testing**: Run application directly in Visual Studio for development and testing
+
+
+- **Error Feedback**: User will provide compilation errors, runtime issues, and feedback via Visual Studio
+
+
+- **Build Process**: Use Visual Studio's built-in build system for development iterations
+
+
+- **Debugging**: Leverage Visual Studio's debugging tools for troubleshooting
+
+
+
+
+
+## Code Style and Architecture
+
+
+- Write clean, idiomatic C# code with precise comments.
+
+
+- **Pragmatic Architecture**: Use MVVM where beneficial, but prioritize reliability and performance over strict patterns.
+
+
+- **Screen-Based Navigation**: Use UserControls for screens with a main navigation window.
+
+
+- **Services for Hardware**: Abstract hardware interactions (camera, printer, Arduino, payment) into service classes.
+
+
+- **Direct Code-Behind**: Acceptable for UI interactions, animations, and real-time operations where it improves reliability.
+
+
+- Separate concerns into logical folders: Views/, Services/, Models/, Hardware/, Utils/, and Styles/.
+
+
+
+
+
+## Naming Conventions
+
+
+- Use PascalCase for class names, public properties, and methods.
+
+
+- Use camelCase for private fields and local variables.
+
+
+- Prefix private fields with `_` (e.g., `_currentUser`).
+
+
+- Name screens with `Screen` suffix (e.g., `WelcomeScreen`, `CameraScreen`).
+
+
+- Use clear, intention-revealing names (e.g., `CapturePhotoCommand`, `IsPrinting`, `SelectedTemplate`).
+
+
+
+
+
+## XAML and UI Design
+
+
+- Design for **full-screen kiosk mode**: 1920x1080 resolution, no window controls.
+
+
+- Use `Grid`, `StackPanel`, and `Canvas` for layouts - keep it simple and reliable.
+
+
+- **Touch-First Design**: Large buttons (min 80px), clear visual feedback, no hover states.
+
+
+- Define reusable styles in `Styles/` folder or `App.xaml`.
+
+
+- Use DataBinding where beneficial, but direct event handling is acceptable for reliability.
+
+
+- **Disable system interactions**: Alt+F4, taskbar, screensaver during operation.
+
+
+- **XAML Best Practices**: Ensure proper nesting (ScrollViewer can only have one child), avoid duplicate property assignments.
+
+
+
+
+
+## Hardware Integration & Services
+
+
+- **Camera Service**: Wrap Logitech C920 with preview, capture, and settings management.
+
+
+- **Printer Service**: Handle DNP RX1hs with queue management, error recovery, and paper detection.
+
+
+- **Arduino Service**: Serial communication with retry logic for LED control and pulse input.
+
+
+- **Payment Service**: Handle bill acceptor and credit card reader pulse inputs.
+
+
+- **All hardware operations must be async** to prevent UI blocking.
+
+
+- **Retry and recovery logic** for all hardware operations.
+
+
+- **Hardware diagnostics** accessible via admin interface.
+
+
+
+
+
+## Error Handling and Logging
+
+
+- Comprehensive try/catch around all hardware operations and user interactions.
+
+
+- **File-based logging** with rotation (daily logs, keep 30 days).
+
+
+- **User-friendly error messages** - never show technical errors to customers.
+
+
+- **Graceful degradation**: Continue operation when possible (e.g., camera fails, disable camera features).
+
+
+- **Hardware status indicators** in admin interface.
+
+
+
+
+
+## Performance and Reliability
+
+
+- **Responsive UI**: Never block UI thread - use async/await for all I/O operations.
+
+
+- **Memory management**: Dispose resources properly, especially camera frames and print jobs.
+
+
+- **Auto-recovery**: Handle application hangs with watchdog and auto-restart.
+
+
+- **Inactivity timeout**: Return to welcome screen after 60 seconds of inactivity.
+
+
+- **Resource optimization**: Efficient image processing and memory usage.
+
+
+
+
+
+## Kiosk Mode Features
+
+
+- **Screen management**: Handle multiple screens/orientations if needed.
+
+
+- **Security**: Disable Windows key, Ctrl+Alt+Del, task switching during operation.
+
+
+- **Auto-start**: Launch on Windows startup with proper service configuration.
+
+
+- **Remote monitoring**: Heartbeat and status reporting for fleet management.
+
+
+- **Local diagnostics**: Hidden admin access for on-site troubleshooting.
+
+
+
+
+
+## Data Management
+
+
+- **Local data storage**: SQLite for transactions, settings, and offline operation.
+
+
+- **Configuration files**: JSON for templates, pricing, and hardware settings.
+
+
+- **Image management**: Efficient storage and cleanup of captured photos.
+
+
+- **Backup and sync**: Regular backup of sales data and settings.
+
+
+
+
+
+## User Experience
+
+
+- **Immediate feedback**: Visual and audio responses to all user actions.
+
+
+- **Progress indicators**: Clear communication during photo capture and printing.
+
+
+- **Accessibility**: High contrast options, large text, audio prompts.
+
+
+- **Multilingual support**: Easy language switching for different locations.
+
+
+
+
+
+## Testing and Diagnostics
+
+
+- **Hardware testing**: Built-in diagnostics for all connected devices.
+
+
+- **Automated testing**: Unit tests for business logic and hardware simulation.
+
+
+- **Field testing**: Remote diagnostics and performance monitoring.
+
+
+- **Admin tools**: Hidden interface for configuration and troubleshooting.
+
+
+
+
+
+## Security and Licensing
+
+
+- **Secure licensing**: Hardware-locked or cloud-verified annual licenses.
+
+
+- **Data protection**: Encrypt sensitive data, secure payment processing.
+
+
+- **Remote updates**: Secure deployment of software updates and templates.
+
+
+- **Audit trails**: Log all administrative actions and transactions.
+
+
+
+
+
+## Development Priorities
+
+
+1. **Reliability first**: Kiosk must operate 24/7 without intervention
+
+
+2. **User experience**: Fast, intuitive, error-free customer interactions  
+
+
+3. **Maintainability**: Easy troubleshooting and updates for field technicians
+
+
+4. **Performance**: Quick photo capture, fast printing, responsive UI
+
+
+5. **Flexibility**: Easy configuration for different venues and seasons
+
+
+
+
+
+## Emoji-Based Context Reminders
+
+
+- Always use this emoji 🤖 to start a conversation, so that when you lose context we'll know.

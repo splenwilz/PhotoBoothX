@@ -198,6 +198,22 @@ PublishScripts/
 *.snupkg
 # The packages folder can be ignored because of Package Restore
 **/[Pp]ackages/*
+
+# PhotoBoothX specific ignores
+# Build artifacts and installer files
+dist/
+*.exe
+!installer/*.ico
+!installer/*.iss
+# Published application
+**/publish/
+# Installer build logs
+installer/*.log
+# Runtime database files
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
 # except build/, which is used as an MSBuild target.
 !**/[Pp]ackages/build/
 # Uncomment if necessary however generally it will be regenerated when needed
@@ -361,3 +377,9 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# Temp folder
+temp/
+
+# Cursor
+.cursorrules
