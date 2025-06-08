@@ -9,7 +9,7 @@
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
     
     <!-- Application Icon -->
-    <ApplicationIcon>..\installer\icon.ico</ApplicationIcon>
+    <ApplicationIcon>icon.ico</ApplicationIcon>
     
     <!-- Version Information -->
     <Version>0.0.1</Version>

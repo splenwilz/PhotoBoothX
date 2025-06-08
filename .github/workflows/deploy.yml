@@ -244,30 +244,30 @@ jobs:
         $releaseNotes = @"
         ## PhotoBoothX Release ${{ steps.get_version.outputs.VERSION }}
         
-        ### 🚀 What's New
+        ### What's New
         - Latest build from production branch
         - Updated application with recent changes
         - Professional installer with auto-launch support
         
-        ### 📦 Installation
-        1. Download ``PhotoBoothX-Setup-${{ steps.get_version.outputs.VERSION }}.exe``
+        ### Installation
+        1. Download PhotoBoothX-Setup-${{ steps.get_version.outputs.VERSION }}.exe
         2. Run as Administrator
         3. Follow the installation wizard
         4. The application will auto-launch on Windows startup (recommended for kiosk mode)
         
-        ### 🔧 System Requirements
+        ### System Requirements
         - Windows 10/11 (64-bit)
         - .NET 8.0 Runtime (included in installer)
         - Administrator privileges for installation
         - USB ports for camera and hardware
         
-        ### 📝 Notes
+        ### Notes
         - Database stored in AppData (survives reinstalls)
         - Templates are user-updatable in Program Files
         - Check hardware connections after installation
         
         ---
-        **Build:** ${{ github.sha }}
+        **Build:** ${{ github.sha }}  
         **Date:** $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')
         "@
         
