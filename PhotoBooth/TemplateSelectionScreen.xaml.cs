@@ -52,10 +52,7 @@ namespace Photobooth
         /// </summary>
         public event EventHandler<TemplateSelectedEventArgs>? TemplateSelected;
 
-        /// <summary>
-        /// Event fired when admin access sequence is completed
-        /// </summary>
-        public event EventHandler? AdminAccessRequested;
+
 
         #endregion
 
@@ -67,10 +64,6 @@ namespace Photobooth
         private int currentPage = 0;
         private int totalPages = 0;
         private ProductInfo? selectedProduct;
-
-        // Admin access tracking
-        private int adminTapCount = 0;
-        private DateTime lastAdminTap = DateTime.MinValue;
 
         // Animation resources
         private readonly List<Storyboard> activeStoryboards = new List<Storyboard>();
@@ -695,37 +688,7 @@ namespace Photobooth
             }
         }
 
-        /// <summary>
-        /// Handles admin corner tap sequence
-        /// </summary>
-        private void AdminCornerTap_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
-        {
-            try
-            {
-                var now = DateTime.Now;
 
-                // Reset sequence if too much time has passed
-                if ((now - lastAdminTap).TotalSeconds > Constants.AdminTapTimeWindow)
-                {
-                    adminTapCount = 0;
-                }
-
-                adminTapCount++;
-                lastAdminTap = now;
-
-                System.Diagnostics.Debug.WriteLine($"Admin tap {adminTapCount}/{Constants.AdminTapSequenceCount}");
-
-                if (adminTapCount >= Constants.AdminTapSequenceCount)
-                {
-                    adminTapCount = 0;
-                    AdminAccessRequested?.Invoke(this, EventArgs.Empty);
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Admin tap error: {ex.Message}");
-            }
-        }
 
         #endregion
 

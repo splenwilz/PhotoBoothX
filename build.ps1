@@ -84,10 +84,24 @@ try {
 
         # Update version in installer if provided
         if ($Version) {
+            # Validate version format (semantic versioning pattern)
+            $versionPattern = '^\d+\.\d+\.\d+(-[a-zA-Z0-9\.\-]+)?$'
+            if ($Version -notmatch $versionPattern) {
+                Write-Host "ERROR: Invalid version format: '$Version'" -ForegroundColor Red
+                Write-Host "Expected format: Major.Minor.Patch[-PreRelease] (e.g., 1.0.0, 1.2.3-beta, 2.1.0-alpha.1)" -ForegroundColor Yellow
+                Write-Host "Valid examples:" -ForegroundColor Gray
+                Write-Host "   - 1.0.0" -ForegroundColor Gray
+                Write-Host "   - 1.2.3" -ForegroundColor Gray
+                Write-Host "   - 2.0.0-beta" -ForegroundColor Gray
+                Write-Host "   - 1.5.2-alpha.1" -ForegroundColor Gray
+                throw "Invalid version format"
+            }
+
             Write-Host "Updating installer version to: $Version"
             $installerContent = Get-Content $InstallerPath -Raw
             $installerContent = $installerContent -replace '#define MyAppVersion ".*"', "#define MyAppVersion `"$Version`""
             Set-Content $InstallerPath -Value $installerContent
+            Write-Host "Installer version updated successfully" -ForegroundColor Green
         }
 
         # Create dist directory

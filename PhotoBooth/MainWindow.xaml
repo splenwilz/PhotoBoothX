@@ -25,24 +25,6 @@
             <!-- Notifications will be added here dynamically -->
         </Grid>
 
-        <!-- Invisible Admin Access Zone (top-left corner) - HIGH PRIORITY -->
-        <Border Name="AdminAccessZone"
-                HorizontalAlignment="Left" 
-                VerticalAlignment="Top"
-                Width="150" 
-                Height="150"
-                Background="Transparent"
-                MouseLeftButtonDown="AdminAccessZone_MouseLeftButtonDown"
-                Cursor="Hand"
-                Panel.ZIndex="999"
-                Margin="0,0,0,0">
-            <!-- Debug indicator (slightly more visible for testing) -->
-            <TextBlock Text="👤" 
-                       FontSize="20" 
-                       HorizontalAlignment="Center" 
-                       VerticalAlignment="Center" 
-                       Foreground="White" 
-                       Opacity="0.2"/>
-        </Border>
+
     </Grid>
 </Window>

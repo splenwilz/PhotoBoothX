@@ -43,8 +43,8 @@ PhotoBooth Application
 1. **Clone Repository**
 2. **Build Solution** - Database will be created automatically on first run
 3. **Default Login**: 
-   - Master Admin: `admin` / `admin123`
-   - User Admin: `user` / `user123`
+   - **Secure Setup**: Random passwords generated during installation
+- **Credentials**: Located in `Desktop\PhotoBoothX-Setup-Credentials` (auto-deletes after setup)
 
 ## Development Guidelines
 

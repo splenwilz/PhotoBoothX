@@ -51,6 +51,11 @@ namespace Photobooth
         private string? _currentLogoPath = null;
         private string _currentOperationMode = "Coin"; // Default to Coin Operated
 
+        // Product management
+        private List<Product> _products = new();
+        private bool _isLoadingProducts = false;
+        private bool _hasUnsavedChanges = false;
+
         #endregion
 
         #region Initialization
@@ -129,7 +134,6 @@ namespace Photobooth
             try
             {
                 await LoadSalesData();
-                await LoadHardwareStatus();
                 await LoadSupplyStatus();
             }
             catch (Exception ex)
@@ -195,7 +199,7 @@ namespace Photobooth
         /// <summary>
         /// Handle tab button clicks
         /// </summary>
-        private void TabButton_Click(object sender, RoutedEventArgs e)
+        private async void TabButton_Click(object sender, RoutedEventArgs e)
         {
             // Reset all tab buttons
             SalesTab.Tag = null;
@@ -235,6 +239,7 @@ namespace Photobooth
                     case "ProductsTab":
                         ProductsTabContent.Visibility = Visibility.Visible;
                         BreadcrumbText.Text = "Products";
+                        await LoadProductsData();
                         break;
                     case "TemplatesTab":
                         TemplatesTabContent.Visibility = Visibility.Visible;
@@ -347,7 +352,7 @@ namespace Photobooth
                 await SaveBusinessInformation();
 
                 // Save Pricing Settings
-                await SavePricingSettings();
+                await SaveOperationModeSettings();
 
                 // Save System Preferences
                 await SaveSystemPreferences();
@@ -446,49 +451,23 @@ namespace Photobooth
         }
 
         /// <summary>
-        /// Save pricing settings to database
+        /// Save operation mode settings to database (products now managed in Products tab)
         /// </summary>
-        private async Task SavePricingSettings()
+        private async Task SaveOperationModeSettings()
         {
             try
             {
-                Console.WriteLine($"SavePricingSettings: _currentUserId = '{_currentUserId}'");
+                Console.WriteLine($"SaveOperationModeSettings: _currentUserId = '{_currentUserId}'");
                 
-                // Get values from UI elements
-                var stripPrice = decimal.TryParse(StripPriceTextBox?.Text, out var sp) ? sp : 3.00m;
-                var photo4x6Price = decimal.TryParse(Photo4x6PriceTextBox?.Text, out var p4) ? p4 : 5.00m;
-                var phonePrintsPrice = decimal.TryParse(PhonePrintsPriceTextBox?.Text, out var pp) ? pp : 2.00m;
-                
-                Console.WriteLine($"SavePricingSettings: Prices - Strip: {stripPrice}, 4x6: {photo4x6Price}, Phone: {phonePrintsPrice}");
-                
-                // Save pricing settings
-                var result1 = await _databaseService.SetSettingValueAsync("Pricing", "StripPrice", stripPrice, _currentUserId);
-                Console.WriteLine($"StripPrice save result: Success={result1.Success}, Error='{result1.ErrorMessage}'");
-                
-                var result2 = await _databaseService.SetSettingValueAsync("Pricing", "Photo4x6Price", photo4x6Price, _currentUserId);
-                Console.WriteLine($"Photo4x6Price save result: Success={result2.Success}, Error='{result2.ErrorMessage}'");
-                
-                var result3 = await _databaseService.SetSettingValueAsync("Pricing", "SmartphonePrice", phonePrintsPrice, _currentUserId);
-                Console.WriteLine($"SmartphonePrice save result: Success={result3.Success}, Error='{result3.ErrorMessage}'");
-                
-                // Save product enabled states
-                var result4 = await _databaseService.SetSettingValueAsync("Products", "StripEnabled", StripEnabledToggle?.IsChecked == true, _currentUserId);
-                Console.WriteLine($"StripEnabled save result: Success={result4.Success}, Error='{result4.ErrorMessage}'");
-                
-                var result5 = await _databaseService.SetSettingValueAsync("Products", "Photo4x6Enabled", Photo4x6EnabledToggle?.IsChecked == true, _currentUserId);
-                Console.WriteLine($"Photo4x6Enabled save result: Success={result5.Success}, Error='{result5.ErrorMessage}'");
-                
-                var result6 = await _databaseService.SetSettingValueAsync("Products", "PhonePrintsEnabled", PhonePrintsEnabledToggle?.IsChecked == true, _currentUserId);
-                Console.WriteLine($"PhonePrintsEnabled save result: Success={result6.Success}, Error='{result6.ErrorMessage}'");
-                
-                // Save operation mode (Coin vs Free)
-                var result7 = await _databaseService.SetSettingValueAsync("System", "Mode", _currentOperationMode, _currentUserId);
-                Console.WriteLine($"Mode save result: Success={result7.Success}, Error='{result7.ErrorMessage}'");
+                // NOTE: Product pricing and enabled states are now managed in the Products tab
+                // Only save operation mode here (Coin vs Free) - this is system-wide setting
+                var result = await _databaseService.SetSettingValueAsync("System", "Mode", _currentOperationMode, _currentUserId);
+                Console.WriteLine($"Mode save result: Success={result.Success}, Error='{result.ErrorMessage}'");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"SavePricingSettings error: {ex}");
-                throw new Exception($"Failed to save pricing settings: {ex.Message}");
+                Console.WriteLine($"SaveOperationModeSettings error: {ex}");
+                throw new Exception($"Failed to save operation mode settings: {ex.Message}");
             }
         }
 
@@ -624,61 +603,6 @@ namespace Photobooth
                 {
                     NotificationService.Quick.Error($"Failed to upload logo: {ex.Message}");
                 }
-            }
-        }
-
-        /// <summary>
-        /// Handle coin operated mode selection
-        /// </summary>
-        private void CoinOperatedBorder_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
-        {
-            SetOperationMode("Coin");
-        }
-
-        /// <summary>
-        /// Handle free play mode selection
-        /// </summary>
-        private void FreePlayBorder_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
-        {
-            SetOperationMode("Free");
-        }
-
-        /// <summary>
-        /// Update the operation mode selection UI
-        /// </summary>
-        private void SetOperationMode(string mode)
-        {
-            _currentOperationMode = mode;
-
-            if (mode == "Coin")
-            {
-                // Update Coin Operated to selected state
-                CoinOperatedBorder.BorderBrush = new System.Windows.Media.SolidColorBrush(
-                    (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#3B82F6"));
-                CoinOperatedRadio.Background = new System.Windows.Media.SolidColorBrush(
-                    (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#3B82F6"));
-
-                // Update Free Play to unselected state
-                FreePlayBorder.BorderBrush = new System.Windows.Media.SolidColorBrush(
-                    (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#D1D5DB"));
-                FreePlayRadio.Background = System.Windows.Media.Brushes.Transparent;
-
-                CurrentModeText.Text = "Coin Operated";
-            }
-            else // Free
-            {
-                // Update Free Play to selected state
-                FreePlayBorder.BorderBrush = new System.Windows.Media.SolidColorBrush(
-                    (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#3B82F6"));
-                FreePlayRadio.Background = new System.Windows.Media.SolidColorBrush(
-                    (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#3B82F6"));
-
-                // Update Coin Operated to unselected state
-                CoinOperatedBorder.BorderBrush = new System.Windows.Media.SolidColorBrush(
-                    (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#D1D5DB"));
-                CoinOperatedRadio.Background = System.Windows.Media.Brushes.Transparent;
-
-                CurrentModeText.Text = "Free Mode";
             }
         }
 
@@ -1204,6 +1128,8 @@ namespace Photobooth
             }
         }
 
+
+
         #endregion
 
         #region Helper Methods
@@ -1392,52 +1318,6 @@ namespace Photobooth
             return 0;
         }
 
-        private async System.Threading.Tasks.Task LoadHardwareStatus()
-        {
-            try
-            {
-                var statusResult = await _databaseService.GetHardwareStatusAsync();
-                if (statusResult.Success && statusResult.Data != null)
-                {
-                    foreach (var status in statusResult.Data)
-                    {
-                        UpdateHardwareStatusIndicator(status);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error loading hardware status: {ex.Message}");
-            }
-        }
-
-        private void UpdateHardwareStatusIndicator(HardwareStatusDto status)
-        {
-            var color = status.Status switch
-            {
-                Models.HardwareStatus.Online => "#10B981",  // Green
-                Models.HardwareStatus.Offline => "#EF4444", // Red
-                Models.HardwareStatus.Error => "#F59E0B",   // Orange
-                _ => "#64748B" // Gray
-            };
-
-            var brush = new System.Windows.Media.SolidColorBrush(
-                (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(color));
-
-            switch (status.ComponentName.ToLower())
-            {
-                case "camera":
-                    CameraStatusDot.Fill = brush;
-                    break;
-                case "printer":
-                    PrinterStatusDot.Fill = brush;
-                    break;
-                case "arduino":
-                    ArduinoStatusDot.Fill = brush;
-                    break;
-            }
-        }
-
         private async System.Threading.Tasks.Task LoadSupplyStatus()
         {
             try
@@ -1545,12 +1425,12 @@ namespace Photobooth
         private async System.Threading.Tasks.Task LoadInitialData()
         {
             await LoadSalesData();
-            await LoadHardwareStatus();
             await LoadSupplyStatus();
             await LoadSystemSettings();
             await LoadBusinessInformation();
-            await LoadPricingSettings();
+            await LoadOperationModeFromSettings();
             await LoadSystemPreferences();
+            await LoadProductsData(); // Load the products data for Products tab
             await LoadUsersList(); // Load the users list
         }
 
@@ -1616,62 +1496,18 @@ namespace Photobooth
             }
             
             // Also initialize operation mode UI
-            SetOperationMode(_currentOperationMode);
         }
 
-        private async System.Threading.Tasks.Task LoadPricingSettings()
+        private async System.Threading.Tasks.Task LoadOperationModeFromSettings()
         {
             try
             {
-                // Load pricing values
-#pragma warning disable CS0472 // The result of the expression is always 'true'
-                var stripPriceResult = await _databaseService.GetSettingValueAsync<decimal>("Pricing", "StripPrice");
-                if (stripPriceResult.Success && stripPriceResult.Data != null)
-                {
-                    if (StripPriceTextBox != null)
-                        StripPriceTextBox.Text = stripPriceResult.Data.ToString();
-                }
-
-                var photo4x6PriceResult = await _databaseService.GetSettingValueAsync<decimal>("Pricing", "Photo4x6Price");
-                if (photo4x6PriceResult.Success && photo4x6PriceResult.Data != null)
-                {
-                    if (Photo4x6PriceTextBox != null)
-                        Photo4x6PriceTextBox.Text = photo4x6PriceResult.Data.ToString();
-                }
-
-                var phonePriceResult = await _databaseService.GetSettingValueAsync<decimal>("Pricing", "SmartphonePrice");
-                if (phonePriceResult.Success && phonePriceResult.Data != null)
-                {
-                    if (PhonePrintsPriceTextBox != null)
-                        PhonePrintsPriceTextBox.Text = phonePriceResult.Data.ToString();
-                }
-
-                // Load product enabled states
-                var stripEnabledResult = await _databaseService.GetSettingValueAsync<bool>("Products", "StripEnabled");
-                if (stripEnabledResult.Success && stripEnabledResult.Data != null)
-                {
-                    if (StripEnabledToggle != null)
-                        StripEnabledToggle.IsChecked = stripEnabledResult.Data;
-                }
-
-                var photo4x6EnabledResult = await _databaseService.GetSettingValueAsync<bool>("Products", "Photo4x6Enabled");
-                if (photo4x6EnabledResult.Success && photo4x6EnabledResult.Data != null)
-                {
-                    if (Photo4x6EnabledToggle != null)
-                        Photo4x6EnabledToggle.IsChecked = photo4x6EnabledResult.Data;
-                }
-
-                var phonePrintsEnabledResult = await _databaseService.GetSettingValueAsync<bool>("Products", "PhonePrintsEnabled");
-                if (phonePrintsEnabledResult.Success && phonePrintsEnabledResult.Data != null)
-                {
-                    if (PhonePrintsEnabledToggle != null)
-                        PhonePrintsEnabledToggle.IsChecked = phonePrintsEnabledResult.Data;
-                }
-#pragma warning restore CS0472
+                // Load operation mode only (products are now managed in Products tab)
+                await LoadOperationMode();
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error loading pricing settings: {ex.Message}");
+                Console.WriteLine($"Error loading operation mode settings: {ex.Message}");
             }
         }
 
@@ -1725,6 +1561,427 @@ namespace Photobooth
             catch (Exception ex)
             {
                 Console.WriteLine($"Error loading system preferences: {ex.Message}");
+            }
+        }
+
+        #endregion
+
+        #region Product Management
+
+        /// <summary>
+        /// Load products data from database and update UI
+        /// </summary>
+        private async Task LoadProductsData()
+        {
+            if (_isLoadingProducts) return;
+            _isLoadingProducts = true;
+
+            try
+            {
+                Console.WriteLine("LoadProductsData: Starting to load products from database...");
+                var result = await _databaseService.GetProductsAsync();
+                if (result.Success && result.Data != null)
+                {
+                    _products = result.Data;
+                    Console.WriteLine($"LoadProductsData: Loaded {_products.Count} products successfully");
+                    foreach (var product in _products)
+                    {
+                        Console.WriteLine($"LoadProductsData: Product - ID: {product.Id}, Name: {product.Name}, Price: {product.Price}, Active: {product.IsActive}");
+                    }
+                    UpdateProductsUI();
+                }
+                else
+                {
+                    Console.WriteLine($"LoadProductsData: Failed to load products: {result.ErrorMessage}");
+                }
+
+                // Load operation mode
+                await LoadOperationMode();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"LoadProductsData: Error loading products: {ex.Message}");
+            }
+            finally
+            {
+                _isLoadingProducts = false;
+            }
+        }
+
+        /// <summary>
+        /// Update UI with current product data
+        /// </summary>
+        private void UpdateProductsUI()
+        {
+            try
+            {
+                // Find products by name (fallback to default values if not found)
+                var photoStrips = _products.FirstOrDefault(p => p.Name.Contains("Strip"));
+                var photo4x6 = _products.FirstOrDefault(p => p.Name.Contains("4x6"));
+                var smartphonePrint = _products.FirstOrDefault(p => p.Name.Contains("Phone") || p.Name.Contains("Smartphone"));
+
+                // Update Photo Strips
+                if (photoStrips != null)
+                {
+                    ProductPhotoStripsEnabledToggle.IsChecked = photoStrips.IsActive;
+                    ProductPhotoStripsPriceTextBox.Text = photoStrips.Price.ToString("F2");
+                    UpdateProductCardVisualState(PhotoStripsCard, ProductPhotoStripsPriceSection, photoStrips.IsActive);
+                }
+
+                // Update 4x6 Photos
+                if (photo4x6 != null)
+                {
+                    ProductPhoto4x6EnabledToggle.IsChecked = photo4x6.IsActive;
+                    ProductPhoto4x6PriceTextBox.Text = photo4x6.Price.ToString("F2");
+                    UpdateProductCardVisualState(Photo4x6Card, ProductPhoto4x6PriceSection, photo4x6.IsActive);
+                }
+
+                // Update Smartphone Print
+                if (smartphonePrint != null)
+                {
+                    ProductSmartphonePrintEnabledToggle.IsChecked = smartphonePrint.IsActive;
+                    ProductSmartphonePrintPriceTextBox.Text = smartphonePrint.Price.ToString("F2");
+                    UpdateProductCardVisualState(SmartphonePrintCard, ProductSmartphonePrintPriceSection, smartphonePrint.IsActive);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error updating products UI: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Update visual state of product card based on enabled status
+        /// </summary>
+        private void UpdateProductCardVisualState(Border card, StackPanel priceSection, bool isEnabled)
+        {
+            try
+            {
+                if (isEnabled)
+                {
+                    card.Opacity = 1.0;
+                    priceSection.IsEnabled = true;
+                }
+                else
+                {
+                    card.Opacity = 0.6;
+                    priceSection.IsEnabled = false;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error updating product card visual state: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Load operation mode from settings
+        /// </summary>
+        private async Task LoadOperationMode()
+        {
+            try
+            {
+                var result = await _databaseService.GetSettingValueAsync<string>("System", "Mode");
+                if (result.Success && !string.IsNullOrEmpty(result.Data))
+                {
+                    _currentOperationMode = result.Data;
+                    UpdateOperationModeUI();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error loading operation mode: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Update operation mode UI
+        /// </summary>
+        private void UpdateOperationModeUI()
+        {
+            try
+            {
+                if (_currentOperationMode == "Free")
+                {
+                    ProductCoinOperatedRadio.IsChecked = false;
+                    ProductFreePlayRadio.IsChecked = true;
+                    UpdateModeCardStyles(false);
+                }
+                else
+                {
+                    ProductCoinOperatedRadio.IsChecked = true;
+                    ProductFreePlayRadio.IsChecked = false;
+                    UpdateModeCardStyles(true);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error updating operation mode UI: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Update mode card visual styles
+        /// </summary>
+        private void UpdateModeCardStyles(bool isCoinOperated)
+        {
+            try
+            {
+                if (isCoinOperated)
+                {
+                    ProductCoinOperatedCard.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#3B82F6"));
+                    ProductCoinOperatedCard.BorderThickness = new Thickness(2);
+                    ProductFreePlayCard.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E5E7EB"));
+                    ProductFreePlayCard.BorderThickness = new Thickness(1);
+                }
+                else
+                {
+                    ProductFreePlayCard.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#3B82F6"));
+                    ProductFreePlayCard.BorderThickness = new Thickness(2);
+                    ProductCoinOperatedCard.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E5E7EB"));
+                    ProductCoinOperatedCard.BorderThickness = new Thickness(1);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error updating mode card styles: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Handle product toggle changes
+        /// </summary>
+        private void ProductToggle_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is ToggleButton toggle)
+            {
+                _hasUnsavedChanges = true;
+
+                // Update visual state
+                if (toggle.Name == "ProductPhotoStripsEnabledToggle")
+                {
+                    UpdateProductCardVisualState(PhotoStripsCard, ProductPhotoStripsPriceSection, toggle.IsChecked ?? false);
+                }
+                else if (toggle.Name == "ProductPhoto4x6EnabledToggle")
+                {
+                    UpdateProductCardVisualState(Photo4x6Card, ProductPhoto4x6PriceSection, toggle.IsChecked ?? false);
+                }
+                else if (toggle.Name == "ProductSmartphonePrintEnabledToggle")
+                {
+                    UpdateProductCardVisualState(SmartphonePrintCard, ProductSmartphonePrintPriceSection, toggle.IsChecked ?? false);
+                }
+
+                // Update save button visual feedback
+                UpdateSaveButtonState();
+            }
+        }
+
+        /// <summary>
+        /// Handle product price text changes
+        /// </summary>
+        private void ProductPrice_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            _hasUnsavedChanges = true;
+            UpdateSaveButtonState();
+        }
+
+        /// <summary>
+        /// Handle mode card clicks
+        /// </summary>
+        private void ModeCard_Click(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is Border card)
+            {
+                if (card.Name == "ProductCoinOperatedCard")
+                {
+                    ProductCoinOperatedRadio.IsChecked = true;
+                    ProductFreePlayRadio.IsChecked = false;
+                    _currentOperationMode = "Coin";
+                    UpdateModeCardStyles(true);
+                }
+                else if (card.Name == "ProductFreePlayCard")
+                {
+                    ProductFreePlayRadio.IsChecked = true;
+                    ProductCoinOperatedRadio.IsChecked = false;
+                    _currentOperationMode = "Free";
+                    UpdateModeCardStyles(false);
+                }
+
+                _hasUnsavedChanges = true;
+                UpdateSaveButtonState();
+            }
+        }
+
+        /// <summary>
+        /// Update save button state based on changes
+        /// </summary>
+        private void UpdateSaveButtonState()
+        {
+            try
+            {
+                // Only update if the save button exists (we're in the Products tab)
+                if (SaveProductConfigButton == null)
+                    return;
+
+                if (_hasUnsavedChanges)
+                {
+                    SaveProductConfigButton.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#059669")); // Green
+                    SaveProductConfigButton.Content = new StackPanel
+                    {
+                        Orientation = Orientation.Horizontal,
+                        Children =
+                        {
+                            new TextBlock { Text = "💾", FontSize = 16, Margin = new Thickness(0, 0, 8, 0) },
+                            new TextBlock { Text = "Save Changes" }
+                        }
+                    };
+                }
+                else
+                {
+                    SaveProductConfigButton.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#3B82F6")); // Blue
+                    SaveProductConfigButton.Content = new StackPanel
+                    {
+                        Orientation = Orientation.Horizontal,
+                        Children =
+                        {
+                            new TextBlock { Text = "💾", FontSize = 16, Margin = new Thickness(0, 0, 8, 0) },
+                            new TextBlock { Text = "Save Configuration" }
+                        }
+                    };
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error updating save button state: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Save product configuration
+        /// </summary>
+        private async void SaveProductConfig_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                SaveProductConfigButton.IsEnabled = false;
+                SaveProductConfigButton.Content = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Children =
+                    {
+                        new TextBlock { Text = "⏳", FontSize = 16, Margin = new Thickness(0, 0, 8, 0) },
+                        new TextBlock { Text = "Saving..." }
+                    }
+                };
+
+                await SaveProductConfiguration();
+                
+                _hasUnsavedChanges = false;
+                UpdateSaveButtonState();
+
+                // Show success feedback
+                SaveProductConfigButton.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#059669"));
+                SaveProductConfigButton.Content = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Children =
+                    {
+                        new TextBlock { Text = "✅", FontSize = 16, Margin = new Thickness(0, 0, 8, 0) },
+                        new TextBlock { Text = "Saved!" }
+                    }
+                };
+
+                // Reset after 2 seconds
+                await Task.Delay(2000);
+                UpdateSaveButtonState();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error saving product configuration: {ex.Message}");
+                
+                // Show error feedback
+                SaveProductConfigButton.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#DC2626"));
+                SaveProductConfigButton.Content = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Children =
+                    {
+                        new TextBlock { Text = "❌", FontSize = 16, Margin = new Thickness(0, 0, 8, 0) },
+                        new TextBlock { Text = "Error saving" }
+                    }
+                };
+
+                await Task.Delay(2000);
+                UpdateSaveButtonState();
+            }
+            finally
+            {
+                SaveProductConfigButton.IsEnabled = true;
+            }
+        }
+
+        /// <summary>
+        /// Save product configuration to database
+        /// </summary>
+        private async Task SaveProductConfiguration()
+        {
+            try
+            {
+                Console.WriteLine($"SaveProductConfiguration: Starting save. Products count: {_products.Count}");
+                
+                // Update products in database
+                foreach (var product in _products)
+                {
+                    Console.WriteLine($"SaveProductConfiguration: Processing product: {product.Name} (ID: {product.Id})");
+                    
+                    bool newStatus = false;
+                    decimal newPrice = 0;
+
+                    if (product.Name.Contains("Strip"))
+                    {
+                        newStatus = ProductPhotoStripsEnabledToggle?.IsChecked ?? false;
+                        decimal.TryParse(ProductPhotoStripsPriceTextBox?.Text ?? "0", out newPrice);
+                        Console.WriteLine($"SaveProductConfiguration: Strip product - Status: {newStatus}, Price: {newPrice}");
+                    }
+                    else if (product.Name.Contains("4x6"))
+                    {
+                        newStatus = ProductPhoto4x6EnabledToggle?.IsChecked ?? false;
+                        decimal.TryParse(ProductPhoto4x6PriceTextBox?.Text ?? "0", out newPrice);
+                        Console.WriteLine($"SaveProductConfiguration: 4x6 product - Status: {newStatus}, Price: {newPrice}");
+                    }
+                    else if (product.Name.Contains("Phone") || product.Name.Contains("Smartphone"))
+                    {
+                        newStatus = ProductSmartphonePrintEnabledToggle?.IsChecked ?? false;
+                        decimal.TryParse(ProductSmartphonePrintPriceTextBox?.Text ?? "0", out newPrice);
+                        Console.WriteLine($"SaveProductConfiguration: Phone product - Status: {newStatus}, Price: {newPrice}");
+                    }
+
+                    // Update status if changed
+                    if (product.IsActive != newStatus)
+                    {
+                        Console.WriteLine($"SaveProductConfiguration: Updating product {product.Name} status from {product.IsActive} to {newStatus}");
+                        await _databaseService.UpdateProductStatusAsync(product.Id, newStatus);
+                        product.IsActive = newStatus;
+                    }
+
+                    // Update price if changed
+                    if (product.Price != newPrice && newPrice > 0)
+                    {
+                        Console.WriteLine($"SaveProductConfiguration: Updating product {product.Name} price from {product.Price} to {newPrice}");
+                        await _databaseService.UpdateProductPriceAsync(product.Id, newPrice);
+                        product.Price = newPrice;
+                    }
+                }
+
+                // Save operation mode
+                await _databaseService.SetSettingValueAsync("System", "Mode", _currentOperationMode, _currentUserId);
+
+                Console.WriteLine("Product configuration saved successfully");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error saving product configuration: {ex.Message}");
+                throw;
             }
         }
 

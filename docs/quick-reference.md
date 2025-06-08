@@ -14,14 +14,20 @@
 3. Follow installation wizard
 4. Application starts automatically
 
-## 🔐 Default Login Credentials
+## 🔐 Initial Setup & Login
 
-**⚠️ Change these immediately after installation!**
+**🛡️ Secure First-Time Setup Required**
 
-| Account Type | Username | Password | Access Level |
-|--------------|----------|----------|--------------|
-| Master Admin | `admin` | `admin123` | Full access to all features |
-| Operator | `user` | `user123` | View reports, adjust volume |
+PhotoBoothX uses a **secure initialization process** to protect your installation:
+
+1. **First Launch**: Application generates random admin credentials
+2. **Setup Wizard**: Follow on-screen instructions to create your admin account
+3. **Password Requirements**: Strong passwords enforced (12+ characters, mixed case, numbers, symbols)
+4. **Account Types**: Master Admin (full access) and Operator (limited access)
+
+### Accessing Admin Panel After Setup
+- **Method 1**: Tap 5 times in top-left corner of welcome screen
+- **Method 2**: Use credentials created during initial setup
 
 ## 🖥️ Admin Panel Access
 
@@ -93,10 +99,39 @@
 3. Update graphics drivers
 4. Reduce template file sizes
 
-### Log Files Location
-- **Application Logs**: `%APPDATA%\PhotoBoothX\Logs\`
-- **Error Logs**: `photobooth-error-{date}.log`
-- **Activity Logs**: `photobooth-activity-{date}.log`
+### System Logs & Diagnostics
+
+**📋 Hybrid Logging System**
+PhotoBoothX uses a comprehensive dual-logging approach for maximum reliability:
+
+**📁 File-Based Operational Logs** (Primary)
+- **Location**: `%APPDATA%\PhotoboothX\Logs\`
+- **Daily Rotation**: Automatic file rotation with retention policies
+- **Multiple Log Files**:
+  - `application-YYYY-MM-DD.log` - General operations (30 days)
+  - `hardware-YYYY-MM-DD.log` - Camera, printer, Arduino (30 days)
+  - `transactions-YYYY-MM-DD.log` - Customer interactions (90 days)  
+  - `errors-YYYY-MM-DD.log` - All errors and exceptions (60 days)
+  - `performance-YYYY-MM-DD.log` - Timing and resource usage (14 days)
+- **Debug Files**: Separate debug logs with shorter retention (7 days)
+
+**🗄️ Database Audit Logs** (Secondary)
+- **Storage**: `SystemLogs` table in `%APPDATA%\PhotoboothX\photobooth.db`
+- **Purpose**: Admin actions, business events, compliance tracking
+- **Access**: Admin Panel → System → View Logs
+- **Retention**: Permanent (included in database backups)
+
+**📊 Log Structure**
+- **Levels**: Debug, Info, Warning, Error, Critical
+- **Categories**: Application, Hardware, Transactions, Errors, Performance
+- **Format**: Structured with timestamp, level, thread, category, message, properties
+- **Properties**: Key-value pairs for structured data (durations, IDs, status codes)
+
+**🔍 Troubleshooting**
+- **Real-time monitoring**: Tail log files during operation
+- **Historical analysis**: Search through rotated files
+- **Remote diagnosis**: Copy log files for support analysis
+- **Performance tracking**: Monitor operation timing and resource usage
 
 ## 📊 Reports & Analytics
 
@@ -114,10 +149,12 @@
 ## 🔒 Security & Maintenance
 
 ### Password Security
-1. Change default passwords immediately
-2. Use strong passwords (8+ characters, mixed case, numbers)
-3. Regular password rotation (monthly recommended)
-4. Disable unused accounts
+1. **Initial Setup**: PhotoBoothX generates secure random passwords during installation
+2. **Credentials Folder**: Find initial passwords in `Desktop\PhotoBoothX-Setup-Credentials`
+3. **Auto-Cleanup**: Folder automatically deletes after first successful admin login
+4. **Strong Passwords**: Use 12+ characters with mixed case, numbers, and symbols
+5. **Regular Rotation**: Change passwords monthly for maximum security
+6. **Account Management**: Disable unused accounts, review permissions regularly
 
 ### Data Backup
 1. **Automatic**: Daily database backup to `%APPDATA%\PhotoBoothX\Backups\`
@@ -177,7 +214,8 @@
 | Full Screen Toggle | `F11` |
 | Emergency Exit | `Ctrl + Alt + X` |
 | Restart Application | `Ctrl + Shift + R` |
-| View Logs | Admin Panel → System → View Logs |
+| View Database Logs | Admin Panel → System → View Logs (audit trail) |
+| View File Logs | Open `%APPDATA%\PhotoboothX\Logs\` folder |
 | Backup Data | Admin Panel → Backup → Export All |
 | Test Hardware | Admin Panel → Diagnostics → Hardware Test |
 

@@ -29,13 +29,15 @@
 
 ## 🔐 First-Time Setup
 
-### Default Administrator Credentials
-After installation, access the admin panel using these default credentials:
+### Secure First-Time Setup
+PhotoBoothX implements a **secure initialization process** to protect your installation:
 
-- **Master Admin**: Username `admin`, Password `admin123`
-- **Operator**: Username `user`, Password `user123`
+- **Setup Wizard**: First launch guides you through secure account creation
+- **Random Credentials**: Initial admin account uses cryptographically secure random password
+- **Mandatory Setup**: Must complete setup wizard before accessing admin features
+- **Strong Passwords**: Enforced password complexity requirements
 
-**⚠️ Important**: Change these passwords immediately after first login for security.
+**🔒 Security First**: No default passwords - every installation is unique and secure.
 
 ### Initial Configuration
 1. **License**: Enter your PhotoBoothX license key

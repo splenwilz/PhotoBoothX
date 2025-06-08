@@ -111,8 +111,8 @@ dotnet publish PhotoBooth/PhotoBooth.csproj --configuration Release --output "Ph
 4. **First Launch**
    - Application launches automatically after installation
    - Default admin credentials:
-     - **Master**: Username: `admin`, Password: `admin123`
-     - **User**: Username: `user`, Password: `user123`
+     - **Setup Required**: Secure random passwords generated during installation
+- **Credentials Folder**: Check `Desktop\PhotoBoothX-Setup-Credentials` (auto-deletes after setup)
    - **⚠️ IMPORTANT**: Change default passwords immediately!
 
 ### Kiosk Mode Setup
@@ -224,8 +224,8 @@ Copy-Item "C:\Program Files\PhotoBoothX\Templates" "C:\Templates-Backup-$(Get-Da
 ### Default Credentials
 | Account | Username | Password | Access Level |
 |---------|----------|----------|--------------|
-| Master Admin | `admin` | `admin123` | Full access |
-| User Admin | `user` | `user123` | View-only + volume |
+| Master Admin | `admin` | *See credentials file* | Full access |
+| User Admin | `user` | *See credentials file* | View-only + volume |
 
 ### Build Commands
 | Command | Purpose |

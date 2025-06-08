@@ -342,6 +342,27 @@
             </Button.Template>
         </Button>
 
+        <!-- Admin Access Zone (Top-Left Corner) - Invisible 150x150 tap area -->
+        <Border Name="AdminAccessZone"
+                Width="150"
+                Height="150"
+                Background="Transparent"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Top"
+                MouseLeftButtonDown="AdminAccessZone_MouseLeftButtonDown">
+                <TextBlock Name="AdminIcon"
+                       Text="👤" 
+                       FontSize="20" 
+                       HorizontalAlignment="Center" 
+                       VerticalAlignment="Center" 
+                       Foreground="White" 
+                       Opacity="0.2">
+                    <TextBlock.RenderTransform>
+                        <ScaleTransform x:Name="AdminIconScale" ScaleX="1" ScaleY="1"/>
+                    </TextBlock.RenderTransform>
+                </TextBlock>
+        </Border>
+
     </Grid>
 
 </UserControl>
