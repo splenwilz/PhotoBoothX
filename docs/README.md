@@ -19,6 +19,7 @@ This directory contains all developer-focused documentation for PhotoBoothX.
 ### Deployment & Operations
 - **[CI/CD Pipeline](ci-cd.md)** - Automated building and releases
 - **[Installer Configuration](installer.md)** - Inno Setup and distribution
+- **[Release Notes](release-notes.md)** - Version history and roadmap
 - **[Troubleshooting](troubleshooting.md)** - Common issues and solutions
 
 ## 🚀 Quick Start for Developers
