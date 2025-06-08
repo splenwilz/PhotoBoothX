@@ -29,6 +29,13 @@ namespace Photobooth.Models
         Refunded
     }
 
+    public enum ProductType
+    {
+        PhotoStrips,
+        Photo4x6,
+        SmartphonePrint
+    }
+
     public enum PrintStatus
     {
         Pending,
@@ -117,6 +124,7 @@ namespace Photobooth.Models
         public int SortOrder { get; set; } = 0;
         public int PhotoCount { get; set; } = 1;
         public int MaxCopies { get; set; } = 10;
+        public ProductType ProductType { get; set; } = ProductType.PhotoStrips;
         public DateTime CreatedAt { get; set; } = DateTime.Now;
         public DateTime UpdatedAt { get; set; } = DateTime.Now;
 

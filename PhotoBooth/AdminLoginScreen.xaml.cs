@@ -154,7 +154,7 @@ namespace Photobooth
                     {
                         try
                         {
-                            DatabaseService.CleanupSetupCredentials();
+                            await DatabaseService.CleanupSetupCredentialsAsync();
                         }
                         catch (Exception cleanupEx)
                         {

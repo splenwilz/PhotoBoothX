@@ -49,6 +49,7 @@ CREATE TABLE Products (
     SortOrder INTEGER NOT NULL DEFAULT 0,
     PhotoCount INTEGER DEFAULT 1, -- For strips: 4 photos, for 4x6: 1 photo
     MaxCopies INTEGER DEFAULT 10,
+    ProductType TEXT NOT NULL DEFAULT 'PhotoStrips' CHECK (ProductType IN ('PhotoStrips', 'Photo4x6', 'SmartphonePrint')),
     CreatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UpdatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (CategoryId) REFERENCES ProductCategories(Id)
@@ -341,10 +342,10 @@ INSERT INTO ProductCategories (Name, Description, SortOrder) VALUES
     ('Smartphone', 'Customer phone photo prints', 3);
 
 -- Insert default products
-INSERT INTO Products (CategoryId, Name, Description, Price, PhotoCount) VALUES
-    (1, 'Photo Strip', '4 photos in classic strip format', 5.00, 4),
-    (2, '4x6 Photo', 'Single high-quality 4x6 print', 3.00, 1),
-    (3, 'Phone Print', 'Print photos from your phone', 2.00, 1);
+INSERT INTO Products (CategoryId, Name, Description, Price, PhotoCount, ProductType) VALUES
+    (1, 'Photo Strip', '4 photos in classic strip format', 5.00, 4, 'PhotoStrips'),
+    (2, '4x6 Photo', 'Single high-quality 4x6 print', 3.00, 1, 'Photo4x6'),
+    (3, 'Phone Print', 'Print photos from your phone', 2.00, 1, 'SmartphonePrint');
 
 -- Insert default template categories
 INSERT INTO TemplateCategories (Name, Description, SortOrder) VALUES

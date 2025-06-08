@@ -5,6 +5,7 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Shapes;
 using System.Windows.Threading;
+using Photobooth.Services;
 
 namespace Photobooth
 {
@@ -359,7 +360,7 @@ namespace Photobooth
             try
             {
                 adminTapCount++;
-                System.Diagnostics.Debug.WriteLine($"Admin tap {adminTapCount}/{ADMIN_TAP_SEQUENCE_COUNT}");
+                LoggingService.Application.Debug("Admin access tap detected", ("TapCount", adminTapCount), ("RequiredTaps", ADMIN_TAP_SEQUENCE_COUNT));
 
                 // Visual feedback for the tap
                 TriggerAdminIconPressEffect();
@@ -372,7 +373,9 @@ namespace Photobooth
                 if (adminTapCount >= ADMIN_TAP_SEQUENCE_COUNT)
                 {
                     ResetAdminTapSequence();
-                    System.Diagnostics.Debug.WriteLine("Admin access sequence completed!");
+                    LoggingService.Application.Warning("Admin access sequence completed - 5-tap sequence detected");
+                    LoggingService.Transaction.Information("ADMIN_ACCESS", "Admin access sequence triggered", 
+                        ("TapCount", ADMIN_TAP_SEQUENCE_COUNT), ("TimeWindow", ADMIN_TAP_TIME_WINDOW));
                     
                     // Fire admin access event
                     AdminAccessRequested?.Invoke(this, EventArgs.Empty);
@@ -380,7 +383,8 @@ namespace Photobooth
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Admin tap detection error: {ex.Message}");
+                LoggingService.Application.Error("Admin tap detection error", ex, 
+                    ("TapCount", adminTapCount), ("SequenceCount", ADMIN_TAP_SEQUENCE_COUNT));
             }
         }
 
@@ -391,7 +395,8 @@ namespace Photobooth
         {
             adminTapTimer?.Stop();
             adminTapCount = 0;
-            System.Diagnostics.Debug.WriteLine("Admin tap sequence reset (timeout)");
+            LoggingService.Application.Debug("Admin tap sequence reset due to timeout", 
+                ("TimeWindow", ADMIN_TAP_TIME_WINDOW), ("RequiredTaps", ADMIN_TAP_SEQUENCE_COUNT));
         }
 
         /// <summary>
@@ -447,7 +452,7 @@ namespace Photobooth
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Admin icon press effect error: {ex.Message}");
+                LoggingService.Application.Error("Admin icon press effect animation error", ex);
             }
         }
 

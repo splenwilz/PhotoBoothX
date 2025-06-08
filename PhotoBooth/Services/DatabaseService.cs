@@ -310,14 +310,8 @@ namespace Photobooth.Services
         {
             Console.WriteLine($"ApplyIncrementalMigrations: Migrating from v{fromVersion} to v{toVersion}");
             
-            // Future migrations will be added here as needed
-            // Example:
-            // if (fromVersion < 2 && toVersion >= 2)
-            // {
-            //     await ApplyMigrationV2(connection);
-            // }
-            
-            Console.WriteLine("ApplyIncrementalMigrations: No migrations required for current version range");
+            // No migrations needed during development - database will be recreated with latest schema
+            Console.WriteLine("ApplyIncrementalMigrations: No migrations required during development");
         }
 
 
@@ -602,14 +596,9 @@ namespace Photobooth.Services
             try
             {
                 // Check if this is a setup credentials login by verifying:
-                // 1. Username is "admin" or "user" (default setup usernames)
-                // 2. User was created during database initialization (has null CreatedBy)
-                // 3. Password matches the stored hash (indicating they haven't changed it yet)
-                
-                if (username != "admin" && username != "user")
-                {
-                    return DatabaseResult<bool>.SuccessResult(false);
-                }
+                // 1. User was created during database initialization (has null CreatedBy)
+                // 2. Password matches the stored hash (indicating they haven't changed it yet)
+                // This approach is generic and works for any username, not just "admin" or "user"
 
                 var query = "SELECT PasswordHash, CreatedBy FROM AdminUsers WHERE Username = @username AND IsActive = 1";
                 
@@ -1000,6 +989,17 @@ namespace Photobooth.Services
                 while (await reader.ReadAsync())
                 {
                     var product = MapReaderToEntity<Product>(reader);
+                    
+                    // Map ProductType from database string to enum
+                    if (reader["ProductType"] != DBNull.Value)
+                    {
+                        var productTypeStr = reader["ProductType"].ToString();
+                        if (Enum.TryParse<ProductType>(productTypeStr, out var productType))
+                        {
+                            product.ProductType = productType;
+                        }
+                    }
+                    
                     // Map category name if available
                     if (reader["CategoryName"] != DBNull.Value)
                     {
@@ -1562,6 +1562,32 @@ It contains no important application files.
                 Console.WriteLine($"Note: Could not auto-delete setup folder: {ex.Message}");
                 Console.WriteLine("You can safely delete the PhotoBoothX-Setup-Credentials folder from Desktop manually.");
             }
+        }
+
+        /// <summary>
+        /// Asynchronously cleans up the setup credentials folder after successful admin login
+        /// </summary>
+        public static async Task CleanupSetupCredentialsAsync()
+        {
+            await Task.Run(() =>
+            {
+                try
+                {
+                    var desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+                    var setupDir = Path.Combine(desktopPath, "PhotoBoothX-Setup-Credentials");
+
+                    if (Directory.Exists(setupDir))
+                    {
+                        Directory.Delete(setupDir, true);
+                        Console.WriteLine("🗑️ Setup credentials folder automatically deleted from Desktop");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Note: Could not auto-delete setup folder: {ex.Message}");
+                    Console.WriteLine("You can safely delete the PhotoBoothX-Setup-Credentials folder from Desktop manually.");
+                }
+            });
         }
 
         private async Task CreateDefaultSettingsDirect(SqliteConnection connection)

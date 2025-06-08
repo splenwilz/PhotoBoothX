@@ -1,22 +1,139 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Globalization;
+using System.Windows.Controls.Primitives;
+using System.Windows.Data;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using Microsoft.Win32;
+using Photobooth.Controls;
 using Photobooth.Models;
 using Photobooth.Services;
-using Photobooth.Controls;
-using Microsoft.Win32;
-using System.IO;
-using System.Windows.Media.Imaging;
-using System.Threading.Tasks;
-using System.Windows.Media;
-using System.Windows.Input;
-using System.Windows.Data;
-using System.Windows.Controls.Primitives;
 
 namespace Photobooth
 {
+    /// <summary>
+    /// ViewModel for product configuration cards
+    /// </summary>
+    public class ProductViewModel : INotifyPropertyChanged
+    {
+        private bool _isEnabled;
+        private decimal _price;
+        private bool _hasUnsavedChanges;
+        private string? _validationError;
+
+        public string Name { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public string Icon { get; set; } = string.Empty;
+        public string IconBackground { get; set; } = string.Empty;
+        public string PriceLabel { get; set; } = string.Empty;
+        public string ProductKey { get; set; } = string.Empty; // Used for identification in events
+
+        public bool IsEnabled
+        {
+            get => _isEnabled;
+            set
+            {
+                if (_isEnabled != value)
+                {
+                    _isEnabled = value;
+                    _hasUnsavedChanges = true;
+                    OnPropertyChanged(nameof(IsEnabled));
+                    OnPropertyChanged(nameof(CardOpacity));
+                    OnPropertyChanged(nameof(PriceSectionEnabled));
+                }
+            }
+        }
+
+        public decimal Price
+        {
+            get => _price;
+            set
+            {
+                if (_price != value)
+                {
+                    _price = value;
+                    _hasUnsavedChanges = true;
+                    OnPropertyChanged(nameof(Price));
+                    OnPropertyChanged(nameof(PriceText));
+                }
+            }
+        }
+
+        public string PriceText
+        {
+            get => _price.ToString("F2", CultureInfo.InvariantCulture);
+            set
+            {
+                // Use specific NumberStyles to prevent comma interpretation as thousands separator
+                // Allow decimal point, leading sign, and whitespace, but not thousands separators
+                var allowedStyles = NumberStyles.AllowDecimalPoint | NumberStyles.AllowLeadingSign | 
+                                   NumberStyles.AllowLeadingWhite | NumberStyles.AllowTrailingWhite;
+                if (decimal.TryParse(value, allowedStyles, CultureInfo.InvariantCulture, out decimal newPrice))
+                {
+                    // Allow zero values for free products, but not negative values
+                    if (newPrice >= 0)
+                    {
+                        Price = newPrice;
+                        ValidationError = null; // Clear any previous validation error
+                    }
+                    else
+                    {
+                        ValidationError = "Price cannot be negative";
+                    }
+                }
+                else
+                {
+                    ValidationError = "Invalid price format. Please enter a valid number (e.g., 5.00)";
+                }
+            }
+        }
+
+        public double CardOpacity => _isEnabled ? 1.0 : 0.6;
+        public bool PriceSectionEnabled => _isEnabled;
+
+        public bool HasUnsavedChanges
+        {
+            get => _hasUnsavedChanges;
+            set
+            {
+                _hasUnsavedChanges = value;
+                OnPropertyChanged(nameof(HasUnsavedChanges));
+            }
+        }
+
+        public string? ValidationError
+        {
+            get => _validationError;
+            set
+            {
+                if (_validationError != value)
+                {
+                    _validationError = value;
+                    OnPropertyChanged(nameof(ValidationError));
+                    OnPropertyChanged(nameof(HasValidationError));
+                }
+            }
+        }
+
+        public bool HasValidationError => !string.IsNullOrEmpty(_validationError);
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        protected virtual void OnPropertyChanged(string propertyName)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+    }
+
     /// <summary>
     /// Admin dashboard screen with comprehensive management features
     /// Supports both Master and User access levels with appropriate restrictions
@@ -56,6 +173,9 @@ namespace Photobooth
         private bool _isLoadingProducts = false;
         private bool _hasUnsavedChanges = false;
 
+        // Product ViewModels for new templated approach
+        public ObservableCollection<ProductViewModel> ProductViewModels { get; set; } = new();
+
         #endregion
 
         #region Initialization
@@ -69,6 +189,7 @@ namespace Photobooth
             _databaseService = databaseService;
             InitializeTabMapping();
             InitializeSalesData();
+            InitializeProductViewModels();
         }
 
         /// <summary>
@@ -107,6 +228,90 @@ namespace Photobooth
 
             UpdateSalesDisplay();
             UpdatePrintStatus();
+        }
+
+        /// <summary>
+        /// Initialize product view models for templated approach
+        /// </summary>
+        private void InitializeProductViewModels()
+        {
+            ProductViewModels.Clear();
+
+            // Photo Strips Product
+            var photoStrips = new ProductViewModel
+            {
+                Name = "Photo Strips",
+                Description = "Classic 4-photo strips with templates",
+                Icon = "📷",
+                IconBackground = "#DBEAFE",
+                PriceLabel = "Price per Strip",
+                ProductKey = "PhotoStrips",
+                IsEnabled = true,
+                Price = 5.00m
+            };
+
+            // 4x6 Photos Product
+            var photo4x6 = new ProductViewModel
+            {
+                Name = "4x6 Photos",
+                Description = "Single high-quality 4x6 prints",
+                Icon = "🖼️",
+                IconBackground = "#FEF3C7",
+                PriceLabel = "Price per Photo",
+                ProductKey = "Photo4x6",
+                IsEnabled = true,
+                Price = 3.00m
+            };
+
+            // Smartphone Print Product
+            var smartphonePrint = new ProductViewModel
+            {
+                Name = "Smartphone Print",
+                Description = "Print photos from customer phones",
+                Icon = "📱",
+                IconBackground = "#ECFDF5",
+                PriceLabel = "Price per Print",
+                ProductKey = "SmartphonePrint",
+                IsEnabled = true,
+                Price = 2.00m
+            };
+
+            ProductViewModels.Add(photoStrips);
+            ProductViewModels.Add(photo4x6);
+            ProductViewModels.Add(smartphonePrint);
+
+            // Subscribe to property change events for unsaved changes tracking
+            foreach (var product in ProductViewModels)
+            {
+                product.PropertyChanged += ProductViewModel_PropertyChanged;
+            }
+
+            // The ItemsSource will be set when the control is loaded
+            this.Loaded += AdminDashboardScreen_Loaded;
+        }
+
+        /// <summary>
+        /// Handle property changes in product view models
+        /// </summary>
+        private void ProductViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(ProductViewModel.IsEnabled) || e.PropertyName == nameof(ProductViewModel.Price))
+            {
+                _hasUnsavedChanges = true;
+                UpdateSaveButtonState();
+            }
+        }
+
+        /// <summary>
+        /// Handle the Loaded event to set up data binding
+        /// </summary>
+        private void AdminDashboardScreen_Loaded(object sender, RoutedEventArgs e)
+        {
+            // Set the ItemsSource for the product ItemsControl
+            if (ProductsItemsControl != null)
+            {
+                ProductsItemsControl.ItemsSource = ProductViewModels;
+            }
         }
 
         #endregion
@@ -1128,8 +1333,6 @@ namespace Photobooth
             }
         }
 
-
-
         #endregion
 
         #region Helper Methods
@@ -1615,34 +1818,38 @@ namespace Photobooth
         {
             try
             {
-                // Find products by name (fallback to default values if not found)
-                var photoStrips = _products.FirstOrDefault(p => p.Name.Contains("Strip"));
-                var photo4x6 = _products.FirstOrDefault(p => p.Name.Contains("4x6"));
-                var smartphonePrint = _products.FirstOrDefault(p => p.Name.Contains("Phone") || p.Name.Contains("Smartphone"));
+                // Find products by ProductType enum (robust and future-proof)
+                var photoStrips = _products.FirstOrDefault(p => p.ProductType == ProductType.PhotoStrips);
+                var photo4x6 = _products.FirstOrDefault(p => p.ProductType == ProductType.Photo4x6);
+                var smartphonePrint = _products.FirstOrDefault(p => p.ProductType == ProductType.SmartphonePrint);
 
-                // Update Photo Strips
-                if (photoStrips != null)
+                // Update ViewModels with database data
+                var photoStripsVM = ProductViewModels.FirstOrDefault(vm => vm.ProductKey == "PhotoStrips");
+                if (photoStripsVM != null && photoStrips != null)
                 {
-                    ProductPhotoStripsEnabledToggle.IsChecked = photoStrips.IsActive;
-                    ProductPhotoStripsPriceTextBox.Text = photoStrips.Price.ToString("F2");
-                    UpdateProductCardVisualState(PhotoStripsCard, ProductPhotoStripsPriceSection, photoStrips.IsActive);
+                    photoStripsVM.IsEnabled = photoStrips.IsActive;
+                    photoStripsVM.Price = photoStrips.Price;
+                    photoStripsVM.HasUnsavedChanges = false;
                 }
 
-                // Update 4x6 Photos
-                if (photo4x6 != null)
+                var photo4x6VM = ProductViewModels.FirstOrDefault(vm => vm.ProductKey == "Photo4x6");
+                if (photo4x6VM != null && photo4x6 != null)
                 {
-                    ProductPhoto4x6EnabledToggle.IsChecked = photo4x6.IsActive;
-                    ProductPhoto4x6PriceTextBox.Text = photo4x6.Price.ToString("F2");
-                    UpdateProductCardVisualState(Photo4x6Card, ProductPhoto4x6PriceSection, photo4x6.IsActive);
+                    photo4x6VM.IsEnabled = photo4x6.IsActive;
+                    photo4x6VM.Price = photo4x6.Price;
+                    photo4x6VM.HasUnsavedChanges = false;
                 }
 
-                // Update Smartphone Print
-                if (smartphonePrint != null)
+                var smartphonePrintVM = ProductViewModels.FirstOrDefault(vm => vm.ProductKey == "SmartphonePrint");
+                if (smartphonePrintVM != null && smartphonePrint != null)
                 {
-                    ProductSmartphonePrintEnabledToggle.IsChecked = smartphonePrint.IsActive;
-                    ProductSmartphonePrintPriceTextBox.Text = smartphonePrint.Price.ToString("F2");
-                    UpdateProductCardVisualState(SmartphonePrintCard, ProductSmartphonePrintPriceSection, smartphonePrint.IsActive);
+                    smartphonePrintVM.IsEnabled = smartphonePrint.IsActive;
+                    smartphonePrintVM.Price = smartphonePrint.Price;
+                    smartphonePrintVM.HasUnsavedChanges = false;
                 }
+
+                _hasUnsavedChanges = false;
+                UpdateSaveButtonState();
             }
             catch (Exception ex)
             {
@@ -1651,27 +1858,12 @@ namespace Photobooth
         }
 
         /// <summary>
-        /// Update visual state of product card based on enabled status
+        /// Update visual state of product card based on enabled status (Legacy method - no longer needed with ViewModels)
         /// </summary>
+        [Obsolete("This method is no longer needed as visual state is handled by data binding in the ViewModels")]
         private void UpdateProductCardVisualState(Border card, StackPanel priceSection, bool isEnabled)
         {
-            try
-            {
-                if (isEnabled)
-                {
-                    card.Opacity = 1.0;
-                    priceSection.IsEnabled = true;
-                }
-                else
-                {
-                    card.Opacity = 0.6;
-                    priceSection.IsEnabled = false;
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error updating product card visual state: {ex.Message}");
-            }
+            // This method is obsolete - visual states are now handled by ViewModel property binding
         }
 
         /// <summary>
@@ -1749,40 +1941,23 @@ namespace Photobooth
         }
 
         /// <summary>
-        /// Handle product toggle changes
+        /// Handle product toggle changes (Legacy method - ViewModels now handle changes automatically)
         /// </summary>
+        [Obsolete("This method is no longer needed as changes are handled by ViewModel property binding")]
         private void ProductToggle_Click(object sender, RoutedEventArgs e)
         {
-            if (sender is ToggleButton toggle)
-            {
-                _hasUnsavedChanges = true;
-
-                // Update visual state
-                if (toggle.Name == "ProductPhotoStripsEnabledToggle")
-                {
-                    UpdateProductCardVisualState(PhotoStripsCard, ProductPhotoStripsPriceSection, toggle.IsChecked ?? false);
-                }
-                else if (toggle.Name == "ProductPhoto4x6EnabledToggle")
-                {
-                    UpdateProductCardVisualState(Photo4x6Card, ProductPhoto4x6PriceSection, toggle.IsChecked ?? false);
-                }
-                else if (toggle.Name == "ProductSmartphonePrintEnabledToggle")
-                {
-                    UpdateProductCardVisualState(SmartphonePrintCard, ProductSmartphonePrintPriceSection, toggle.IsChecked ?? false);
-                }
-
-                // Update save button visual feedback
-                UpdateSaveButtonState();
-            }
+            // This method is obsolete - toggle changes are now handled by ViewModel data binding
+            // The ProductViewModel_PropertyChanged method handles unsaved changes tracking
         }
 
         /// <summary>
-        /// Handle product price text changes
+        /// Handle product price text changes (Legacy method - ViewModels now handle changes automatically)
         /// </summary>
+        [Obsolete("This method is no longer needed as changes are handled by ViewModel property binding")]
         private void ProductPrice_TextChanged(object sender, TextChangedEventArgs e)
         {
-            _hasUnsavedChanges = true;
-            UpdateSaveButtonState();
+            // This method is obsolete - price changes are now handled by ViewModel data binding
+            // The ProductViewModel_PropertyChanged method handles unsaved changes tracking
         }
 
         /// <summary>
@@ -1927,9 +2102,18 @@ namespace Photobooth
         {
             try
             {
+                // Check for validation errors before saving
+                var validationErrors = ProductViewModels.Where(vm => vm.HasValidationError).ToList();
+                if (validationErrors.Count > 0)
+                {
+                    var errorMessage = $"Cannot save: {validationErrors.Count} product(s) have validation errors. Please fix the errors and try again.";
+                    Console.WriteLine($"SaveProductConfiguration: {errorMessage}");
+                    throw new InvalidOperationException(errorMessage);
+                }
+
                 Console.WriteLine($"SaveProductConfiguration: Starting save. Products count: {_products.Count}");
                 
-                // Update products in database
+                // Update products in database using ViewModels
                 foreach (var product in _products)
                 {
                     Console.WriteLine($"SaveProductConfiguration: Processing product: {product.Name} (ID: {product.Id})");
@@ -1937,39 +2121,45 @@ namespace Photobooth
                     bool newStatus = false;
                     decimal newPrice = 0;
 
-                    if (product.Name.Contains("Strip"))
+                    // Find corresponding ViewModel using ProductType enum
+                    ProductViewModel? viewModel = null;
+                    switch (product.ProductType)
                     {
-                        newStatus = ProductPhotoStripsEnabledToggle?.IsChecked ?? false;
-                        decimal.TryParse(ProductPhotoStripsPriceTextBox?.Text ?? "0", out newPrice);
-                        Console.WriteLine($"SaveProductConfiguration: Strip product - Status: {newStatus}, Price: {newPrice}");
-                    }
-                    else if (product.Name.Contains("4x6"))
-                    {
-                        newStatus = ProductPhoto4x6EnabledToggle?.IsChecked ?? false;
-                        decimal.TryParse(ProductPhoto4x6PriceTextBox?.Text ?? "0", out newPrice);
-                        Console.WriteLine($"SaveProductConfiguration: 4x6 product - Status: {newStatus}, Price: {newPrice}");
-                    }
-                    else if (product.Name.Contains("Phone") || product.Name.Contains("Smartphone"))
-                    {
-                        newStatus = ProductSmartphonePrintEnabledToggle?.IsChecked ?? false;
-                        decimal.TryParse(ProductSmartphonePrintPriceTextBox?.Text ?? "0", out newPrice);
-                        Console.WriteLine($"SaveProductConfiguration: Phone product - Status: {newStatus}, Price: {newPrice}");
+                        case ProductType.PhotoStrips:
+                            viewModel = ProductViewModels.FirstOrDefault(vm => vm.ProductKey == "PhotoStrips");
+                            break;
+                        case ProductType.Photo4x6:
+                            viewModel = ProductViewModels.FirstOrDefault(vm => vm.ProductKey == "Photo4x6");
+                            break;
+                        case ProductType.SmartphonePrint:
+                            viewModel = ProductViewModels.FirstOrDefault(vm => vm.ProductKey == "SmartphonePrint");
+                            break;
                     }
 
-                    // Update status if changed
-                    if (product.IsActive != newStatus)
+                    if (viewModel != null)
                     {
-                        Console.WriteLine($"SaveProductConfiguration: Updating product {product.Name} status from {product.IsActive} to {newStatus}");
-                        await _databaseService.UpdateProductStatusAsync(product.Id, newStatus);
-                        product.IsActive = newStatus;
-                    }
+                        newStatus = viewModel.IsEnabled;
+                        newPrice = viewModel.Price;
+                        Console.WriteLine($"SaveProductConfiguration: {product.Name} - Status: {newStatus}, Price: {newPrice}");
 
-                    // Update price if changed
-                    if (product.Price != newPrice && newPrice > 0)
-                    {
-                        Console.WriteLine($"SaveProductConfiguration: Updating product {product.Name} price from {product.Price} to {newPrice}");
-                        await _databaseService.UpdateProductPriceAsync(product.Id, newPrice);
-                        product.Price = newPrice;
+                        // Update status if changed
+                        if (product.IsActive != newStatus)
+                        {
+                            Console.WriteLine($"SaveProductConfiguration: Updating product {product.Name} status from {product.IsActive} to {newStatus}");
+                            await _databaseService.UpdateProductStatusAsync(product.Id, newStatus);
+                            product.IsActive = newStatus;
+                        }
+
+                        // Update price if changed (allow zero values for free products)
+                        if (product.Price != newPrice && newPrice >= 0)
+                        {
+                            Console.WriteLine($"SaveProductConfiguration: Updating product {product.Name} price from {product.Price} to {newPrice}");
+                            await _databaseService.UpdateProductPriceAsync(product.Id, newPrice);
+                            product.Price = newPrice;
+                        }
+
+                        // Mark ViewModel as saved
+                        viewModel.HasUnsavedChanges = false;
                     }
                 }
 

@@ -264,8 +264,14 @@ namespace Photobooth
         {
             try
             {
+                // Unsubscribe from existing instance to prevent memory leaks
+                if (forcedPasswordChangeScreen != null)
+                {
+                    forcedPasswordChangeScreen.PasswordChangeCompleted -= ForcedPasswordChangeScreen_PasswordChangeCompleted;
+                }
+
                 // Create new instance each time to ensure clean state
-                forcedPasswordChangeScreen = new ForcedPasswordChangeScreen(user, accessLevel);
+                forcedPasswordChangeScreen = new ForcedPasswordChangeScreen(user, accessLevel, _databaseService);
                 
                 // Subscribe to password change events
                 forcedPasswordChangeScreen.PasswordChangeCompleted += ForcedPasswordChangeScreen_PasswordChangeCompleted;

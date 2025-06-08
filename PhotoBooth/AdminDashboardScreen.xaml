@@ -1169,138 +1169,101 @@
                                 </StackPanel>
 
                                 <!-- Product Configuration Cards -->
-                                <Grid Margin="0,0,0,32">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="16"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="16"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-
-                                    <!-- Photo Strips Product -->
-                                    <Border Name="PhotoStripsCard" Grid.Column="0" Background="#F8FAFC" CornerRadius="12" BorderBrush="#E5E7EB" BorderThickness="1" Padding="20">
-                                        <StackPanel>
-                                            <!-- Header -->
-                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
-                                                <Border Width="36" Height="36" Background="#DBEAFE" CornerRadius="8" Margin="0,0,12,0">
-                                                    <TextBlock Text="📷" FontSize="18" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                </Border>
+                                <ItemsControl Name="ProductsItemsControl" Margin="0,0,0,32">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <UniformGrid Columns="3"/>
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Background="#F8FAFC" 
+                                                    CornerRadius="12" 
+                                                    BorderBrush="#E5E7EB" 
+                                                    BorderThickness="1" 
+                                                    Padding="20" 
+                                                    Margin="8"
+                                                    Opacity="{Binding CardOpacity}">
                                                 <StackPanel>
-                                                    <TextBlock Text="Photo Strips" FontSize="16" FontWeight="SemiBold" Foreground="#374151"/>
-                                                    <TextBlock Text="Classic 4-photo strips with templates" FontSize="12" Foreground="#6B7280"/>
-                                                </StackPanel>
-                                            </StackPanel>
+                                                    <!-- Header -->
+                                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                                                        <Border Width="36" Height="36" 
+                                                                Background="{Binding IconBackground}" 
+                                                                CornerRadius="8" 
+                                                                Margin="0,0,12,0">
+                                                            <TextBlock Text="{Binding Icon}" 
+                                                                       FontSize="18" 
+                                                                       HorizontalAlignment="Center" 
+                                                                       VerticalAlignment="Center"/>
+                                                        </Border>
+                                                        <StackPanel>
+                                                            <TextBlock Text="{Binding Name}" 
+                                                                       FontSize="16" 
+                                                                       FontWeight="SemiBold" 
+                                                                       Foreground="#374151"/>
+                                                            <TextBlock Text="{Binding Description}" 
+                                                                       FontSize="12" 
+                                                                       Foreground="#6B7280"/>
+                                                        </StackPanel>
+                                                    </StackPanel>
 
-                                            <!-- Enable/Disable Toggle -->
-                                            <Grid Margin="0,0,0,16">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*"/>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                </Grid.ColumnDefinitions>
-                                                <TextBlock Grid.Column="0" Text="Enable Product" FontSize="14" FontWeight="Medium" Foreground="#374151" VerticalAlignment="Center"/>
-                                                <ToggleButton Name="ProductPhotoStripsEnabledToggle" Grid.Column="1" Style="{StaticResource ModernToggleSwitchStyle}" IsChecked="True" Click="ProductToggle_Click"/>
-                                            </Grid>
-
-                                            <!-- Price Configuration -->
-                                            <StackPanel Name="ProductPhotoStripsPriceSection">
-                                                <TextBlock Text="Price per Strip" FontSize="12" FontWeight="Medium" Foreground="#6B7280" Margin="0,0,0,4"/>
-                                                <Border Background="White" CornerRadius="6" BorderBrush="#D1D5DB" BorderThickness="1" Padding="12,8">
-                                                    <Grid>
+                                                    <!-- Enable/Disable Toggle -->
+                                                    <Grid Margin="0,0,0,16">
                                                         <Grid.ColumnDefinitions>
-                                                            <ColumnDefinition Width="Auto"/>
                                                             <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
                                                         </Grid.ColumnDefinitions>
-                                                        <TextBlock Grid.Column="0" Text="$" FontSize="14" Foreground="#6B7280" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                                                        <TextBox Name="ProductPhotoStripsPriceTextBox" Grid.Column="1" Text="5.00" FontSize="14" BorderThickness="0" Background="Transparent" VerticalAlignment="Center" TextChanged="ProductPrice_TextChanged"/>
+                                                        <TextBlock Grid.Column="0" 
+                                                                   Text="Enable Product" 
+                                                                   FontSize="14" 
+                                                                   FontWeight="Medium" 
+                                                                   Foreground="#374151" 
+                                                                   VerticalAlignment="Center"/>
+                                                        <ToggleButton Grid.Column="1" 
+                                                                      Style="{StaticResource ModernToggleSwitchStyle}" 
+                                                                      IsChecked="{Binding IsEnabled}"
+                                                                      Tag="{Binding ProductKey}"/>
                                                     </Grid>
-                                                </Border>
-                                            </StackPanel>
-                                        </StackPanel>
-                                    </Border>
 
-                                    <!-- 4x6 Photos Product -->
-                                    <Border Name="Photo4x6Card" Grid.Column="2" Background="#F8FAFC" CornerRadius="12" BorderBrush="#E5E7EB" BorderThickness="1" Padding="20">
-                                        <StackPanel>
-                                            <!-- Header -->
-                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
-                                                <Border Width="36" Height="36" Background="#FEF3C7" CornerRadius="8" Margin="0,0,12,0">
-                                                    <TextBlock Text="🖼️" FontSize="18" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                </Border>
-                                                <StackPanel>
-                                                    <TextBlock Text="4x6 Photos" FontSize="16" FontWeight="SemiBold" Foreground="#374151"/>
-                                                    <TextBlock Text="Single high-quality 4x6 prints" FontSize="12" Foreground="#6B7280"/>
+                                                    <!-- Price Configuration -->
+                                                    <StackPanel IsEnabled="{Binding PriceSectionEnabled}">
+                                                        <TextBlock Text="{Binding PriceLabel}" 
+                                                                   FontSize="12" 
+                                                                   FontWeight="Medium" 
+                                                                   Foreground="#6B7280" 
+                                                                   Margin="0,0,0,4"/>
+                                                        <Border Background="White" 
+                                                                CornerRadius="6" 
+                                                                BorderBrush="#D1D5DB" 
+                                                                BorderThickness="1" 
+                                                                Padding="12,8">
+                                                            <Grid>
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="Auto"/>
+                                                                    <ColumnDefinition Width="*"/>
+                                                                </Grid.ColumnDefinitions>
+                                                                <TextBlock Grid.Column="0" 
+                                                                           Text="$" 
+                                                                           FontSize="14" 
+                                                                           Foreground="#6B7280" 
+                                                                           VerticalAlignment="Center" 
+                                                                           Margin="0,0,4,0"/>
+                                                                <TextBox Grid.Column="1" 
+                                                                         Text="{Binding PriceText, UpdateSourceTrigger=PropertyChanged}" 
+                                                                         FontSize="14" 
+                                                                         BorderThickness="0" 
+                                                                         Background="Transparent" 
+                                                                         VerticalAlignment="Center"
+                                                                         Tag="{Binding ProductKey}"/>
+                                                            </Grid>
+                                                        </Border>
+                                                    </StackPanel>
                                                 </StackPanel>
-                                            </StackPanel>
-
-                                            <!-- Enable/Disable Toggle -->
-                                            <Grid Margin="0,0,0,16">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*"/>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                </Grid.ColumnDefinitions>
-                                                <TextBlock Grid.Column="0" Text="Enable Product" FontSize="14" FontWeight="Medium" Foreground="#374151" VerticalAlignment="Center"/>
-                                                <ToggleButton Name="ProductPhoto4x6EnabledToggle" Grid.Column="1" Style="{StaticResource ModernToggleSwitchStyle}" IsChecked="True" Click="ProductToggle_Click"/>
-                                            </Grid>
-
-                                            <!-- Price Configuration -->
-                                            <StackPanel Name="ProductPhoto4x6PriceSection">
-                                                <TextBlock Text="Price per Photo" FontSize="12" FontWeight="Medium" Foreground="#6B7280" Margin="0,0,0,4"/>
-                                                <Border Background="White" CornerRadius="6" BorderBrush="#D1D5DB" BorderThickness="1" Padding="12,8">
-                                                    <Grid>
-                                                        <Grid.ColumnDefinitions>
-                                                            <ColumnDefinition Width="Auto"/>
-                                                            <ColumnDefinition Width="*"/>
-                                                        </Grid.ColumnDefinitions>
-                                                        <TextBlock Grid.Column="0" Text="$" FontSize="14" Foreground="#6B7280" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                                                        <TextBox Name="ProductPhoto4x6PriceTextBox" Grid.Column="1" Text="3.00" FontSize="14" BorderThickness="0" Background="Transparent" VerticalAlignment="Center" TextChanged="ProductPrice_TextChanged"/>
-                                                    </Grid>
-                                                </Border>
-                                            </StackPanel>
-                                        </StackPanel>
-                                    </Border>
-
-                                    <!-- Smartphone Print Product -->
-                                    <Border Name="SmartphonePrintCard" Grid.Column="4" Background="#F8FAFC" CornerRadius="12" BorderBrush="#E5E7EB" BorderThickness="1" Padding="20">
-                                        <StackPanel>
-                                            <!-- Header -->
-                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
-                                                <Border Width="36" Height="36" Background="#ECFDF5" CornerRadius="8" Margin="0,0,12,0">
-                                                    <TextBlock Text="📱" FontSize="18" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                </Border>
-                                                <StackPanel>
-                                                    <TextBlock Text="Smartphone Print" FontSize="16" FontWeight="SemiBold" Foreground="#374151"/>
-                                                    <TextBlock Text="Print photos from customer phones" FontSize="12" Foreground="#6B7280"/>
-                                                </StackPanel>
-                                            </StackPanel>
-
-                                            <!-- Enable/Disable Toggle -->
-                                            <Grid Margin="0,0,0,16">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*"/>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                </Grid.ColumnDefinitions>
-                                                <TextBlock Grid.Column="0" Text="Enable Product" FontSize="14" FontWeight="Medium" Foreground="#374151" VerticalAlignment="Center"/>
-                                                <ToggleButton Name="ProductSmartphonePrintEnabledToggle" Grid.Column="1" Style="{StaticResource ModernToggleSwitchStyle}" IsChecked="True" Click="ProductToggle_Click"/>
-                                            </Grid>
-
-                                            <!-- Price Configuration -->
-                                            <StackPanel Name="ProductSmartphonePrintPriceSection">
-                                                <TextBlock Text="Price per Print" FontSize="12" FontWeight="Medium" Foreground="#6B7280" Margin="0,0,0,4"/>
-                                                <Border Background="White" CornerRadius="6" BorderBrush="#D1D5DB" BorderThickness="1" Padding="12,8">
-                                                    <Grid>
-                                                        <Grid.ColumnDefinitions>
-                                                            <ColumnDefinition Width="Auto"/>
-                                                            <ColumnDefinition Width="*"/>
-                                                        </Grid.ColumnDefinitions>
-                                                        <TextBlock Grid.Column="0" Text="$" FontSize="14" Foreground="#6B7280" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                                                        <TextBox Name="ProductSmartphonePrintPriceTextBox" Grid.Column="1" Text="2.00" FontSize="14" BorderThickness="0" Background="Transparent" VerticalAlignment="Center" TextChanged="ProductPrice_TextChanged"/>
-                                                    </Grid>
-                                                </Border>
-                                            </StackPanel>
-                                        </StackPanel>
-                                    </Border>
-                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
 
                                 <!-- Photobooth Mode Section -->
                                 <Border Background="White" CornerRadius="12" BorderBrush="#E5E7EB" BorderThickness="1" Padding="24" Margin="0,0,0,24">

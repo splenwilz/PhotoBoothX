@@ -2,6 +2,7 @@ using System;
 using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using Photobooth.Models;
@@ -41,10 +42,10 @@ namespace Photobooth
 
         #region Initialization
 
-        public ForcedPasswordChangeScreen(AdminUser currentUser, AdminAccessLevel accessLevel)
+        public ForcedPasswordChangeScreen(AdminUser currentUser, AdminAccessLevel accessLevel, IDatabaseService databaseService)
         {
             InitializeComponent();
-            _databaseService = new DatabaseService();
+            _databaseService = databaseService ?? throw new ArgumentNullException(nameof(databaseService));
             _currentUser = currentUser ?? throw new ArgumentNullException(nameof(currentUser));
             _accessLevel = accessLevel;
             
@@ -59,8 +60,8 @@ namespace Photobooth
         /// </summary>
         private void InitializeUserInfo()
         {
-            UsernameRun.Text = _currentUser.Username;
-            AccessLevelRun.Text = _accessLevel switch
+            UsernameValue.Text = _currentUser.Username;
+            AccessLevelValue.Text = _accessLevel switch
             {
                 AdminAccessLevel.Master => "Master Administrator (Full Access)",
                 AdminAccessLevel.User => "User Administrator (Limited Access)", 
@@ -143,11 +144,24 @@ namespace Photobooth
             var validBrush = new SolidColorBrush(Color.FromRgb(34, 197, 94)); // Green
             var invalidBrush = new SolidColorBrush(Color.FromRgb(156, 163, 175)); // Gray
 
-            Length8Req.Foreground = _isLength8Valid ? validBrush : invalidBrush;
-            UppercaseReq.Foreground = _isUppercaseValid ? validBrush : invalidBrush;
-            LowercaseReq.Foreground = _isLowercaseValid ? validBrush : invalidBrush;
-            NumberReq.Foreground = _isNumberValid ? validBrush : invalidBrush;
-            MatchReq.Foreground = _isPasswordMatch ? validBrush : invalidBrush;
+            // Update both color and symbol for accessibility
+            UpdateRequirementIndicator(Length8ReqIndicator, Length8Req, _isLength8Valid, validBrush, invalidBrush);
+            UpdateRequirementIndicator(UppercaseReqIndicator, UppercaseReq, _isUppercaseValid, validBrush, invalidBrush);
+            UpdateRequirementIndicator(LowercaseReqIndicator, LowercaseReq, _isLowercaseValid, validBrush, invalidBrush);
+            UpdateRequirementIndicator(NumberReqIndicator, NumberReq, _isNumberValid, validBrush, invalidBrush);
+            UpdateRequirementIndicator(MatchReqIndicator, MatchReq, _isPasswordMatch, validBrush, invalidBrush);
+        }
+
+        /// <summary>
+        /// Update both the symbol and color of a requirement indicator for accessibility
+        /// </summary>
+        private void UpdateRequirementIndicator(Run indicatorRun, TextBlock textBlock, bool isValid, SolidColorBrush validBrush, SolidColorBrush invalidBrush)
+        {
+            // Update symbol: ● for satisfied, ○ for unsatisfied
+            indicatorRun.Text = isValid ? "● " : "○ ";
+            
+            // Update color for additional visual feedback
+            textBlock.Foreground = isValid ? validBrush : invalidBrush;
         }
 
         /// <summary>

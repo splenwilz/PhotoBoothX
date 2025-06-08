@@ -20,104 +20,114 @@ namespace Photobooth.Services
         
         private static string _logDirectory = "";
         private static bool _isInitialized = false;
+        
+        // Thread safety lock object for initialization
+        private static readonly object _initializationLock = new object();
 
         /// <summary>
         /// Initialize the logging system with all required loggers
         /// </summary>
         public static void Initialize()
         {
+            // Thread-safe initialization using double-checked locking pattern
             if (_isInitialized) return;
 
-            try
+            lock (_initializationLock)
             {
-                // Create logs directory in AppData
-                var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                _logDirectory = Path.Combine(appDataPath, "PhotoboothX", "Logs");
-                Directory.CreateDirectory(_logDirectory);
+                // Double-check after acquiring lock to prevent race conditions
+                if (_isInitialized) return;
 
-                // Create base configuration template
-                Func<LoggerConfiguration> createBaseConfig = () => new LoggerConfiguration()
-                    .Enrich.WithThreadId()
-                    .Enrich.WithEnvironmentName()
-                    .Enrich.WithMachineName()
-                    .MinimumLevel.Debug()
-                    .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
-                    .MinimumLevel.Override("System", LogEventLevel.Warning);
+                try
+                {
+                    // Create logs directory in AppData
+                    var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                    _logDirectory = Path.Combine(appDataPath, "PhotoboothX", "Logs");
+                    Directory.CreateDirectory(_logDirectory);
 
-                // Application Logger - General operations, startup, shutdown
-                _applicationLogger = createBaseConfig()
-                    .WriteTo.File(
-                        path: Path.Combine(_logDirectory, "application-.log"),
-                        rollingInterval: RollingInterval.Day,
-                        retainedFileCountLimit: 30,
-                        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] [{ThreadId}] {Category}: {Message}{NewLine}{Exception}",
-                        restrictedToMinimumLevel: LogEventLevel.Information
-                    )
-                    .WriteTo.File(
-                        path: Path.Combine(_logDirectory, "application-debug-.log"),
-                        rollingInterval: RollingInterval.Day,
-                        retainedFileCountLimit: 7,
-                        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] [{ThreadId}] {Category}: {Message}{NewLine}{Exception}",
-                        restrictedToMinimumLevel: LogEventLevel.Debug
-                    )
-                    .CreateLogger();
+                    // Create base configuration template
+                    Func<LoggerConfiguration> createBaseConfig = () => new LoggerConfiguration()
+                        .Enrich.WithThreadId()
+                        .Enrich.WithEnvironmentName()
+                        .Enrich.WithMachineName()
+                        .MinimumLevel.Debug()
+                        .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+                        .MinimumLevel.Override("System", LogEventLevel.Warning);
 
-                // Hardware Logger - Camera, printer, Arduino, RFID
-                _hardwareLogger = createBaseConfig()
-                    .WriteTo.File(
-                        path: Path.Combine(_logDirectory, "hardware-.log"),
-                        rollingInterval: RollingInterval.Day,
-                        retainedFileCountLimit: 30,
-                        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] {Component}: {Message} {Properties}{NewLine}{Exception}",
-                        restrictedToMinimumLevel: LogEventLevel.Debug
-                    )
-                    .CreateLogger();
+                    // Application Logger - General operations, startup, shutdown
+                    _applicationLogger = createBaseConfig()
+                        .WriteTo.File(
+                            path: Path.Combine(_logDirectory, "application-.log"),
+                            rollingInterval: RollingInterval.Day,
+                            retainedFileCountLimit: 30,
+                            outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] [{ThreadId}] {Category}: {Message}{NewLine}{Exception}",
+                            restrictedToMinimumLevel: LogEventLevel.Information
+                        )
+                        .WriteTo.File(
+                            path: Path.Combine(_logDirectory, "application-debug-.log"),
+                            rollingInterval: RollingInterval.Day,
+                            retainedFileCountLimit: 7,
+                            outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] [{ThreadId}] {Category}: {Message}{NewLine}{Exception}",
+                            restrictedToMinimumLevel: LogEventLevel.Debug
+                        )
+                        .CreateLogger();
 
-                // Transaction Logger - Customer interactions, payments, photos
-                _transactionLogger = createBaseConfig()
-                    .WriteTo.File(
-                        path: Path.Combine(_logDirectory, "transactions-.log"),
-                        rollingInterval: RollingInterval.Day,
-                        retainedFileCountLimit: 90, // Keep longer for business records
-                        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] {TransactionId}: {Message} {Properties}{NewLine}{Exception}",
-                        restrictedToMinimumLevel: LogEventLevel.Information
-                    )
-                    .CreateLogger();
+                    // Hardware Logger - Camera, printer, Arduino, RFID
+                    _hardwareLogger = createBaseConfig()
+                        .WriteTo.File(
+                            path: Path.Combine(_logDirectory, "hardware-.log"),
+                            rollingInterval: RollingInterval.Day,
+                            retainedFileCountLimit: 30,
+                            outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] {Component}: {Message} {Properties}{NewLine}{Exception}",
+                            restrictedToMinimumLevel: LogEventLevel.Debug
+                        )
+                        .CreateLogger();
 
-                // Error Logger - All errors and exceptions
-                _errorLogger = createBaseConfig()
-                    .WriteTo.File(
-                        path: Path.Combine(_logDirectory, "errors-.log"),
-                        rollingInterval: RollingInterval.Day,
-                        retainedFileCountLimit: 60,
-                        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] [{ThreadId}] {Category}: {Message}{NewLine}{Exception}",
-                        restrictedToMinimumLevel: LogEventLevel.Warning
-                    )
-                    .CreateLogger();
+                    // Transaction Logger - Customer interactions, payments, photos
+                    _transactionLogger = createBaseConfig()
+                        .WriteTo.File(
+                            path: Path.Combine(_logDirectory, "transactions-.log"),
+                            rollingInterval: RollingInterval.Day,
+                            retainedFileCountLimit: 90, // Keep longer for business records
+                            outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] {TransactionId}: {Message} {Properties}{NewLine}{Exception}",
+                            restrictedToMinimumLevel: LogEventLevel.Information
+                        )
+                        .CreateLogger();
 
-                // Performance Logger - Timing, memory, resource usage
-                _performanceLogger = createBaseConfig()
-                    .WriteTo.File(
-                        path: Path.Combine(_logDirectory, "performance-.log"),
-                        rollingInterval: RollingInterval.Day,
-                        retainedFileCountLimit: 14,
-                        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] {Operation}: {Message} {Properties}{NewLine}",
-                        restrictedToMinimumLevel: LogEventLevel.Information
-                    )
-                    .CreateLogger();
+                    // Error Logger - All errors and exceptions
+                    _errorLogger = createBaseConfig()
+                        .WriteTo.File(
+                            path: Path.Combine(_logDirectory, "errors-.log"),
+                            rollingInterval: RollingInterval.Day,
+                            retainedFileCountLimit: 60,
+                            outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] [{ThreadId}] {Category}: {Message}{NewLine}{Exception}",
+                            restrictedToMinimumLevel: LogEventLevel.Warning
+                        )
+                        .CreateLogger();
 
-                _isInitialized = true;
-                
-                // Log successful initialization
-                Application.Information("Logging system initialized successfully", 
-                    ("LogDirectory", _logDirectory),
-                    ("Loggers", "Application, Hardware, Transaction, Error, Performance"));
-            }
-            catch (Exception ex)
-            {
-                // Fallback to console if logging setup fails
-                Console.WriteLine($"Failed to initialize logging: {ex.Message}");
-                throw;
+                    // Performance Logger - Timing, memory, resource usage
+                    _performanceLogger = createBaseConfig()
+                        .WriteTo.File(
+                            path: Path.Combine(_logDirectory, "performance-.log"),
+                            rollingInterval: RollingInterval.Day,
+                            retainedFileCountLimit: 14,
+                            outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] {Operation}: {Message} {Properties}{NewLine}",
+                            restrictedToMinimumLevel: LogEventLevel.Information
+                        )
+                        .CreateLogger();
+
+                    _isInitialized = true;
+                    
+                    // Log successful initialization
+                    Application.Information("Logging system initialized successfully", 
+                        ("LogDirectory", _logDirectory),
+                        ("Loggers", "Application, Hardware, Transaction, Error, Performance"));
+                }
+                catch (Exception ex)
+                {
+                    // Fallback to console if logging setup fails
+                    Console.WriteLine($"Failed to initialize logging: {ex.Message}");
+                    throw;
+                }
             }
         }
 
@@ -253,19 +263,19 @@ namespace Photobooth.Services
 
             try
             {
-                var template = "{Category}: {Message}";
-                var values = new List<object> { category, message };
+                ILogger contextLogger = logger;
 
+                // Add properties safely using ForContext to prevent template injection
                 if (properties.Length > 0)
                 {
                     foreach (var (key, value) in properties)
                     {
-                        template += $" {{{key}}}";
-                        values.Add(value);
+                        contextLogger = contextLogger.ForContext(key, value);
                     }
                 }
 
-                logger.Write(level, template, values.ToArray());
+                // Use a simple, safe template that doesn't include user-provided keys
+                contextLogger.Write(level, "{Category}: {Message}", category, message);
             }
             catch (Exception ex)
             {
@@ -282,31 +292,47 @@ namespace Photobooth.Services
 
             try
             {
-                var template = "{Category}: {Message}";
-                var values = new List<object> { category, message };
+                ILogger contextLogger = logger;
 
+                // Add properties safely using ForContext to prevent template injection
                 if (properties.Length > 0)
                 {
                     foreach (var (key, value) in properties)
                     {
-                        template += $" {{{key}}}";
-                        values.Add(value);
+                        contextLogger = contextLogger.ForContext(key, value);
                     }
                 }
 
+                // Use a simple, safe template that doesn't include user-provided keys
                 if (exception != null)
                 {
-                    logger.Write(level, exception, template, values.ToArray());
+                    contextLogger.Write(level, exception, "{Category}: {Message}", category, message);
                 }
                 else
                 {
-                    logger.Write(level, template, values.ToArray());
+                    contextLogger.Write(level, "{Category}: {Message}", category, message);
                 }
 
                 // Also log to error logger if this is an error/critical level
                 if ((level == LogEventLevel.Error || level == LogEventLevel.Fatal) && logger != _errorLogger)
                 {
-                    _errorLogger?.Write(level, exception, template, values.ToArray());
+                    ILogger? errorContextLogger = _errorLogger;
+                    if (properties.Length > 0)
+                    {
+                        foreach (var (key, value) in properties)
+                        {
+                            errorContextLogger = errorContextLogger?.ForContext(key, value);
+                        }
+                    }
+                    
+                    if (exception != null)
+                    {
+                        errorContextLogger?.Write(level, exception, "{Category}: {Message}", category, message);
+                    }
+                    else
+                    {
+                        errorContextLogger?.Write(level, "{Category}: {Message}", category, message);
+                    }
                 }
             }
             catch (Exception ex)
