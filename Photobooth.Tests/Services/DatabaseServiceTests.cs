@@ -687,6 +687,125 @@ namespace Photobooth.Tests.Services
         }
         #endregion
 
+        #region Product Atomic Update Tests
+        [TestMethod]
+        public async Task UpdateProductAsync_StatusAndPriceAtomically_BothUpdatedSuccessfully()
+        {
+            // Arrange
+            var products = await _databaseService.GetProductsAsync();
+            products.Success.Should().BeTrue();
+            products.Data.Should().NotBeNull();
+            products.Data!.Should().NotBeEmpty();
+
+            var testProduct = products.Data!.First();
+            var originalStatus = testProduct.IsActive;
+            var originalPrice = testProduct.Price;
+            var newStatus = !originalStatus;
+            var newPrice = originalPrice + 1.50m;
+
+            // Act - Update both status and price atomically
+            var updateResult = await _databaseService.UpdateProductAsync(testProduct.Id, newStatus, newPrice);
+
+            // Assert
+            updateResult.Success.Should().BeTrue();
+
+            // Verify changes were applied
+            var updatedProducts = await _databaseService.GetProductsAsync();
+            var updatedProduct = updatedProducts.Data!.First(p => p.Id == testProduct.Id);
+            updatedProduct.IsActive.Should().Be(newStatus);
+            updatedProduct.Price.Should().Be(newPrice);
+        }
+
+        [TestMethod]
+        public async Task UpdateProductAsync_StatusOnly_UpdatesStatusLeavesPriceUnchanged()
+        {
+            // Arrange
+            var products = await _databaseService.GetProductsAsync();
+            var testProduct = products.Data!.First();
+            var originalPrice = testProduct.Price;
+            var newStatus = !testProduct.IsActive;
+
+            // Act - Update only status
+            var updateResult = await _databaseService.UpdateProductAsync(testProduct.Id, isActive: newStatus);
+
+            // Assert
+            updateResult.Success.Should().BeTrue();
+
+            // Verify only status changed
+            var updatedProducts = await _databaseService.GetProductsAsync();
+            var updatedProduct = updatedProducts.Data!.First(p => p.Id == testProduct.Id);
+            updatedProduct.IsActive.Should().Be(newStatus);
+            updatedProduct.Price.Should().Be(originalPrice); // Price should remain unchanged
+        }
+
+        [TestMethod]
+        public async Task UpdateProductAsync_PriceOnly_UpdatesPriceLeavesStatusUnchanged()
+        {
+            // Arrange
+            var products = await _databaseService.GetProductsAsync();
+            var testProduct = products.Data!.First();
+            var originalStatus = testProduct.IsActive;
+            var newPrice = testProduct.Price + 2.25m;
+
+            // Act - Update only price
+            var updateResult = await _databaseService.UpdateProductAsync(testProduct.Id, price: newPrice);
+
+            // Assert
+            updateResult.Success.Should().BeTrue();
+
+            // Verify only price changed
+            var updatedProducts = await _databaseService.GetProductsAsync();
+            var updatedProduct = updatedProducts.Data!.First(p => p.Id == testProduct.Id);
+            updatedProduct.IsActive.Should().Be(originalStatus); // Status should remain unchanged
+            updatedProduct.Price.Should().Be(newPrice);
+        }
+
+        [TestMethod]
+        public async Task UpdateProductAsync_NoParameters_ReturnsError()
+        {
+            // Arrange
+            var products = await _databaseService.GetProductsAsync();
+            var testProduct = products.Data!.First();
+
+            // Act - Call with no parameters (both null)
+            var updateResult = await _databaseService.UpdateProductAsync(testProduct.Id);
+
+            // Assert
+            updateResult.Success.Should().BeFalse();
+            updateResult.ErrorMessage.Should().Contain("At least one field");
+        }
+
+        [TestMethod]
+        public async Task UpdateProductAsync_NonExistentProduct_ReturnsError()
+        {
+            // Act - Try to update a product with an ID that doesn't exist
+            var updateResult = await _databaseService.UpdateProductAsync(99999, isActive: true, price: 5.99m);
+
+            // Assert
+            updateResult.Success.Should().BeFalse();
+            updateResult.ErrorMessage.Should().Contain("Product not found");
+        }
+
+        [TestMethod]
+        public async Task UpdateProductAsync_ZeroPrice_AllowsZeroValues()
+        {
+            // Arrange
+            var products = await _databaseService.GetProductsAsync();
+            var testProduct = products.Data!.First();
+
+            // Act - Update price to zero (for free products)
+            var updateResult = await _databaseService.UpdateProductAsync(testProduct.Id, price: 0.00m);
+
+            // Assert
+            updateResult.Success.Should().BeTrue();
+
+            // Verify zero price was set
+            var updatedProducts = await _databaseService.GetProductsAsync();
+            var updatedProduct = updatedProducts.Data!.First(p => p.Id == testProduct.Id);
+            updatedProduct.Price.Should().Be(0.00m);
+        }
+        #endregion
+
         #endregion
     }
 } 

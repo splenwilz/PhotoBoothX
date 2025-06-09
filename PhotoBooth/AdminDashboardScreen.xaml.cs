@@ -429,62 +429,81 @@ namespace Photobooth
         /// </summary>
         private async void TabButton_Click(object sender, RoutedEventArgs e)
         {
-            // Reset all tab buttons
-            SalesTab.Tag = null;
-            SettingsTab.Tag = null;
-            ProductsTab.Tag = null;
-            TemplatesTab.Tag = null;
-            DiagnosticsTab.Tag = null;
-            SystemTab.Tag = null;
-            CreditsTab.Tag = null;
-
-            // Set clicked tab as active
-            if (sender is Button clickedTab)
+            try
             {
-                clickedTab.Tag = "Active";
+                // Reset all tab buttons
+                SalesTab.Tag = null;
+                SettingsTab.Tag = null;
+                ProductsTab.Tag = null;
+                TemplatesTab.Tag = null;
+                DiagnosticsTab.Tag = null;
+                SystemTab.Tag = null;
+                CreditsTab.Tag = null;
 
-                // Hide all tab contents
-                SalesTabContent.Visibility = Visibility.Collapsed;
-                SettingsTabContent.Visibility = Visibility.Collapsed;
-                ProductsTabContent.Visibility = Visibility.Collapsed;
-                TemplatesTabContent.Visibility = Visibility.Collapsed;
-                DiagnosticsTabContent.Visibility = Visibility.Collapsed;
-                SystemTabContent.Visibility = Visibility.Collapsed;
-                CreditsTabContent.Visibility = Visibility.Collapsed;
-
-                // Show selected tab content and update breadcrumb
-                switch (clickedTab.Name)
+                // Set clicked tab as active
+                if (sender is Button clickedTab)
                 {
-                    case "SalesTab":
-                        SalesTabContent.Visibility = Visibility.Visible;
-                        BreadcrumbText.Text = "Sales";
-                        RefreshSalesData();
-                        break;
-                    case "SettingsTab":
-                        SettingsTabContent.Visibility = Visibility.Visible;
-                        BreadcrumbText.Text = "Settings";
-                        break;
-                    case "ProductsTab":
-                        ProductsTabContent.Visibility = Visibility.Visible;
-                        BreadcrumbText.Text = "Products";
-                        await LoadProductsData();
-                        break;
-                    case "TemplatesTab":
-                        TemplatesTabContent.Visibility = Visibility.Visible;
-                        BreadcrumbText.Text = "Templates";
-                        break;
-                    case "DiagnosticsTab":
-                        DiagnosticsTabContent.Visibility = Visibility.Visible;
-                        BreadcrumbText.Text = "Diagnostics";
-                        break;
-                    case "SystemTab":
-                        SystemTabContent.Visibility = Visibility.Visible;
-                        BreadcrumbText.Text = "System";
-                        break;
-                    case "CreditsTab":
-                        CreditsTabContent.Visibility = Visibility.Visible;
-                        BreadcrumbText.Text = "Credits";
-                        break;
+                    clickedTab.Tag = "Active";
+
+                    // Hide all tab contents
+                    SalesTabContent.Visibility = Visibility.Collapsed;
+                    SettingsTabContent.Visibility = Visibility.Collapsed;
+                    ProductsTabContent.Visibility = Visibility.Collapsed;
+                    TemplatesTabContent.Visibility = Visibility.Collapsed;
+                    DiagnosticsTabContent.Visibility = Visibility.Collapsed;
+                    SystemTabContent.Visibility = Visibility.Collapsed;
+                    CreditsTabContent.Visibility = Visibility.Collapsed;
+
+                    // Show selected tab content and update breadcrumb
+                    switch (clickedTab.Name)
+                    {
+                        case "SalesTab":
+                            SalesTabContent.Visibility = Visibility.Visible;
+                            BreadcrumbText.Text = "Sales";
+                            RefreshSalesData();
+                            break;
+                        case "SettingsTab":
+                            SettingsTabContent.Visibility = Visibility.Visible;
+                            BreadcrumbText.Text = "Settings";
+                            break;
+                        case "ProductsTab":
+                            ProductsTabContent.Visibility = Visibility.Visible;
+                            BreadcrumbText.Text = "Products";
+                            await LoadProductsData();
+                            break;
+                        case "TemplatesTab":
+                            TemplatesTabContent.Visibility = Visibility.Visible;
+                            BreadcrumbText.Text = "Templates";
+                            break;
+                        case "DiagnosticsTab":
+                            DiagnosticsTabContent.Visibility = Visibility.Visible;
+                            BreadcrumbText.Text = "Diagnostics";
+                            break;
+                        case "SystemTab":
+                            SystemTabContent.Visibility = Visibility.Visible;
+                            BreadcrumbText.Text = "System";
+                            break;
+                        case "CreditsTab":
+                            CreditsTabContent.Visibility = Visibility.Visible;
+                            BreadcrumbText.Text = "Credits";
+                            break;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // Log the error for debugging
+                Console.WriteLine($"TabButton_Click error: {ex}");
+                
+                // Show user-friendly error message
+                try
+                {
+                    NotificationService.Quick.Error("Failed to switch tabs. Please try again.");
+                }
+                catch
+                {
+                    // Fallback if notification service fails
+                    System.Diagnostics.Debug.WriteLine($"Critical error in TabButton_Click: {ex}");
                 }
             }
         }
@@ -2129,9 +2148,22 @@ namespace Photobooth
                 var validationErrors = ProductViewModels.Where(vm => vm.HasValidationError).ToList();
                 if (validationErrors.Count > 0)
                 {
-                    var errorMessage = $"Cannot save: {validationErrors.Count} product(s) have validation errors. Please fix the errors and try again.";
-                    Console.WriteLine($"SaveProductConfiguration: {errorMessage}");
-                    throw new InvalidOperationException(errorMessage);
+                    // Create detailed error message listing each product and its specific error
+                    var errorDetails = new List<string>();
+                    errorDetails.Add($"Cannot save: {validationErrors.Count} product(s) have validation errors:");
+                    errorDetails.Add(""); // Empty line for readability
+                    
+                    foreach (var errorViewModel in validationErrors)
+                    {
+                        errorDetails.Add($"• {errorViewModel.Name}: {errorViewModel.ValidationError}");
+                    }
+                    
+                    errorDetails.Add(""); // Empty line for readability
+                    errorDetails.Add("Please fix these errors and try again.");
+                    
+                    var detailedErrorMessage = string.Join(Environment.NewLine, errorDetails);
+                    Console.WriteLine($"SaveProductConfiguration: Validation errors found:{Environment.NewLine}{detailedErrorMessage}");
+                    throw new InvalidOperationException(detailedErrorMessage);
                 }
 
                 Console.WriteLine($"SaveProductConfiguration: Starting save. Products count: {_products.Count}");
@@ -2165,20 +2197,43 @@ namespace Photobooth
                         newPrice = viewModel.Price;
                         Console.WriteLine($"SaveProductConfiguration: {product.Name} - Status: {newStatus}, Price: {newPrice}");
 
-                        // Update status if changed
-                        if (product.IsActive != newStatus)
+                        // Check what needs to be updated
+                        bool statusChanged = product.IsActive != newStatus;
+                        bool priceChanged = product.Price != newPrice && newPrice >= 0;
+                        
+                        if (statusChanged || priceChanged)
                         {
-                            Console.WriteLine($"SaveProductConfiguration: Updating product {product.Name} status from {product.IsActive} to {newStatus}");
-                            await _databaseService.UpdateProductStatusAsync(product.Id, newStatus);
-                            product.IsActive = newStatus;
+                            // Collect all changes for atomic update
+                            bool? statusUpdate = statusChanged ? newStatus : null;
+                            decimal? priceUpdate = priceChanged ? newPrice : null;
+                            
+                            Console.WriteLine($"SaveProductConfiguration: Updating product {product.Name} atomically - " +
+                                            $"Status: {(statusChanged ? $"{product.IsActive} → {newStatus}" : "unchanged")}, " +
+                                            $"Price: {(priceChanged ? $"${product.Price:F2} → ${newPrice:F2}" : "unchanged")}");
+                            
+                            // Perform atomic update
+                            var updateResult = await _databaseService.UpdateProductAsync(product.Id, statusUpdate, priceUpdate);
+                            
+                            if (!updateResult.Success)
+                            {
+                                throw new InvalidOperationException($"Failed to update product {product.Name}: {updateResult.ErrorMessage}");
+                            }
+                            
+                            // Update local product model only after successful database update
+                            if (statusChanged)
+                            {
+                                product.IsActive = newStatus;
+                            }
+                            if (priceChanged)
+                            {
+                                product.Price = newPrice;
+                            }
+                            
+                            Console.WriteLine($"SaveProductConfiguration: Product {product.Name} updated successfully");
                         }
-
-                        // Update price if changed (allow zero values for free products)
-                        if (product.Price != newPrice && newPrice >= 0)
+                        else
                         {
-                            Console.WriteLine($"SaveProductConfiguration: Updating product {product.Name} price from {product.Price} to {newPrice}");
-                            await _databaseService.UpdateProductPriceAsync(product.Id, newPrice);
-                            product.Price = newPrice;
+                            Console.WriteLine($"SaveProductConfiguration: No changes detected for product {product.Name}");
                         }
 
                         // Mark ViewModel as saved

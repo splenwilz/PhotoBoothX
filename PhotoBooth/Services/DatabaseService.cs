@@ -39,6 +39,7 @@ namespace Photobooth.Services
         Task<DatabaseResult<List<ProductCategory>>> GetProductCategoriesAsync();
         Task<DatabaseResult> UpdateProductStatusAsync(int productId, bool isActive);
         Task<DatabaseResult> UpdateProductPriceAsync(int productId, decimal price);
+        Task<DatabaseResult> UpdateProductAsync(int productId, bool? isActive = null, decimal? price = null);
         Task<DatabaseResult<List<Setting>>> GetSettingsByCategoryAsync(string category);
         Task<DatabaseResult<T?>> GetSettingValueAsync<T>(string category, string key);
         Task<DatabaseResult> SetSettingValueAsync<T>(string category, string key, T value, string? updatedBy = null);
@@ -555,10 +556,10 @@ namespace Photobooth.Services
                     var user = MapReaderToEntity<AdminUser>(reader);
                     var storedHash = reader["PasswordHash"].ToString();
                     
-                    // For now, simple hash comparison (you should use proper password hashing)
+                    // Compare password using secure hash-only approach
                     var inputHash = HashPassword(password);
                     
-                    if (storedHash == inputHash || storedHash == password + "_hash") // Temporary for demo
+                    if (storedHash == inputHash)
                     {
                         // Update last login - do this asynchronously without blocking
                         _ = Task.Run(async () =>
@@ -618,9 +619,9 @@ namespace Photobooth.Services
                     var isSetupUser = createdBy == DBNull.Value || createdBy == null;
                     
                     // Check if password matches (indicating they're still using the original setup password)
-                    // Support both new hash format and legacy demo format for backward compatibility
+                    // Use secure hash-only comparison
                     var inputHash = HashPassword(password);
-                    var passwordMatches = storedHash == inputHash || storedHash == password + "_hash";
+                    var passwordMatches = storedHash == inputHash;
                     
                     // It's setup credentials if it's a setup user AND password still matches original
                     return DatabaseResult<bool>.SuccessResult(isSetupUser && passwordMatches);
@@ -1090,6 +1091,84 @@ namespace Photobooth.Services
             catch (Exception ex)
             {
                 return DatabaseResult.ErrorResult($"Failed to update product price: {ex.Message}", ex);
+            }
+        }
+
+        public async Task<DatabaseResult> UpdateProductAsync(int productId, bool? isActive = null, decimal? price = null)
+        {
+            // Validate that at least one parameter is provided
+            if (!isActive.HasValue && !price.HasValue)
+            {
+                return DatabaseResult.ErrorResult("At least one field (isActive or price) must be provided for update");
+            }
+
+            try
+            {
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+                
+                // Use transaction for atomic operation
+                using var transaction = connection.BeginTransaction();
+                try
+                {
+                    // Build dynamic query based on provided parameters
+                    var setParts = new List<string>();
+                    var parameters = new List<(string name, object value)>();
+                    var logMessages = new List<string>();
+
+                    if (isActive.HasValue)
+                    {
+                        setParts.Add("IsActive = @isActive");
+                        parameters.Add(("@isActive", isActive.Value));
+                        logMessages.Add($"status = {isActive.Value}");
+                    }
+
+                    if (price.HasValue)
+                    {
+                        setParts.Add("Price = @price");
+                        parameters.Add(("@price", price.Value));
+                        logMessages.Add($"price = ${price.Value:F2}");
+                    }
+
+                    setParts.Add("UpdatedAt = @updatedAt");
+                    parameters.Add(("@updatedAt", DateTime.Now));
+
+                    var query = $"UPDATE Products SET {string.Join(", ", setParts)} WHERE Id = @id";
+
+                    using var command = new SqliteCommand(query, connection, transaction);
+                    
+                    // Add all parameters
+                    command.Parameters.AddWithValue("@id", productId);
+                    foreach (var (name, value) in parameters)
+                    {
+                        command.Parameters.AddWithValue(name, value);
+                    }
+
+                    var rowsAffected = await command.ExecuteNonQueryAsync();
+                    if (rowsAffected == 0)
+                    {
+                        await transaction.RollbackAsync();
+                        return DatabaseResult.ErrorResult("Product not found");
+                    }
+
+                    // Commit the transaction
+                    await transaction.CommitAsync();
+
+                    // Log the successful update
+                    var logMessage = $"Product {productId} updated: {string.Join(", ", logMessages)}";
+                    await LogSystemEventAsync(LogLevel.Info, "Products", logMessage);
+
+                    return DatabaseResult.SuccessResult();
+                }
+                catch (Exception)
+                {
+                    await transaction.RollbackAsync();
+                    throw;
+                }
+            }
+            catch (Exception ex)
+            {
+                return DatabaseResult.ErrorResult($"Failed to update product: {ex.Message}", ex);
             }
         }
 
