@@ -235,6 +235,8 @@ namespace Photobooth
         /// </summary>
         private void InitializeProductViewModels()
         {
+            // Unsubscribe from existing view models before clearing to prevent memory leaks
+            UnsubscribeFromProductViewModels();
             ProductViewModels.Clear();
 
             // Photo Strips Product
@@ -288,6 +290,7 @@ namespace Photobooth
 
             // The ItemsSource will be set when the control is loaded
             this.Loaded += AdminDashboardScreen_Loaded;
+            this.Unloaded += AdminDashboardScreen_Unloaded;
         }
 
         /// <summary>
@@ -303,6 +306,17 @@ namespace Photobooth
         }
 
         /// <summary>
+        /// Unsubscribe from PropertyChanged events for all ProductViewModels to prevent memory leaks
+        /// </summary>
+        private void UnsubscribeFromProductViewModels()
+        {
+            foreach (var product in ProductViewModels)
+            {
+                product.PropertyChanged -= ProductViewModel_PropertyChanged;
+            }
+        }
+
+        /// <summary>
         /// Handle the Loaded event to set up data binding
         /// </summary>
         private void AdminDashboardScreen_Loaded(object sender, RoutedEventArgs e)
@@ -312,6 +326,15 @@ namespace Photobooth
             {
                 ProductsItemsControl.ItemsSource = ProductViewModels;
             }
+        }
+
+        /// <summary>
+        /// Handle the Unloaded event to clean up event subscriptions and prevent memory leaks
+        /// </summary>
+        private void AdminDashboardScreen_Unloaded(object sender, RoutedEventArgs e)
+        {
+            // Unsubscribe from PropertyChanged events to prevent memory leaks
+            UnsubscribeFromProductViewModels();
         }
 
         #endregion

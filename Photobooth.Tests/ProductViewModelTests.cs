@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Globalization;
 using FluentAssertions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -9,7 +10,7 @@ namespace Photobooth.Tests
     [TestCategory("ViewModels")]
     public class ProductViewModelTests
     {
-        private ProductViewModel _viewModel;
+        private ProductViewModel _viewModel = null!;
 
         [TestInitialize]
         public void Setup()

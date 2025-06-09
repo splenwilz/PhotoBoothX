@@ -249,10 +249,9 @@ namespace Photobooth
             finally
             {
                 // Reset loading state
-                ChangePasswordButton.IsEnabled = true;
                 ChangePasswordButton.Content = "Change Password";
                 LoadingOverlay.Visibility = Visibility.Collapsed;
-                UpdateChangePasswordButton(); // Re-check validation
+                UpdateChangePasswordButton(); // Re-check validation and set correct enabled state
             }
         }
 

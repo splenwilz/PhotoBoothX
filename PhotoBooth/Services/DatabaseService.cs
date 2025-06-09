@@ -618,8 +618,9 @@ namespace Photobooth.Services
                     var isSetupUser = createdBy == DBNull.Value || createdBy == null;
                     
                     // Check if password matches (indicating they're still using the original setup password)
+                    // Support both new hash format and legacy demo format for backward compatibility
                     var inputHash = HashPassword(password);
-                    var passwordMatches = storedHash == inputHash;
+                    var passwordMatches = storedHash == inputHash || storedHash == password + "_hash";
                     
                     // It's setup credentials if it's a setup user AND password still matches original
                     return DatabaseResult<bool>.SuccessResult(isSetupUser && passwordMatches);
