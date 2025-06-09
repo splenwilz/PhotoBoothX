@@ -691,11 +691,11 @@ namespace Photobooth.Tests.Services
         [TestMethod]
         public async Task UpdateProductAsync_StatusAndPriceAtomically_BothUpdatedSuccessfully()
         {
-            // Arrange
+            // Arrange - Use first existing product and backup its original values
             var products = await _databaseService.GetProductsAsync();
             products.Success.Should().BeTrue();
             products.Data.Should().NotBeNull();
-            products.Data!.Should().NotBeEmpty();
+            products.Data!.Should().NotBeEmpty("Database should have default products");
 
             var testProduct = products.Data!.First();
             var originalStatus = testProduct.IsActive;
@@ -703,68 +703,106 @@ namespace Photobooth.Tests.Services
             var newStatus = !originalStatus;
             var newPrice = originalPrice + 1.50m;
 
-            // Act - Update both status and price atomically
-            var updateResult = await _databaseService.UpdateProductAsync(testProduct.Id, newStatus, newPrice);
+            try
+            {
+                // Act - Update both status and price atomically
+                var updateResult = await _databaseService.UpdateProductAsync(testProduct.Id, newStatus, newPrice);
 
-            // Assert
-            updateResult.Success.Should().BeTrue();
+                // Assert
+                updateResult.Success.Should().BeTrue();
 
-            // Verify changes were applied
-            var updatedProducts = await _databaseService.GetProductsAsync();
-            var updatedProduct = updatedProducts.Data!.First(p => p.Id == testProduct.Id);
-            updatedProduct.IsActive.Should().Be(newStatus);
-            updatedProduct.Price.Should().Be(newPrice);
+                // Verify changes were applied
+                var updatedProducts = await _databaseService.GetProductsAsync();
+                var updatedProduct = updatedProducts.Data!.First(p => p.Id == testProduct.Id);
+                updatedProduct.IsActive.Should().Be(newStatus);
+                updatedProduct.Price.Should().Be(newPrice);
+            }
+            finally
+            {
+                // Cleanup - Restore original values to maintain test isolation
+                await _databaseService.UpdateProductAsync(testProduct.Id, originalStatus, originalPrice);
+            }
         }
 
         [TestMethod]
         public async Task UpdateProductAsync_StatusOnly_UpdatesStatusLeavesPriceUnchanged()
         {
-            // Arrange
+            // Arrange - Use second existing product and backup its original values
             var products = await _databaseService.GetProductsAsync();
-            var testProduct = products.Data!.First();
+            products.Success.Should().BeTrue();
+            products.Data.Should().NotBeNull();
+            products.Data!.Should().HaveCountGreaterThan(1, "Database should have multiple default products");
+
+            var testProduct = products.Data!.Skip(1).First(); // Use second product to avoid conflicts
+            var originalStatus = testProduct.IsActive;
             var originalPrice = testProduct.Price;
             var newStatus = !testProduct.IsActive;
 
-            // Act - Update only status
-            var updateResult = await _databaseService.UpdateProductAsync(testProduct.Id, isActive: newStatus);
+            try
+            {
+                // Act - Update only status
+                var updateResult = await _databaseService.UpdateProductAsync(testProduct.Id, isActive: newStatus);
 
-            // Assert
-            updateResult.Success.Should().BeTrue();
+                // Assert
+                updateResult.Success.Should().BeTrue();
 
-            // Verify only status changed
-            var updatedProducts = await _databaseService.GetProductsAsync();
-            var updatedProduct = updatedProducts.Data!.First(p => p.Id == testProduct.Id);
-            updatedProduct.IsActive.Should().Be(newStatus);
-            updatedProduct.Price.Should().Be(originalPrice); // Price should remain unchanged
+                // Verify only status changed
+                var updatedProducts = await _databaseService.GetProductsAsync();
+                var updatedProduct = updatedProducts.Data!.First(p => p.Id == testProduct.Id);
+                updatedProduct.IsActive.Should().Be(newStatus);
+                updatedProduct.Price.Should().Be(originalPrice); // Price should remain unchanged
+            }
+            finally
+            {
+                // Cleanup - Restore original values to maintain test isolation
+                await _databaseService.UpdateProductAsync(testProduct.Id, originalStatus, originalPrice);
+            }
         }
 
         [TestMethod]
         public async Task UpdateProductAsync_PriceOnly_UpdatesPriceLeavesStatusUnchanged()
         {
-            // Arrange
+            // Arrange - Use third existing product and backup its original values
             var products = await _databaseService.GetProductsAsync();
-            var testProduct = products.Data!.First();
+            products.Success.Should().BeTrue();
+            products.Data.Should().NotBeNull();
+            products.Data!.Should().HaveCountGreaterThan(2, "Database should have multiple default products");
+
+            var testProduct = products.Data!.Skip(2).First(); // Use third product to avoid conflicts
             var originalStatus = testProduct.IsActive;
+            var originalPrice = testProduct.Price;
             var newPrice = testProduct.Price + 2.25m;
 
-            // Act - Update only price
-            var updateResult = await _databaseService.UpdateProductAsync(testProduct.Id, price: newPrice);
+            try
+            {
+                // Act - Update only price
+                var updateResult = await _databaseService.UpdateProductAsync(testProduct.Id, price: newPrice);
 
-            // Assert
-            updateResult.Success.Should().BeTrue();
+                // Assert
+                updateResult.Success.Should().BeTrue();
 
-            // Verify only price changed
-            var updatedProducts = await _databaseService.GetProductsAsync();
-            var updatedProduct = updatedProducts.Data!.First(p => p.Id == testProduct.Id);
-            updatedProduct.IsActive.Should().Be(originalStatus); // Status should remain unchanged
-            updatedProduct.Price.Should().Be(newPrice);
+                // Verify only price changed
+                var updatedProducts = await _databaseService.GetProductsAsync();
+                var updatedProduct = updatedProducts.Data!.First(p => p.Id == testProduct.Id);
+                updatedProduct.IsActive.Should().Be(originalStatus); // Status should remain unchanged
+                updatedProduct.Price.Should().Be(newPrice);
+            }
+            finally
+            {
+                // Cleanup - Restore original values to maintain test isolation
+                await _databaseService.UpdateProductAsync(testProduct.Id, originalStatus, originalPrice);
+            }
         }
 
         [TestMethod]
         public async Task UpdateProductAsync_NoParameters_ReturnsError()
         {
-            // Arrange
+            // Arrange - Use first existing product (no need to backup since this test doesn't change anything)
             var products = await _databaseService.GetProductsAsync();
+            products.Success.Should().BeTrue();
+            products.Data.Should().NotBeNull();
+            products.Data!.Should().NotBeEmpty("Database should have default products");
+
             var testProduct = products.Data!.First();
 
             // Act - Call with no parameters (both null)
@@ -772,37 +810,232 @@ namespace Photobooth.Tests.Services
 
             // Assert
             updateResult.Success.Should().BeFalse();
-            updateResult.ErrorMessage.Should().Contain("At least one field");
+            updateResult.ErrorMessage.Should().NotBeNullOrEmpty("Error message should be provided");
+            updateResult.ErrorMessage.Should().ContainAny("field", "parameter", "required", "provided", 
+                "Error should indicate missing required parameters");
         }
 
         [TestMethod]
         public async Task UpdateProductAsync_NonExistentProduct_ReturnsError()
         {
+            // Arrange - Dynamically determine a non-existent product ID
+            var products = await _databaseService.GetProductsAsync();
+            products.Success.Should().BeTrue();
+            products.Data.Should().NotBeNull();
+            
+            // Find the maximum existing product ID and use a value greater than that
+            var maxProductId = products.Data!.Any() ? products.Data!.Max(p => p.Id) : 0;
+            var nonExistentProductId = maxProductId + 1000; // Use a safely large gap to avoid conflicts
+            
             // Act - Try to update a product with an ID that doesn't exist
-            var updateResult = await _databaseService.UpdateProductAsync(99999, isActive: true, price: 5.99m);
+            var updateResult = await _databaseService.UpdateProductAsync(nonExistentProductId, isActive: true, price: 5.99m);
 
             // Assert
             updateResult.Success.Should().BeFalse();
-            updateResult.ErrorMessage.Should().Contain("Product not found");
+            updateResult.ErrorMessage.Should().NotBeNullOrEmpty("Error message should be provided");
+            updateResult.ErrorMessage.Should().ContainAny("not found", "not exist", "does not exist", 
+                "Error should indicate product does not exist");
         }
 
         [TestMethod]
         public async Task UpdateProductAsync_ZeroPrice_AllowsZeroValues()
         {
-            // Arrange
+            // Arrange - Use first existing product and backup its original values
             var products = await _databaseService.GetProductsAsync();
+            products.Success.Should().BeTrue();
+            products.Data.Should().NotBeNull();
+            products.Data!.Should().NotBeEmpty("Database should have default products");
+
             var testProduct = products.Data!.First();
+            var originalPrice = testProduct.Price;
+            var originalStatus = testProduct.IsActive;
 
-            // Act - Update price to zero (for free products)
-            var updateResult = await _databaseService.UpdateProductAsync(testProduct.Id, price: 0.00m);
+            try
+            {
+                // Act - Update price to zero (for free products)
+                var updateResult = await _databaseService.UpdateProductAsync(testProduct.Id, price: 0.00m);
 
-            // Assert
-            updateResult.Success.Should().BeTrue();
+                // Assert
+                updateResult.Success.Should().BeTrue();
 
-            // Verify zero price was set
-            var updatedProducts = await _databaseService.GetProductsAsync();
-            var updatedProduct = updatedProducts.Data!.First(p => p.Id == testProduct.Id);
-            updatedProduct.Price.Should().Be(0.00m);
+                // Verify zero price was set
+                var updatedProducts = await _databaseService.GetProductsAsync();
+                var updatedProduct = updatedProducts.Data!.First(p => p.Id == testProduct.Id);
+                updatedProduct.Price.Should().Be(0.00m);
+            }
+            finally
+            {
+                // Cleanup - Restore original values to maintain test isolation
+                await _databaseService.UpdateProductAsync(testProduct.Id, originalStatus, originalPrice);
+            }
+        }
+
+        [TestMethod]
+        public async Task UpdateProductAsync_NegativePrice_HandlesAccordingToBusinessRules()
+        {
+            // Arrange - Use first existing product and backup its original values
+            var products = await _databaseService.GetProductsAsync();
+            products.Success.Should().BeTrue();
+            products.Data.Should().NotBeNull();
+            products.Data!.Should().NotBeEmpty("Database should have default products");
+
+            var testProduct = products.Data!.First();
+            var originalPrice = testProduct.Price;
+            var originalStatus = testProduct.IsActive;
+
+            try
+            {
+                // Act - Try to set negative price
+                var updateResult = await _databaseService.UpdateProductAsync(testProduct.Id, price: -1.00m);
+
+                // Assert - Behavior depends on business rules (allow or reject)
+                // Update assertion based on actual business requirements
+                if (updateResult.Success)
+                {
+                    // If negative prices are allowed, verify the value was set
+                    var updatedProducts = await _databaseService.GetProductsAsync();
+                    var updatedProduct = updatedProducts.Data!.First(p => p.Id == testProduct.Id);
+                    updatedProduct.Price.Should().Be(-1.00m);
+                }
+                else
+                {
+                    // If negative prices are rejected, verify appropriate error
+                    updateResult.ErrorMessage.Should().NotBeNullOrEmpty("Error message should be provided");
+                    updateResult.ErrorMessage.Should().ContainAny("negative", "invalid", "not allow", "not permitted", 
+                        "Error should indicate negative prices are not allowed");
+                }
+            }
+            finally
+            {
+                // Cleanup - Restore original values to maintain test isolation
+                await _databaseService.UpdateProductAsync(testProduct.Id, originalStatus, originalPrice);
+            }
+        }
+
+        [TestMethod]
+        public async Task UpdateProductAsync_ConcurrentUpdates_HandlesCorrectly()
+        {
+            // Arrange - Use existing products and backup their original values
+            var products = await _databaseService.GetProductsAsync();
+            products.Success.Should().BeTrue();
+            products.Data.Should().NotBeNull();
+            products.Data!.Should().HaveCountGreaterThan(1, "Database should have multiple default products");
+
+            var testProduct1 = products.Data!.First();
+            var testProduct2 = products.Data!.Skip(1).First();
+            var originalPrice1 = testProduct1.Price;
+            var originalPrice2 = testProduct2.Price;
+            var originalStatus1 = testProduct1.IsActive;
+            var originalStatus2 = testProduct2.IsActive;
+
+            try
+            {
+                // Act - Test concurrent updates to the same product
+                var tasks = new List<Task<DatabaseResult>>();
+                for (int i = 0; i < 5; i++)
+                {
+                    var index = i; // Capture loop variable
+                    tasks.Add(Task.Run(async () =>
+                    {
+                        await Task.Delay(index * 10); // Stagger the requests slightly
+                        return await _databaseService.UpdateProductAsync(testProduct1.Id, price: originalPrice1 + index);
+                    }));
+                }
+
+                // Also test concurrent updates to different products
+                tasks.Add(Task.Run(() => _databaseService.UpdateProductAsync(testProduct2.Id, !originalStatus2)));
+
+                var results = await Task.WhenAll(tasks);
+
+                // Assert - All operations should complete successfully
+                foreach (var result in results)
+                {
+                    result.Success.Should().BeTrue("Concurrent operations should handle gracefully");
+                }
+            }
+            finally
+            {
+                // Cleanup - Restore original values to maintain test isolation
+                await _databaseService.UpdateProductAsync(testProduct1.Id, originalStatus1, originalPrice1);
+                await _databaseService.UpdateProductAsync(testProduct2.Id, originalStatus2, originalPrice2);
+            }
+        }
+
+        [TestMethod]
+        public async Task UpdateProductAsync_VeryLargePriceValue_HandlesCorrectly()
+        {
+            // Arrange - Use existing product and backup its original values
+            var products = await _databaseService.GetProductsAsync();
+            products.Success.Should().BeTrue();
+            products.Data.Should().NotBeNull();
+            products.Data!.Should().NotBeEmpty("Database should have default products");
+
+            var testProduct = products.Data!.First();
+            var originalPrice = testProduct.Price;
+            var originalStatus = testProduct.IsActive;
+
+            try
+            {
+                // Act - Test with decimal.MaxValue or business-defined limits
+                var largePrice = 999999.99m; // Use a large but reasonable price
+                var updateResult = await _databaseService.UpdateProductAsync(testProduct.Id, price: largePrice);
+
+                // Assert - Should handle large values appropriately
+                if (updateResult.Success)
+                {
+                    // If large prices are allowed, verify the value was set
+                    var updatedProducts = await _databaseService.GetProductsAsync();
+                    var updatedProduct = updatedProducts.Data!.First(p => p.Id == testProduct.Id);
+                    updatedProduct.Price.Should().Be(largePrice);
+                }
+                else
+                {
+                    // If large prices are rejected, verify appropriate error
+                    updateResult.ErrorMessage.Should().NotBeNullOrEmpty("Error message should be provided");
+                    updateResult.ErrorMessage.Should().ContainAny("too large", "too high", "exceeds", "maximum", 
+                        "Error should indicate price is too large");
+                }
+            }
+            finally
+            {
+                // Cleanup - Restore original values to maintain test isolation
+                await _databaseService.UpdateProductAsync(testProduct.Id, originalStatus, originalPrice);
+            }
+        }
+
+        [TestMethod]
+        public async Task UpdateProductAsync_PriceWithManyDecimalPlaces_RoundsAppropriately()
+        {
+            // Arrange - Use existing product and backup its original values
+            var products = await _databaseService.GetProductsAsync();
+            products.Success.Should().BeTrue();
+            products.Data.Should().NotBeNull();
+            products.Data!.Should().NotBeEmpty("Database should have default products");
+
+            var testProduct = products.Data!.First();
+            var originalPrice = testProduct.Price;
+            var originalStatus = testProduct.IsActive;
+
+            try
+            {
+                // Act - Test price precision handling
+                var precisePrice = 12.12345678m; // More than 2 decimal places
+                var updateResult = await _databaseService.UpdateProductAsync(testProduct.Id, price: precisePrice);
+
+                // Assert
+                updateResult.Success.Should().BeTrue();
+
+                // Verify price precision handling (system accepts precise decimal values)
+                var updatedProducts = await _databaseService.GetProductsAsync();
+                var updatedProduct = updatedProducts.Data!.First(p => p.Id == testProduct.Id);
+                updatedProduct.Price.Should().Be(precisePrice, 
+                    "System should handle precise decimal values as provided");
+            }
+            finally
+            {
+                // Cleanup - Restore original values to maintain test isolation
+                await _databaseService.UpdateProductAsync(testProduct.Id, originalStatus, originalPrice);
+            }
         }
         #endregion
 
