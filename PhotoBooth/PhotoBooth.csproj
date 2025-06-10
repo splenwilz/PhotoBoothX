@@ -6,7 +6,29 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    
+    <!-- Application Icon -->
+    <ApplicationIcon>icon.ico</ApplicationIcon>
+    
+    <!-- Version Information -->
+    <Version>0.0.1</Version>
+    <AssemblyVersion>0.0.1.0</AssemblyVersion>
+    <FileVersion>0.0.1.0</FileVersion>
+    <AssemblyTitle>PhotoBoothX</AssemblyTitle>
+    <AssemblyDescription>Professional Photobooth Kiosk Application</AssemblyDescription>
+    <AssemblyCompany>PhotoBoothX</AssemblyCompany>
+    <AssemblyProduct>PhotoBoothX</AssemblyProduct>
+    <Copyright>© 2024 PhotoBoothX. All rights reserved.</Copyright>
+  </PropertyGroup>
+
+  <!-- Publish Settings - Only applied during publish -->
+  <PropertyGroup Condition="'$(PublishProfile)' != '' OR '$(IsPublishing)' == 'true'">
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <PublishTrimmed>false</PublishTrimmed>
   </PropertyGroup>
 
 
@@ -38,6 +60,11 @@
 
 	<ItemGroup>
 		<PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.0" />
+		<PackageReference Include="Serilog" Version="4.2.0" />
+		<PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
+		<PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
+		<PackageReference Include="Serilog.Enrichers.Thread" Version="4.0.0" />
+		<PackageReference Include="Serilog.Enrichers.Environment" Version="3.0.1" />
 	</ItemGroup>
 
 </Project>

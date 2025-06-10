@@ -334,9 +334,12 @@
                             </StackPanel>
                         </Border>
 
+                        <Rectangle Width="1" Height="16" Fill="#CBD5E1" Margin="8,0"/>
+
+
                         <!-- Current Mode -->
-                        <Border Margin="16,0,0,0" BorderBrush="#93C5FD" BorderThickness="1" Padding="16,6,0,6" 
-                                Background="#EBF8FF" CornerRadius="8">
+                        <Border Margin="0,0,0,0" BorderBrush="#93C5FD" BorderThickness="0" Padding="2,6,0,6" 
+                                >
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="Current Mode:" FontSize="12" Foreground="#64748B" Margin="0,0,8,0"/>
                                 <TextBlock Name="CurrentModeText" Text="Coin Operated" FontSize="12" FontWeight="Medium" Foreground="#475569"/>
@@ -453,7 +456,7 @@
             <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="24,0,24,24">
                 <Grid>
                     <!-- Sales Tab Content -->
-                    <Grid Name="SalesTabContent"  Visibility="Collapsed">
+                    <Grid Name="SalesTabContent"  Visibility="Visible">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
@@ -639,7 +642,7 @@
                     </Grid>
 
                     <!-- Settings Tab Content -->
-                    <Grid Name="SettingsTabContent" Visibility="Visible">
+                    <Grid Name="SettingsTabContent" Visibility="Collapsed">
                         <!-- Main Container -->
                         <Grid>
                             <!-- Header Section -->
@@ -789,144 +792,6 @@
                                 </StackPanel>
                             </Border>
 
-                            <!-- Pricing & Products Card -->
-                                    <Border Style="{StaticResource ModernCardStyle}" Margin="0,0,0,24" Background="White" BorderThickness="0" CornerRadius="12">
-                                        <Border.Effect>
-                                            <DropShadowEffect Color="#000000" BlurRadius="8" ShadowDepth="2" Opacity="0.1"/>
-                                        </Border.Effect>
-                                        <StackPanel Margin="24">
-                                            <!-- Card Header -->
-                                            <StackPanel Margin="0,0,0,24">
-                                                <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
-                                                    <Border Width="32" Height="32" Background="#ECFDF5" CornerRadius="8" Margin="0,0,12,0">
-                                                        <TextBlock Text="💰" FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                        </Border>
-                                                    <StackPanel>
-                                                        <TextBlock Text="Pricing &amp; Products" FontSize="18" FontWeight="Bold" Foreground="#0F172A"/>
-                                            <TextBlock Text="Set prices and configure available products" FontSize="14" Foreground="#64748B"/>
-                                        </StackPanel>
-                                    </StackPanel>
-                                        </StackPanel>
-
-                                            <!-- Product Cards Grid -->
-                                            <Grid Margin="0,0,0,24">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*"/>
-                                                    <ColumnDefinition Width="16"/>
-                                                    <ColumnDefinition Width="*"/>
-                                                    <ColumnDefinition Width="16"/>
-                                                    <ColumnDefinition Width="*"/>
-                                                </Grid.ColumnDefinitions>
-
-                                                <!-- Photo Strips -->
-                                                <Border Grid.Column="0" Background="#F8FAFC" CornerRadius="8" BorderBrush="#E5E7EB" BorderThickness="1" Padding="16">
-                                        <StackPanel>
-                                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
-                                                            <Border Width="32" Height="32" Background="#DBEAFE" CornerRadius="8" Margin="0,0,12,0">
-                                                                <TextBlock Text="📷" FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                            </Border>
-                                        <StackPanel>
-                                                                <TextBlock Text="Photo Strips" FontSize="14" FontWeight="Medium" Foreground="#374151"/>
-                                                                <TextBlock Text="4 photos per strip" FontSize="12" Foreground="#6B7280"/>
-                                        </StackPanel>
-                                                        </StackPanel>
-                                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
-                                                            <TextBlock Text="$" FontSize="14" Foreground="#6B7280" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                                                            <TextBox Name="StripPriceTextBox" Text="3" Style="{StaticResource RoundedTextBoxStyle}" Width="60" Height="32" TextAlignment="Center" FontWeight="SemiBold" BorderBrush="#D1D5DB" VerticalContentAlignment="Center"/>
-                                                        </StackPanel>
-                                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                                            <TextBlock Text="Enabled" FontSize="12" Foreground="#6B7280" VerticalAlignment="Center" Margin="0,0,12,0"/>
-                                                            <ToggleButton Name="StripEnabledToggle" Style="{StaticResource ModernToggleSwitchStyle}" Width="40" Height="24" IsChecked="True" VerticalAlignment="Center"/>
-                                    </StackPanel>
-                                </StackPanel>
-                            </Border>
-
-                                                <!-- 4x6 Photos -->
-                                                <Border Grid.Column="2" Background="#F8FAFC" CornerRadius="8" BorderBrush="#E5E7EB" BorderThickness="1" Padding="16">
-                                <StackPanel>
-                                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
-                                                            <Border Width="32" Height="32" Background="#F3E8FF" CornerRadius="8" Margin="0,0,12,0">
-                                                                <TextBlock Text="🖨️" FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                        </Border>
-                                                            <StackPanel>
-                                                                <TextBlock Text="4x6 Photos" FontSize="14" FontWeight="Medium" Foreground="#374151"/>
-                                                                <TextBlock Text="Single print" FontSize="12" Foreground="#6B7280"/>
-                                        </StackPanel>
-                                    </StackPanel>
-                                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
-                                                            <TextBlock Text="$" FontSize="14" Foreground="#6B7280" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                                                            <TextBox Name="Photo4x6PriceTextBox" Text="5" Style="{StaticResource RoundedTextBoxStyle}" Width="60" Height="32" TextAlignment="Center" FontWeight="SemiBold" BorderBrush="#D1D5DB" VerticalContentAlignment="Center"/>
-                                    </StackPanel>
-                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                                            <TextBlock Text="Enabled" FontSize="12" Foreground="#6B7280" VerticalAlignment="Center" Margin="0,0,12,0"/>
-                                                            <ToggleButton Name="Photo4x6EnabledToggle" Style="{StaticResource ModernToggleSwitchStyle}" Width="40" Height="24" IsChecked="True" VerticalAlignment="Center"/>
-                                        </StackPanel>
-                                        </StackPanel>
-                                                </Border>
-
-                                                <!-- Phone Prints -->
-                                                <Border Grid.Column="4" Background="#F8FAFC" CornerRadius="8" BorderBrush="#E5E7EB" BorderThickness="1" Padding="16">
-                                                    <StackPanel>
-                                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
-                                                            <Border Width="32" Height="32" Background="#FFF7ED" CornerRadius="8" Margin="0,0,12,0">
-                                                                <TextBlock Text="📱" FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                            </Border>
-                                                            <StackPanel>
-                                                                <TextBlock Text="Phone Prints" FontSize="14" FontWeight="Medium" Foreground="#374151"/>
-                                                                <TextBlock Text="Customer uploads" FontSize="12" Foreground="#6B7280"/>
-                                                            </StackPanel>
-                                                        </StackPanel>
-                                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
-                                                            <TextBlock Text="$" FontSize="14" Foreground="#6B7280" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                                                            <TextBox Name="PhonePrintsPriceTextBox" Text="2" Style="{StaticResource RoundedTextBoxStyle}" Width="60" Height="32" TextAlignment="Center" FontWeight="SemiBold" BorderBrush="#D1D5DB" VerticalContentAlignment="Center"/>
-                                        </StackPanel>
-                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                                            <TextBlock Text="Enabled" FontSize="12" Foreground="#6B7280" VerticalAlignment="Center" Margin="0,0,12,0"/>
-                                                            <ToggleButton Name="PhonePrintsEnabledToggle" Style="{StaticResource ModernToggleSwitchStyle}" Width="40" Height="24" IsChecked="True" VerticalAlignment="Center"/>
-                                        </StackPanel>
-                                </StackPanel>
-                            </Border>
-                                            </Grid>
-
-                                            <!-- Operation Mode -->
-                                            <Border BorderBrush="#E5E7EB" BorderThickness="0,1,0,0" Padding="0,24,0,0">
-                                                <StackPanel>
-                                                    <TextBlock Text="Operation Mode" FontSize="14" FontWeight="Medium" Foreground="#374151" Margin="0,0,0,12"/>
-                                                    <Grid>
-                                                        <Grid.ColumnDefinitions>
-                                                            <ColumnDefinition Width="*"/>
-                                                            <ColumnDefinition Width="12"/>
-                                                            <ColumnDefinition Width="*"/>
-                                                        </Grid.ColumnDefinitions>
-
-                                                        <!-- Coin Operated -->
-                                                        <Border Name="CoinOperatedBorder" Grid.Column="0" Background="White" BorderBrush="#3B82F6" BorderThickness="2" CornerRadius="8" Padding="12" Cursor="Hand" MouseLeftButtonDown="CoinOperatedBorder_Click">
-                                                            <StackPanel>
-                                                                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                                                                    <Border Name="CoinOperatedRadio" Width="16" Height="16" Background="#3B82F6" CornerRadius="8" Margin="0,0,8,0">
-                                                                        <Ellipse Width="6" Height="6" Fill="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                                    </Border>
-                                                                    <TextBlock Text="Coin Operated" FontSize="14" FontWeight="Medium" Foreground="#374151"/>
-                        </StackPanel>
-                                                                <TextBlock Text="Customers pay to use" FontSize="12" Foreground="#6B7280"/>
-                                                            </StackPanel>
-                                                        </Border>
-
-                                                        <!-- Free Play -->
-                                                        <Border Name="FreePlayBorder" Grid.Column="2" Background="White" BorderBrush="#D1D5DB" BorderThickness="2" CornerRadius="8" Padding="12" Cursor="Hand" MouseLeftButtonDown="FreePlayBorder_Click">
-                                                            <StackPanel>
-                                                                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                                                                    <Border Name="FreePlayRadio" Width="16" Height="16" Background="Transparent" BorderBrush="#D1D5DB" BorderThickness="2" CornerRadius="8" Margin="0,0,8,0"/>
-                                                                    <TextBlock Text="Free Play" FontSize="14" FontWeight="Medium" Foreground="#374151"/>
-                                                                </StackPanel>
-                                                                <TextBlock Text="No payment required" FontSize="12" Foreground="#6B7280"/>
-                                                            </StackPanel>
-                                                        </Border>
-                                                    </Grid>
-                                                </StackPanel>
-                                            </Border>
-                                        </StackPanel>
-                                    </Border>
 
                                     <!-- System Preferences Card -->
                                     <Border Style="{StaticResource ModernCardStyle}" Background="White" BorderThickness="0" CornerRadius="12">
@@ -1013,92 +878,14 @@
                                             </Grid>
                                         </StackPanel>
                                     </Border>
+
+
                                 </StackPanel>
 
                                 <!-- Right Column: Sidebar (1/3 width) -->
                                 <StackPanel Grid.Column="2" VerticalAlignment="Top">
                                     
-                            <!-- Hardware Status Card -->
-                                    <Border Style="{StaticResource ModernCardStyle}" Margin="0,0,0,24" Background="White" BorderThickness="0" CornerRadius="12">
-                                        <Border.Effect>
-                                            <DropShadowEffect Color="#000000" BlurRadius="8" ShadowDepth="2" Opacity="0.1"/>
-                                        </Border.Effect>
-                                        <StackPanel Margin="24">
-                                            <TextBlock Text="Hardware Status" FontSize="18" FontWeight="Bold" Foreground="#0F172A" Margin="0,0,0,4"/>
-                                            <TextBlock Text="Current system health" FontSize="14" Foreground="#64748B" Margin="0,2,0,19"/>
-                                            
-                                            <!-- Status Items -->
-                                <StackPanel>
 
-                                                <!-- Camera Row -->
-                                                <Grid Margin="0,0,0,12">
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="*" />
-                                                        <!-- Label side -->
-                                                        <ColumnDefinition Width="Auto" />
-                                                        <!-- Status badge -->
-                                                    </Grid.ColumnDefinitions>
-
-                                                    <StackPanel Orientation="Horizontal" Grid.Column="0">
-                                                        <Ellipse Width="6" Height="6" Fill="#10B981" Margin="0,0,8,0"/>
-                                                        <TextBlock Text="Camera" FontSize="14" Foreground="#374151" VerticalAlignment="Center"/>
-                                    </StackPanel>
-
-                                                    <Border Grid.Column="1" Background="#ECFDF5" CornerRadius="10" Padding="12,4">
-                                                        <TextBlock Text="Online" FontSize="12" Foreground="#047857" FontWeight="Medium"/>
-                                                    </Border>
-                                                </Grid>
-
-                                                <!-- Printer Row -->
-                                                <Grid Margin="0,0,0,12">
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="*" />
-                                                        <ColumnDefinition Width="Auto" />
-                                                    </Grid.ColumnDefinitions>
-
-                                                    <StackPanel Orientation="Horizontal" Grid.Column="0">
-                                                        <Ellipse Width="6" Height="6" Fill="#EF4444" Margin="0,0,8,0"/>
-                                                        <TextBlock Text="Printer" FontSize="14" Foreground="#374151" VerticalAlignment="Center"/>
-                                                    </StackPanel>
-
-                                                    <Border Grid.Column="1" Background="#FEF2F2" CornerRadius="12" Padding="12,4">
-                                                        <TextBlock Text="Offline" FontSize="12" Foreground="#DC2626" FontWeight="Medium"/>
-                                                    </Border>
-                                                </Grid>
-
-                                                <!-- Control Board Row -->
-                                                <Grid Margin="0,0,0,12">
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="*" />
-                                                        <ColumnDefinition Width="Auto" />
-                                                    </Grid.ColumnDefinitions>
-
-                                                    <StackPanel Orientation="Horizontal" Grid.Column="0">
-                                                        <Ellipse Width="6" Height="6" Fill="#EF4444" Margin="0,0,8,0"/>
-                                                        <TextBlock Text="Control Board" FontSize="14" Foreground="#374151" VerticalAlignment="Center"/>
-                                                    </StackPanel>
-
-                                                    <Border Grid.Column="1" Background="#FEF2F2" CornerRadius="12" Padding="12,4">
-                                                        <TextBlock Text="Offline" FontSize="12" Foreground="#DC2626" FontWeight="Medium"/>
-                                                    </Border>
-                                                </Grid>
-
-                                            </StackPanel>
-
-
-                                            <!-- Print Status -->
-                                            <Border BorderBrush="#E5E7EB" BorderThickness="0,1,0,0" Padding="0,16,0,0">
-                                                <StackPanel>
-                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                                        <TextBlock Text="Prints Remaining" FontSize="14" FontWeight="Medium" Foreground="#374151"/>
-                                                        <TextBlock Text="650" FontSize="14" FontWeight="Bold" Foreground="#0F172A" HorizontalAlignment="Right" Margin="8,0,0,0"/>
-                                    </StackPanel>
-                                                    <ProgressBar Height="8" Value="93" Maximum="100" Margin="0,0,0,4" Background="#E5E7EB" Foreground="#10B981" BorderThickness="0"/>
-                                                    <TextBlock Text="93% capacity" FontSize="12" Foreground="#6B7280"/>
-                                    </StackPanel>
-                                            </Border>
-                                </StackPanel>
-                            </Border>
 
                             <!-- Quick Actions Card -->
                                     <Border Style="{StaticResource ModernCardStyle}" Margin="0,0,0,24" Background="White" BorderThickness="0" CornerRadius="12">
@@ -1367,12 +1154,193 @@
                     </Grid>
 
                     <!-- Products Tab Content -->
-                    <Grid Name="ProductsTabContent" Visibility="Collapsed" Margin="24">
-                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                            <TextBlock Text="📦" FontSize="48" HorizontalAlignment="Center" Margin="0,0,0,16"/>
-                            <TextBlock Text="Products" FontSize="32" FontWeight="Bold" HorizontalAlignment="Center" Foreground="#1E293B" Margin="0,0,0,8"/>
-                            <TextBlock Text="Product management coming soon..." FontSize="16" HorizontalAlignment="Center" Foreground="#64748B"/>
-                        </StackPanel>
+                    <Grid Name="ProductsTabContent" Visibility="Collapsed">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel Margin="0,0,0,32">
+                                
+                                <!-- Header Section -->
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,24">
+
+                                    <StackPanel>
+                                        <TextBlock Text="Product Configuration" FontSize="32" FontWeight="Bold" Foreground="#0F172A" Margin="0,0,0,8"/>
+                                        <TextBlock Text="Enable/disable products and configure availability" FontSize="16" Foreground="#64748B"/>
+
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <!-- Product Configuration Cards -->
+                                <ItemsControl Name="ProductsItemsControl" Margin="0,0,0,32">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <UniformGrid Columns="3"/>
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Background="#F8FAFC" 
+                                                    CornerRadius="12" 
+                                                    BorderBrush="#E5E7EB" 
+                                                    BorderThickness="1" 
+                                                    Padding="20" 
+                                                    Margin="8"
+                                                    Opacity="{Binding CardOpacity}">
+                                                <StackPanel>
+                                                    <!-- Header -->
+                                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                                                        <Border Width="36" Height="36" 
+                                                                Background="{Binding IconBackground}" 
+                                                                CornerRadius="8" 
+                                                                Margin="0,0,12,0">
+                                                            <TextBlock Text="{Binding Icon}" 
+                                                                       FontSize="18" 
+                                                                       HorizontalAlignment="Center" 
+                                                                       VerticalAlignment="Center"/>
+                                                        </Border>
+                                                        <StackPanel>
+                                                            <TextBlock Text="{Binding Name}" 
+                                                                       FontSize="16" 
+                                                                       FontWeight="SemiBold" 
+                                                                       Foreground="#374151"/>
+                                                            <TextBlock Text="{Binding Description}" 
+                                                                       FontSize="12" 
+                                                                       Foreground="#6B7280"/>
+                                                        </StackPanel>
+                                                    </StackPanel>
+
+                                                    <!-- Enable/Disable Toggle -->
+                                                    <Grid Margin="0,0,0,16">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Grid.Column="0" 
+                                                                   Text="Enable Product" 
+                                                                   FontSize="14" 
+                                                                   FontWeight="Medium" 
+                                                                   Foreground="#374151" 
+                                                                   VerticalAlignment="Center"/>
+                                                        <ToggleButton Grid.Column="1" 
+                                                                      Style="{StaticResource ModernToggleSwitchStyle}" 
+                                                                      IsChecked="{Binding IsEnabled}"
+                                                                      Tag="{Binding ProductKey}"/>
+                                                    </Grid>
+
+                                                    <!-- Price Configuration -->
+                                                    <StackPanel IsEnabled="{Binding PriceSectionEnabled}">
+                                                        <TextBlock Text="{Binding PriceLabel}" 
+                                                                   FontSize="12" 
+                                                                   FontWeight="Medium" 
+                                                                   Foreground="#6B7280" 
+                                                                   Margin="0,0,0,4"/>
+                                                        <Border Background="White" 
+                                                                CornerRadius="6" 
+                                                                BorderBrush="#D1D5DB" 
+                                                                BorderThickness="1" 
+                                                                Padding="12,8">
+                                                            <Grid>
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="Auto"/>
+                                                                    <ColumnDefinition Width="*"/>
+                                                                </Grid.ColumnDefinitions>
+                                                                <TextBlock Grid.Column="0" 
+                                                                           Text="$" 
+                                                                           FontSize="14" 
+                                                                           Foreground="#6B7280" 
+                                                                           VerticalAlignment="Center" 
+                                                                           Margin="0,0,4,0"/>
+                                                                <TextBox Grid.Column="1" 
+                                                                         Text="{Binding PriceText, UpdateSourceTrigger=PropertyChanged}" 
+                                                                         FontSize="14" 
+                                                                         BorderThickness="0" 
+                                                                         Background="Transparent" 
+                                                                         VerticalAlignment="Center"
+                                                                         Tag="{Binding ProductKey}"/>
+                                                            </Grid>
+                                                        </Border>
+                                                    </StackPanel>
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <!-- Photobooth Mode Section -->
+                                <Border Background="White" CornerRadius="12" BorderBrush="#E5E7EB" BorderThickness="1" Padding="24" Margin="0,0,0,24">
+                                    <StackPanel>
+                                        <!-- Header -->
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,20">
+                                            <Border Width="36" Height="36" Background="#F3E8FF" CornerRadius="8" Margin="0,0,12,0">
+                                                <TextBlock Text="⚙️" FontSize="18" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Border>
+                                            <StackPanel>
+                                                <TextBlock Text="Photobooth Mode" FontSize="18" FontWeight="SemiBold" Foreground="#0F172A"/>
+                                                <TextBlock Text="Choose how customers pay for photos" FontSize="14" Foreground="#64748B"/>
+                                            </StackPanel>
+                                        </StackPanel>
+
+                                        <!-- Mode Selection -->
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="32"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <!-- Coin Operated Mode -->
+                                            <Border Name="ProductCoinOperatedCard" Grid.Column="0" Background="#F8FAFC" CornerRadius="8" BorderBrush="#3B82F6" BorderThickness="2" Padding="16" Cursor="Hand" MouseLeftButtonDown="ModeCard_Click">
+                                                <StackPanel>
+                                                    <Grid Margin="0,0,0,12">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <Border Grid.Column="0" Width="24" Height="24" Background="#DBEAFE" CornerRadius="12" Margin="0,0,8,0">
+                                                            <TextBlock Text="💰" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        </Border>
+                                                        <TextBlock Grid.Column="1" Text="Coin Operated" FontSize="14" FontWeight="SemiBold" Foreground="#374151" VerticalAlignment="Center"/>
+                                                        <RadioButton Name="ProductCoinOperatedRadio" Grid.Column="2" IsChecked="True" GroupName="ProductOperationMode" VerticalAlignment="Center"/>
+                                                    </Grid>
+                                                    <TextBlock Text="Customers must insert money to use the photobooth" FontSize="12" Foreground="#6B7280" TextWrapping="Wrap"/>
+                                                </StackPanel>
+                                            </Border>
+
+                                            <!-- Free Play Mode -->
+                                            <Border Name="ProductFreePlayCard" Grid.Column="2" Background="#F8FAFC" CornerRadius="8" BorderBrush="#E5E7EB" BorderThickness="1" Padding="16" Cursor="Hand" MouseLeftButtonDown="ModeCard_Click">
+                                                <StackPanel>
+                                                    <Grid Margin="0,0,0,12">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <Border Grid.Column="0" Width="24" Height="24" Background="#FEF3C7" CornerRadius="12" Margin="0,0,8,0">
+                                                            <TextBlock Text="🎉" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        </Border>
+                                                        <TextBlock Grid.Column="1" Text="Free Play Mode" FontSize="14" FontWeight="SemiBold" Foreground="#374151" VerticalAlignment="Center"/>
+                                                        <RadioButton Name="ProductFreePlayRadio" Grid.Column="2" GroupName="ProductOperationMode" VerticalAlignment="Center"/>
+                                                    </Grid>
+                                                    <TextBlock Text="Photos are free for customers (no payment required)" FontSize="12" Foreground="#6B7280" TextWrapping="Wrap"/>
+                                                </StackPanel>
+                                            </Border>
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Save Button -->
+                                <Border Background="#3B82F6" CornerRadius="8" HorizontalAlignment="Center" Padding="0" Margin="0">
+                                    <Button Name="SaveProductConfigButton" Background="Transparent" Foreground="White" FontSize="14" FontWeight="SemiBold" 
+                                            Height="48" BorderThickness="0" Cursor="Hand" Click="SaveProductConfig_Click" Padding="32,0">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="💾" FontSize="16" Margin="0,0,8,0"/>
+                                            <TextBlock Text="Save Configuration"/>
+                                        </StackPanel>
+                                    </Button>
+                                </Border>
+
+                            </StackPanel>
+                        </ScrollViewer>
                     </Grid>
 
                     <!-- Templates Tab Content -->

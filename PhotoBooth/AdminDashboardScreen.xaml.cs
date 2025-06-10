@@ -1,22 +1,139 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Globalization;
+using System.Windows.Controls.Primitives;
+using System.Windows.Data;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using Microsoft.Win32;
+using Photobooth.Controls;
 using Photobooth.Models;
 using Photobooth.Services;
-using Photobooth.Controls;
-using Microsoft.Win32;
-using System.IO;
-using System.Windows.Media.Imaging;
-using System.Threading.Tasks;
-using System.Windows.Media;
-using System.Windows.Input;
-using System.Windows.Data;
-using System.Windows.Controls.Primitives;
 
 namespace Photobooth
 {
+    /// <summary>
+    /// ViewModel for product configuration cards
+    /// </summary>
+    public class ProductViewModel : INotifyPropertyChanged
+    {
+        private bool _isEnabled;
+        private decimal _price;
+        private bool _hasUnsavedChanges;
+        private string? _validationError;
+
+        public string Name { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public string Icon { get; set; } = string.Empty;
+        public string IconBackground { get; set; } = string.Empty;
+        public string PriceLabel { get; set; } = string.Empty;
+        public string ProductKey { get; set; } = string.Empty; // Used for identification in events
+
+        public bool IsEnabled
+        {
+            get => _isEnabled;
+            set
+            {
+                if (_isEnabled != value)
+                {
+                    _isEnabled = value;
+                    _hasUnsavedChanges = true;
+                    OnPropertyChanged(nameof(IsEnabled));
+                    OnPropertyChanged(nameof(CardOpacity));
+                    OnPropertyChanged(nameof(PriceSectionEnabled));
+                }
+            }
+        }
+
+        public decimal Price
+        {
+            get => _price;
+            set
+            {
+                if (_price != value)
+                {
+                    _price = value;
+                    _hasUnsavedChanges = true;
+                    OnPropertyChanged(nameof(Price));
+                    OnPropertyChanged(nameof(PriceText));
+                }
+            }
+        }
+
+        public string PriceText
+        {
+            get => _price.ToString("F2", CultureInfo.InvariantCulture);
+            set
+            {
+                // Use specific NumberStyles to prevent comma interpretation as thousands separator
+                // Allow decimal point, leading sign, and whitespace, but not thousands separators
+                var allowedStyles = NumberStyles.AllowDecimalPoint | NumberStyles.AllowLeadingSign | 
+                                   NumberStyles.AllowLeadingWhite | NumberStyles.AllowTrailingWhite;
+                if (decimal.TryParse(value, allowedStyles, CultureInfo.InvariantCulture, out decimal newPrice))
+                {
+                    // Allow zero values for free products, but not negative values
+                    if (newPrice >= 0)
+                    {
+                        Price = newPrice;
+                        ValidationError = null; // Clear any previous validation error
+                    }
+                    else
+                    {
+                        ValidationError = "Price cannot be negative";
+                    }
+                }
+                else
+                {
+                    ValidationError = "Invalid price format. Please enter a valid number (e.g., 5.00)";
+                }
+            }
+        }
+
+        public double CardOpacity => _isEnabled ? 1.0 : 0.6;
+        public bool PriceSectionEnabled => _isEnabled;
+
+        public bool HasUnsavedChanges
+        {
+            get => _hasUnsavedChanges;
+            set
+            {
+                _hasUnsavedChanges = value;
+                OnPropertyChanged(nameof(HasUnsavedChanges));
+            }
+        }
+
+        public string? ValidationError
+        {
+            get => _validationError;
+            set
+            {
+                if (_validationError != value)
+                {
+                    _validationError = value;
+                    OnPropertyChanged(nameof(ValidationError));
+                    OnPropertyChanged(nameof(HasValidationError));
+                }
+            }
+        }
+
+        public bool HasValidationError => !string.IsNullOrEmpty(_validationError);
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        protected virtual void OnPropertyChanged(string propertyName)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+    }
+
     /// <summary>
     /// Admin dashboard screen with comprehensive management features
     /// Supports both Master and User access levels with appropriate restrictions
@@ -51,6 +168,14 @@ namespace Photobooth
         private string? _currentLogoPath = null;
         private string _currentOperationMode = "Coin"; // Default to Coin Operated
 
+        // Product management
+        private List<Product> _products = new();
+        private bool _isLoadingProducts = false;
+        private bool _hasUnsavedChanges = false;
+
+        // Product ViewModels for new templated approach
+        public ObservableCollection<ProductViewModel> ProductViewModels { get; set; } = new();
+
         #endregion
 
         #region Initialization
@@ -64,6 +189,7 @@ namespace Photobooth
             _databaseService = databaseService;
             InitializeTabMapping();
             InitializeSalesData();
+            InitializeProductViewModels();
         }
 
         /// <summary>
@@ -104,6 +230,113 @@ namespace Photobooth
             UpdatePrintStatus();
         }
 
+        /// <summary>
+        /// Initialize product view models for templated approach
+        /// </summary>
+        private void InitializeProductViewModels()
+        {
+            // Unsubscribe from existing view models before clearing to prevent memory leaks
+            UnsubscribeFromProductViewModels();
+            ProductViewModels.Clear();
+
+            // Photo Strips Product
+            var photoStrips = new ProductViewModel
+            {
+                Name = "Photo Strips",
+                Description = "Classic 4-photo strips with templates",
+                Icon = "📷",
+                IconBackground = "#DBEAFE",
+                PriceLabel = "Price per Strip",
+                ProductKey = "PhotoStrips",
+                IsEnabled = true,
+                Price = 5.00m
+            };
+
+            // 4x6 Photos Product
+            var photo4x6 = new ProductViewModel
+            {
+                Name = "4x6 Photos",
+                Description = "Single high-quality 4x6 prints",
+                Icon = "🖼️",
+                IconBackground = "#FEF3C7",
+                PriceLabel = "Price per Photo",
+                ProductKey = "Photo4x6",
+                IsEnabled = true,
+                Price = 3.00m
+            };
+
+            // Smartphone Print Product
+            var smartphonePrint = new ProductViewModel
+            {
+                Name = "Smartphone Print",
+                Description = "Print photos from customer phones",
+                Icon = "📱",
+                IconBackground = "#ECFDF5",
+                PriceLabel = "Price per Print",
+                ProductKey = "SmartphonePrint",
+                IsEnabled = true,
+                Price = 2.00m
+            };
+
+            ProductViewModels.Add(photoStrips);
+            ProductViewModels.Add(photo4x6);
+            ProductViewModels.Add(smartphonePrint);
+
+            // Subscribe to property change events for unsaved changes tracking
+            foreach (var product in ProductViewModels)
+            {
+                product.PropertyChanged += ProductViewModel_PropertyChanged;
+            }
+
+            // The ItemsSource will be set when the control is loaded
+            this.Loaded += AdminDashboardScreen_Loaded;
+            this.Unloaded += AdminDashboardScreen_Unloaded;
+        }
+
+        /// <summary>
+        /// Handle property changes in product view models
+        /// </summary>
+        private void ProductViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(ProductViewModel.IsEnabled) || e.PropertyName == nameof(ProductViewModel.Price))
+            {
+                _hasUnsavedChanges = true;
+                UpdateSaveButtonState();
+            }
+        }
+
+        /// <summary>
+        /// Unsubscribe from PropertyChanged events for all ProductViewModels to prevent memory leaks
+        /// </summary>
+        private void UnsubscribeFromProductViewModels()
+        {
+            foreach (var product in ProductViewModels)
+            {
+                product.PropertyChanged -= ProductViewModel_PropertyChanged;
+            }
+        }
+
+        /// <summary>
+        /// Handle the Loaded event to set up data binding
+        /// </summary>
+        private void AdminDashboardScreen_Loaded(object sender, RoutedEventArgs e)
+        {
+            // Set the ItemsSource for the product ItemsControl
+            if (ProductsItemsControl != null)
+            {
+                ProductsItemsControl.ItemsSource = ProductViewModels;
+            }
+        }
+
+        /// <summary>
+        /// Handle the Unloaded event to clean up event subscriptions and prevent memory leaks
+        /// </summary>
+        private void AdminDashboardScreen_Unloaded(object sender, RoutedEventArgs e)
+        {
+            // Unsubscribe from PropertyChanged events to prevent memory leaks
+            UnsubscribeFromProductViewModels();
+        }
+
         #endregion
 
         #region Public Methods
@@ -129,7 +362,6 @@ namespace Photobooth
             try
             {
                 await LoadSalesData();
-                await LoadHardwareStatus();
                 await LoadSupplyStatus();
             }
             catch (Exception ex)
@@ -195,63 +427,83 @@ namespace Photobooth
         /// <summary>
         /// Handle tab button clicks
         /// </summary>
-        private void TabButton_Click(object sender, RoutedEventArgs e)
+        private async void TabButton_Click(object sender, RoutedEventArgs e)
         {
-            // Reset all tab buttons
-            SalesTab.Tag = null;
-            SettingsTab.Tag = null;
-            ProductsTab.Tag = null;
-            TemplatesTab.Tag = null;
-            DiagnosticsTab.Tag = null;
-            SystemTab.Tag = null;
-            CreditsTab.Tag = null;
-
-            // Set clicked tab as active
-            if (sender is Button clickedTab)
+            try
             {
-                clickedTab.Tag = "Active";
+                // Reset all tab buttons
+                SalesTab.Tag = null;
+                SettingsTab.Tag = null;
+                ProductsTab.Tag = null;
+                TemplatesTab.Tag = null;
+                DiagnosticsTab.Tag = null;
+                SystemTab.Tag = null;
+                CreditsTab.Tag = null;
 
-                // Hide all tab contents
-                SalesTabContent.Visibility = Visibility.Collapsed;
-                SettingsTabContent.Visibility = Visibility.Collapsed;
-                ProductsTabContent.Visibility = Visibility.Collapsed;
-                TemplatesTabContent.Visibility = Visibility.Collapsed;
-                DiagnosticsTabContent.Visibility = Visibility.Collapsed;
-                SystemTabContent.Visibility = Visibility.Collapsed;
-                CreditsTabContent.Visibility = Visibility.Collapsed;
-
-                // Show selected tab content and update breadcrumb
-                switch (clickedTab.Name)
+                // Set clicked tab as active
+                if (sender is Button clickedTab)
                 {
-                    case "SalesTab":
-                        SalesTabContent.Visibility = Visibility.Visible;
-                        BreadcrumbText.Text = "Sales";
-                        RefreshSalesData();
-                        break;
-                    case "SettingsTab":
-                        SettingsTabContent.Visibility = Visibility.Visible;
-                        BreadcrumbText.Text = "Settings";
-                        break;
-                    case "ProductsTab":
-                        ProductsTabContent.Visibility = Visibility.Visible;
-                        BreadcrumbText.Text = "Products";
-                        break;
-                    case "TemplatesTab":
-                        TemplatesTabContent.Visibility = Visibility.Visible;
-                        BreadcrumbText.Text = "Templates";
-                        break;
-                    case "DiagnosticsTab":
-                        DiagnosticsTabContent.Visibility = Visibility.Visible;
-                        BreadcrumbText.Text = "Diagnostics";
-                        break;
-                    case "SystemTab":
-                        SystemTabContent.Visibility = Visibility.Visible;
-                        BreadcrumbText.Text = "System";
-                        break;
-                    case "CreditsTab":
-                        CreditsTabContent.Visibility = Visibility.Visible;
-                        BreadcrumbText.Text = "Credits";
-                        break;
+                    clickedTab.Tag = "Active";
+
+                    // Hide all tab contents
+                    SalesTabContent.Visibility = Visibility.Collapsed;
+                    SettingsTabContent.Visibility = Visibility.Collapsed;
+                    ProductsTabContent.Visibility = Visibility.Collapsed;
+                    TemplatesTabContent.Visibility = Visibility.Collapsed;
+                    DiagnosticsTabContent.Visibility = Visibility.Collapsed;
+                    SystemTabContent.Visibility = Visibility.Collapsed;
+                    CreditsTabContent.Visibility = Visibility.Collapsed;
+
+                    // Show selected tab content and update breadcrumb
+                    switch (clickedTab.Name)
+                    {
+                        case "SalesTab":
+                            SalesTabContent.Visibility = Visibility.Visible;
+                            BreadcrumbText.Text = "Sales";
+                            RefreshSalesData();
+                            break;
+                        case "SettingsTab":
+                            SettingsTabContent.Visibility = Visibility.Visible;
+                            BreadcrumbText.Text = "Settings";
+                            break;
+                        case "ProductsTab":
+                            ProductsTabContent.Visibility = Visibility.Visible;
+                            BreadcrumbText.Text = "Products";
+                            await LoadProductsData();
+                            break;
+                        case "TemplatesTab":
+                            TemplatesTabContent.Visibility = Visibility.Visible;
+                            BreadcrumbText.Text = "Templates";
+                            break;
+                        case "DiagnosticsTab":
+                            DiagnosticsTabContent.Visibility = Visibility.Visible;
+                            BreadcrumbText.Text = "Diagnostics";
+                            break;
+                        case "SystemTab":
+                            SystemTabContent.Visibility = Visibility.Visible;
+                            BreadcrumbText.Text = "System";
+                            break;
+                        case "CreditsTab":
+                            CreditsTabContent.Visibility = Visibility.Visible;
+                            BreadcrumbText.Text = "Credits";
+                            break;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // Log the error for debugging
+                Console.WriteLine($"TabButton_Click error: {ex}");
+                
+                // Show user-friendly error message
+                try
+                {
+                    NotificationService.Quick.Error("Failed to switch tabs. Please try again.");
+                }
+                catch
+                {
+                    // Fallback if notification service fails
+                    System.Diagnostics.Debug.WriteLine($"Critical error in TabButton_Click: {ex}");
                 }
             }
         }
@@ -347,7 +599,7 @@ namespace Photobooth
                 await SaveBusinessInformation();
 
                 // Save Pricing Settings
-                await SavePricingSettings();
+                await SaveOperationModeSettings();
 
                 // Save System Preferences
                 await SaveSystemPreferences();
@@ -446,49 +698,23 @@ namespace Photobooth
         }
 
         /// <summary>
-        /// Save pricing settings to database
+        /// Save operation mode settings to database (products now managed in Products tab)
         /// </summary>
-        private async Task SavePricingSettings()
+        private async Task SaveOperationModeSettings()
         {
             try
             {
-                Console.WriteLine($"SavePricingSettings: _currentUserId = '{_currentUserId}'");
+                Console.WriteLine($"SaveOperationModeSettings: _currentUserId = '{_currentUserId}'");
                 
-                // Get values from UI elements
-                var stripPrice = decimal.TryParse(StripPriceTextBox?.Text, out var sp) ? sp : 3.00m;
-                var photo4x6Price = decimal.TryParse(Photo4x6PriceTextBox?.Text, out var p4) ? p4 : 5.00m;
-                var phonePrintsPrice = decimal.TryParse(PhonePrintsPriceTextBox?.Text, out var pp) ? pp : 2.00m;
-                
-                Console.WriteLine($"SavePricingSettings: Prices - Strip: {stripPrice}, 4x6: {photo4x6Price}, Phone: {phonePrintsPrice}");
-                
-                // Save pricing settings
-                var result1 = await _databaseService.SetSettingValueAsync("Pricing", "StripPrice", stripPrice, _currentUserId);
-                Console.WriteLine($"StripPrice save result: Success={result1.Success}, Error='{result1.ErrorMessage}'");
-                
-                var result2 = await _databaseService.SetSettingValueAsync("Pricing", "Photo4x6Price", photo4x6Price, _currentUserId);
-                Console.WriteLine($"Photo4x6Price save result: Success={result2.Success}, Error='{result2.ErrorMessage}'");
-                
-                var result3 = await _databaseService.SetSettingValueAsync("Pricing", "SmartphonePrice", phonePrintsPrice, _currentUserId);
-                Console.WriteLine($"SmartphonePrice save result: Success={result3.Success}, Error='{result3.ErrorMessage}'");
-                
-                // Save product enabled states
-                var result4 = await _databaseService.SetSettingValueAsync("Products", "StripEnabled", StripEnabledToggle?.IsChecked == true, _currentUserId);
-                Console.WriteLine($"StripEnabled save result: Success={result4.Success}, Error='{result4.ErrorMessage}'");
-                
-                var result5 = await _databaseService.SetSettingValueAsync("Products", "Photo4x6Enabled", Photo4x6EnabledToggle?.IsChecked == true, _currentUserId);
-                Console.WriteLine($"Photo4x6Enabled save result: Success={result5.Success}, Error='{result5.ErrorMessage}'");
-                
-                var result6 = await _databaseService.SetSettingValueAsync("Products", "PhonePrintsEnabled", PhonePrintsEnabledToggle?.IsChecked == true, _currentUserId);
-                Console.WriteLine($"PhonePrintsEnabled save result: Success={result6.Success}, Error='{result6.ErrorMessage}'");
-                
-                // Save operation mode (Coin vs Free)
-                var result7 = await _databaseService.SetSettingValueAsync("System", "Mode", _currentOperationMode, _currentUserId);
-                Console.WriteLine($"Mode save result: Success={result7.Success}, Error='{result7.ErrorMessage}'");
+                // NOTE: Product pricing and enabled states are now managed in the Products tab
+                // Only save operation mode here (Coin vs Free) - this is system-wide setting
+                var result = await _databaseService.SetSettingValueAsync("System", "Mode", _currentOperationMode, _currentUserId);
+                Console.WriteLine($"Mode save result: Success={result.Success}, Error='{result.ErrorMessage}'");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"SavePricingSettings error: {ex}");
-                throw new Exception($"Failed to save pricing settings: {ex.Message}");
+                Console.WriteLine($"SaveOperationModeSettings error: {ex}");
+                throw new Exception($"Failed to save operation mode settings: {ex.Message}");
             }
         }
 
@@ -624,61 +850,6 @@ namespace Photobooth
                 {
                     NotificationService.Quick.Error($"Failed to upload logo: {ex.Message}");
                 }
-            }
-        }
-
-        /// <summary>
-        /// Handle coin operated mode selection
-        /// </summary>
-        private void CoinOperatedBorder_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
-        {
-            SetOperationMode("Coin");
-        }
-
-        /// <summary>
-        /// Handle free play mode selection
-        /// </summary>
-        private void FreePlayBorder_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
-        {
-            SetOperationMode("Free");
-        }
-
-        /// <summary>
-        /// Update the operation mode selection UI
-        /// </summary>
-        private void SetOperationMode(string mode)
-        {
-            _currentOperationMode = mode;
-
-            if (mode == "Coin")
-            {
-                // Update Coin Operated to selected state
-                CoinOperatedBorder.BorderBrush = new System.Windows.Media.SolidColorBrush(
-                    (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#3B82F6"));
-                CoinOperatedRadio.Background = new System.Windows.Media.SolidColorBrush(
-                    (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#3B82F6"));
-
-                // Update Free Play to unselected state
-                FreePlayBorder.BorderBrush = new System.Windows.Media.SolidColorBrush(
-                    (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#D1D5DB"));
-                FreePlayRadio.Background = System.Windows.Media.Brushes.Transparent;
-
-                CurrentModeText.Text = "Coin Operated";
-            }
-            else // Free
-            {
-                // Update Free Play to selected state
-                FreePlayBorder.BorderBrush = new System.Windows.Media.SolidColorBrush(
-                    (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#3B82F6"));
-                FreePlayRadio.Background = new System.Windows.Media.SolidColorBrush(
-                    (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#3B82F6"));
-
-                // Update Coin Operated to unselected state
-                CoinOperatedBorder.BorderBrush = new System.Windows.Media.SolidColorBrush(
-                    (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#D1D5DB"));
-                CoinOperatedRadio.Background = System.Windows.Media.Brushes.Transparent;
-
-                CurrentModeText.Text = "Free Mode";
             }
         }
 
@@ -1392,52 +1563,6 @@ namespace Photobooth
             return 0;
         }
 
-        private async System.Threading.Tasks.Task LoadHardwareStatus()
-        {
-            try
-            {
-                var statusResult = await _databaseService.GetHardwareStatusAsync();
-                if (statusResult.Success && statusResult.Data != null)
-                {
-                    foreach (var status in statusResult.Data)
-                    {
-                        UpdateHardwareStatusIndicator(status);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error loading hardware status: {ex.Message}");
-            }
-        }
-
-        private void UpdateHardwareStatusIndicator(HardwareStatusDto status)
-        {
-            var color = status.Status switch
-            {
-                Models.HardwareStatus.Online => "#10B981",  // Green
-                Models.HardwareStatus.Offline => "#EF4444", // Red
-                Models.HardwareStatus.Error => "#F59E0B",   // Orange
-                _ => "#64748B" // Gray
-            };
-
-            var brush = new System.Windows.Media.SolidColorBrush(
-                (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(color));
-
-            switch (status.ComponentName.ToLower())
-            {
-                case "camera":
-                    CameraStatusDot.Fill = brush;
-                    break;
-                case "printer":
-                    PrinterStatusDot.Fill = brush;
-                    break;
-                case "arduino":
-                    ArduinoStatusDot.Fill = brush;
-                    break;
-            }
-        }
-
         private async System.Threading.Tasks.Task LoadSupplyStatus()
         {
             try
@@ -1545,12 +1670,12 @@ namespace Photobooth
         private async System.Threading.Tasks.Task LoadInitialData()
         {
             await LoadSalesData();
-            await LoadHardwareStatus();
             await LoadSupplyStatus();
             await LoadSystemSettings();
             await LoadBusinessInformation();
-            await LoadPricingSettings();
+            await LoadOperationModeFromSettings();
             await LoadSystemPreferences();
+            await LoadProductsData(); // Load the products data for Products tab
             await LoadUsersList(); // Load the users list
         }
 
@@ -1616,62 +1741,18 @@ namespace Photobooth
             }
             
             // Also initialize operation mode UI
-            SetOperationMode(_currentOperationMode);
         }
 
-        private async System.Threading.Tasks.Task LoadPricingSettings()
+        private async System.Threading.Tasks.Task LoadOperationModeFromSettings()
         {
             try
             {
-                // Load pricing values
-#pragma warning disable CS0472 // The result of the expression is always 'true'
-                var stripPriceResult = await _databaseService.GetSettingValueAsync<decimal>("Pricing", "StripPrice");
-                if (stripPriceResult.Success && stripPriceResult.Data != null)
-                {
-                    if (StripPriceTextBox != null)
-                        StripPriceTextBox.Text = stripPriceResult.Data.ToString();
-                }
-
-                var photo4x6PriceResult = await _databaseService.GetSettingValueAsync<decimal>("Pricing", "Photo4x6Price");
-                if (photo4x6PriceResult.Success && photo4x6PriceResult.Data != null)
-                {
-                    if (Photo4x6PriceTextBox != null)
-                        Photo4x6PriceTextBox.Text = photo4x6PriceResult.Data.ToString();
-                }
-
-                var phonePriceResult = await _databaseService.GetSettingValueAsync<decimal>("Pricing", "SmartphonePrice");
-                if (phonePriceResult.Success && phonePriceResult.Data != null)
-                {
-                    if (PhonePrintsPriceTextBox != null)
-                        PhonePrintsPriceTextBox.Text = phonePriceResult.Data.ToString();
-                }
-
-                // Load product enabled states
-                var stripEnabledResult = await _databaseService.GetSettingValueAsync<bool>("Products", "StripEnabled");
-                if (stripEnabledResult.Success && stripEnabledResult.Data != null)
-                {
-                    if (StripEnabledToggle != null)
-                        StripEnabledToggle.IsChecked = stripEnabledResult.Data;
-                }
-
-                var photo4x6EnabledResult = await _databaseService.GetSettingValueAsync<bool>("Products", "Photo4x6Enabled");
-                if (photo4x6EnabledResult.Success && photo4x6EnabledResult.Data != null)
-                {
-                    if (Photo4x6EnabledToggle != null)
-                        Photo4x6EnabledToggle.IsChecked = photo4x6EnabledResult.Data;
-                }
-
-                var phonePrintsEnabledResult = await _databaseService.GetSettingValueAsync<bool>("Products", "PhonePrintsEnabled");
-                if (phonePrintsEnabledResult.Success && phonePrintsEnabledResult.Data != null)
-                {
-                    if (PhonePrintsEnabledToggle != null)
-                        PhonePrintsEnabledToggle.IsChecked = phonePrintsEnabledResult.Data;
-                }
-#pragma warning restore CS0472
+                // Load operation mode only (products are now managed in Products tab)
+                await LoadOperationMode();
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error loading pricing settings: {ex.Message}");
+                Console.WriteLine($"Error loading operation mode settings: {ex.Message}");
             }
         }
 
@@ -1725,6 +1806,450 @@ namespace Photobooth
             catch (Exception ex)
             {
                 Console.WriteLine($"Error loading system preferences: {ex.Message}");
+            }
+        }
+
+        #endregion
+
+        #region Product Management
+
+        /// <summary>
+        /// Load products data from database and update UI
+        /// </summary>
+        private async Task LoadProductsData()
+        {
+            if (_isLoadingProducts) return;
+            _isLoadingProducts = true;
+
+            try
+            {
+                Console.WriteLine("LoadProductsData: Starting to load products from database...");
+                var result = await _databaseService.GetProductsAsync();
+                if (result.Success && result.Data != null)
+                {
+                    _products = result.Data;
+                    Console.WriteLine($"LoadProductsData: Loaded {_products.Count} products successfully");
+                    foreach (var product in _products)
+                    {
+                        Console.WriteLine($"LoadProductsData: Product - ID: {product.Id}, Name: {product.Name}, Price: {product.Price}, Active: {product.IsActive}");
+                    }
+                    UpdateProductsUI();
+                }
+                else
+                {
+                    Console.WriteLine($"LoadProductsData: Failed to load products: {result.ErrorMessage}");
+                }
+
+                // Load operation mode
+                await LoadOperationMode();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"LoadProductsData: Error loading products: {ex.Message}");
+            }
+            finally
+            {
+                _isLoadingProducts = false;
+            }
+        }
+
+        /// <summary>
+        /// Update UI with current product data
+        /// </summary>
+        private void UpdateProductsUI()
+        {
+            try
+            {
+                // Find products by ProductType enum (robust and future-proof)
+                var photoStrips = _products.FirstOrDefault(p => p.ProductType == ProductType.PhotoStrips);
+                var photo4x6 = _products.FirstOrDefault(p => p.ProductType == ProductType.Photo4x6);
+                var smartphonePrint = _products.FirstOrDefault(p => p.ProductType == ProductType.SmartphonePrint);
+
+                // Update ViewModels with database data
+                var photoStripsVM = ProductViewModels.FirstOrDefault(vm => vm.ProductKey == "PhotoStrips");
+                if (photoStripsVM != null && photoStrips != null)
+                {
+                    photoStripsVM.IsEnabled = photoStrips.IsActive;
+                    photoStripsVM.Price = photoStrips.Price;
+                    photoStripsVM.HasUnsavedChanges = false;
+                }
+
+                var photo4x6VM = ProductViewModels.FirstOrDefault(vm => vm.ProductKey == "Photo4x6");
+                if (photo4x6VM != null && photo4x6 != null)
+                {
+                    photo4x6VM.IsEnabled = photo4x6.IsActive;
+                    photo4x6VM.Price = photo4x6.Price;
+                    photo4x6VM.HasUnsavedChanges = false;
+                }
+
+                var smartphonePrintVM = ProductViewModels.FirstOrDefault(vm => vm.ProductKey == "SmartphonePrint");
+                if (smartphonePrintVM != null && smartphonePrint != null)
+                {
+                    smartphonePrintVM.IsEnabled = smartphonePrint.IsActive;
+                    smartphonePrintVM.Price = smartphonePrint.Price;
+                    smartphonePrintVM.HasUnsavedChanges = false;
+                }
+
+                _hasUnsavedChanges = false;
+                UpdateSaveButtonState();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error updating products UI: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Update visual state of product card based on enabled status (Legacy method - no longer needed with ViewModels)
+        /// </summary>
+        [Obsolete("This method is no longer needed as visual state is handled by data binding in the ViewModels")]
+        private void UpdateProductCardVisualState(Border card, StackPanel priceSection, bool isEnabled)
+        {
+            // This method is obsolete - visual states are now handled by ViewModel property binding
+        }
+
+        /// <summary>
+        /// Load operation mode from settings
+        /// </summary>
+        private async Task LoadOperationMode()
+        {
+            try
+            {
+                var result = await _databaseService.GetSettingValueAsync<string>("System", "Mode");
+                if (result.Success && !string.IsNullOrEmpty(result.Data))
+                {
+                    _currentOperationMode = result.Data;
+                    UpdateOperationModeUI();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error loading operation mode: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Update operation mode UI
+        /// </summary>
+        private void UpdateOperationModeUI()
+        {
+            try
+            {
+                if (_currentOperationMode == "Free")
+                {
+                    ProductCoinOperatedRadio.IsChecked = false;
+                    ProductFreePlayRadio.IsChecked = true;
+                    UpdateModeCardStyles(false);
+                }
+                else
+                {
+                    ProductCoinOperatedRadio.IsChecked = true;
+                    ProductFreePlayRadio.IsChecked = false;
+                    UpdateModeCardStyles(true);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error updating operation mode UI: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Update mode card visual styles
+        /// </summary>
+        private void UpdateModeCardStyles(bool isCoinOperated)
+        {
+            try
+            {
+                if (isCoinOperated)
+                {
+                    ProductCoinOperatedCard.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#3B82F6"));
+                    ProductCoinOperatedCard.BorderThickness = new Thickness(2);
+                    ProductFreePlayCard.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E5E7EB"));
+                    ProductFreePlayCard.BorderThickness = new Thickness(1);
+                }
+                else
+                {
+                    ProductFreePlayCard.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#3B82F6"));
+                    ProductFreePlayCard.BorderThickness = new Thickness(2);
+                    ProductCoinOperatedCard.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E5E7EB"));
+                    ProductCoinOperatedCard.BorderThickness = new Thickness(1);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error updating mode card styles: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Handle product toggle changes (Legacy method - ViewModels now handle changes automatically)
+        /// </summary>
+        [Obsolete("This method is no longer needed as changes are handled by ViewModel property binding")]
+        private void ProductToggle_Click(object sender, RoutedEventArgs e)
+        {
+            // This method is obsolete - toggle changes are now handled by ViewModel data binding
+            // The ProductViewModel_PropertyChanged method handles unsaved changes tracking
+        }
+
+        /// <summary>
+        /// Handle product price text changes (Legacy method - ViewModels now handle changes automatically)
+        /// </summary>
+        [Obsolete("This method is no longer needed as changes are handled by ViewModel property binding")]
+        private void ProductPrice_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            // This method is obsolete - price changes are now handled by ViewModel data binding
+            // The ProductViewModel_PropertyChanged method handles unsaved changes tracking
+        }
+
+        /// <summary>
+        /// Handle mode card clicks
+        /// </summary>
+        private void ModeCard_Click(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is Border card)
+            {
+                if (card.Name == "ProductCoinOperatedCard")
+                {
+                    ProductCoinOperatedRadio.IsChecked = true;
+                    ProductFreePlayRadio.IsChecked = false;
+                    _currentOperationMode = "Coin";
+                    UpdateModeCardStyles(true);
+                }
+                else if (card.Name == "ProductFreePlayCard")
+                {
+                    ProductFreePlayRadio.IsChecked = true;
+                    ProductCoinOperatedRadio.IsChecked = false;
+                    _currentOperationMode = "Free";
+                    UpdateModeCardStyles(false);
+                }
+
+                _hasUnsavedChanges = true;
+                UpdateSaveButtonState();
+            }
+        }
+
+        /// <summary>
+        /// Update save button state based on changes
+        /// </summary>
+        private void UpdateSaveButtonState()
+        {
+            try
+            {
+                // Only update if the save button exists (we're in the Products tab)
+                if (SaveProductConfigButton == null)
+                    return;
+
+                if (_hasUnsavedChanges)
+                {
+                    SaveProductConfigButton.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#059669")); // Green
+                    SaveProductConfigButton.Content = new StackPanel
+                    {
+                        Orientation = Orientation.Horizontal,
+                        Children =
+                        {
+                            new TextBlock { Text = "💾", FontSize = 16, Margin = new Thickness(0, 0, 8, 0) },
+                            new TextBlock { Text = "Save Changes" }
+                        }
+                    };
+                }
+                else
+                {
+                    SaveProductConfigButton.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#3B82F6")); // Blue
+                    SaveProductConfigButton.Content = new StackPanel
+                    {
+                        Orientation = Orientation.Horizontal,
+                        Children =
+                        {
+                            new TextBlock { Text = "💾", FontSize = 16, Margin = new Thickness(0, 0, 8, 0) },
+                            new TextBlock { Text = "Save Configuration" }
+                        }
+                    };
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error updating save button state: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Save product configuration
+        /// </summary>
+        private async void SaveProductConfig_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                SaveProductConfigButton.IsEnabled = false;
+                SaveProductConfigButton.Content = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Children =
+                    {
+                        new TextBlock { Text = "⏳", FontSize = 16, Margin = new Thickness(0, 0, 8, 0) },
+                        new TextBlock { Text = "Saving..." }
+                    }
+                };
+
+                await SaveProductConfiguration();
+                
+                _hasUnsavedChanges = false;
+                UpdateSaveButtonState();
+
+                // Show success feedback
+                SaveProductConfigButton.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#059669"));
+                SaveProductConfigButton.Content = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Children =
+                    {
+                        new TextBlock { Text = "✅", FontSize = 16, Margin = new Thickness(0, 0, 8, 0) },
+                        new TextBlock { Text = "Saved!" }
+                    }
+                };
+
+                // Reset after 2 seconds
+                await Task.Delay(2000);
+                UpdateSaveButtonState();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error saving product configuration: {ex.Message}");
+                
+                // Show error feedback
+                SaveProductConfigButton.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#DC2626"));
+                SaveProductConfigButton.Content = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Children =
+                    {
+                        new TextBlock { Text = "❌", FontSize = 16, Margin = new Thickness(0, 0, 8, 0) },
+                        new TextBlock { Text = "Error saving" }
+                    }
+                };
+
+                await Task.Delay(2000);
+                UpdateSaveButtonState();
+            }
+            finally
+            {
+                SaveProductConfigButton.IsEnabled = true;
+            }
+        }
+
+        /// <summary>
+        /// Save product configuration to database
+        /// </summary>
+        private async Task SaveProductConfiguration()
+        {
+            try
+            {
+                // Check for validation errors before saving
+                var validationErrors = ProductViewModels.Where(vm => vm.HasValidationError).ToList();
+                if (validationErrors.Count > 0)
+                {
+                    // Create detailed error message listing each product and its specific error
+                    var errorDetails = new List<string>();
+                    errorDetails.Add($"Cannot save: {validationErrors.Count} product(s) have validation errors:");
+                    errorDetails.Add(""); // Empty line for readability
+                    
+                    foreach (var errorViewModel in validationErrors)
+                    {
+                        errorDetails.Add($"• {errorViewModel.Name}: {errorViewModel.ValidationError}");
+                    }
+                    
+                    errorDetails.Add(""); // Empty line for readability
+                    errorDetails.Add("Please fix these errors and try again.");
+                    
+                    var detailedErrorMessage = string.Join(Environment.NewLine, errorDetails);
+                    Console.WriteLine($"SaveProductConfiguration: Validation errors found:{Environment.NewLine}{detailedErrorMessage}");
+                    throw new InvalidOperationException(detailedErrorMessage);
+                }
+
+                Console.WriteLine($"SaveProductConfiguration: Starting save. Products count: {_products.Count}");
+                
+                // Update products in database using ViewModels
+                foreach (var product in _products)
+                {
+                    Console.WriteLine($"SaveProductConfiguration: Processing product: {product.Name} (ID: {product.Id})");
+                    
+                    bool newStatus = false;
+                    decimal newPrice = 0;
+
+                    // Find corresponding ViewModel using ProductType enum
+                    ProductViewModel? viewModel = null;
+                    switch (product.ProductType)
+                    {
+                        case ProductType.PhotoStrips:
+                            viewModel = ProductViewModels.FirstOrDefault(vm => vm.ProductKey == "PhotoStrips");
+                            break;
+                        case ProductType.Photo4x6:
+                            viewModel = ProductViewModels.FirstOrDefault(vm => vm.ProductKey == "Photo4x6");
+                            break;
+                        case ProductType.SmartphonePrint:
+                            viewModel = ProductViewModels.FirstOrDefault(vm => vm.ProductKey == "SmartphonePrint");
+                            break;
+                    }
+
+                    if (viewModel != null)
+                    {
+                        newStatus = viewModel.IsEnabled;
+                        newPrice = viewModel.Price;
+                        Console.WriteLine($"SaveProductConfiguration: {product.Name} - Status: {newStatus}, Price: {newPrice}");
+
+                        // Check what needs to be updated
+                        bool statusChanged = product.IsActive != newStatus;
+                        bool priceChanged = product.Price != newPrice && newPrice >= 0;
+                        
+                        if (statusChanged || priceChanged)
+                        {
+                            // Collect all changes for atomic update
+                            bool? statusUpdate = statusChanged ? newStatus : null;
+                            decimal? priceUpdate = priceChanged ? newPrice : null;
+                            
+                            Console.WriteLine($"SaveProductConfiguration: Updating product {product.Name} atomically - " +
+                                            $"Status: {(statusChanged ? $"{product.IsActive} → {newStatus}" : "unchanged")}, " +
+                                            $"Price: {(priceChanged ? $"${product.Price:F2} → ${newPrice:F2}" : "unchanged")}");
+                            
+                            // Perform atomic update
+                            var updateResult = await _databaseService.UpdateProductAsync(product.Id, statusUpdate, priceUpdate);
+                            
+                            if (!updateResult.Success)
+                            {
+                                throw new InvalidOperationException($"Failed to update product {product.Name}: {updateResult.ErrorMessage}");
+                            }
+                            
+                            // Update local product model only after successful database update
+                            if (statusChanged)
+                            {
+                                product.IsActive = newStatus;
+                            }
+                            if (priceChanged)
+                            {
+                                product.Price = newPrice;
+                            }
+                            
+                            Console.WriteLine($"SaveProductConfiguration: Product {product.Name} updated successfully");
+                        }
+                        else
+                        {
+                            Console.WriteLine($"SaveProductConfiguration: No changes detected for product {product.Name}");
+                        }
+
+                        // Mark ViewModel as saved
+                        viewModel.HasUnsavedChanges = false;
+                    }
+                }
+
+                // Save operation mode
+                await _databaseService.SetSettingValueAsync("System", "Mode", _currentOperationMode, _currentUserId);
+
+                Console.WriteLine("Product configuration saved successfully");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error saving product configuration: {ex.Message}");
+                throw;
             }
         }
 

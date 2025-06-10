@@ -22,17 +22,14 @@ namespace Photobooth
         private TemplateSelectionScreen? templateSelectionScreen;
         private AdminLoginScreen? adminLoginScreen;
         private AdminDashboardScreen? adminDashboardScreen;
+        private ForcedPasswordChangeScreen? forcedPasswordChangeScreen;
 
         // Current state tracking
         private ProductInfo? currentProduct;
         private TemplateInfo? currentTemplate;
         private AdminAccessLevel currentAdminAccess = AdminAccessLevel.None;
 
-        // Admin access detection (5-tap sequence)
-        private int adminTapCount = 0;
-        private const int ADMIN_TAP_SEQUENCE_COUNT = 5;
-        private const double ADMIN_TAP_TIME_WINDOW = 3.0; // seconds
-        private DispatcherTimer? adminTapTimer;
+
 
         // Database service
         private readonly IDatabaseService _databaseService;
@@ -46,7 +43,20 @@ namespace Photobooth
         /// </summary>
         public MainWindow()
         {
-            Console.WriteLine("MainWindow: Constructor called - Debug console is working!");
+            // Initialize logging system first
+            try
+            {
+                LoggingService.Initialize();
+                LoggingService.Application.Information("PhotoBoothX starting up",
+                    ("Version", System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "Unknown"),
+                    ("Platform", Environment.OSVersion.ToString()),
+                    ("MachineName", Environment.MachineName));
+            }
+            catch (Exception ex)
+            {
+                // Fallback to debug output if logging fails to initialize
+                System.Diagnostics.Debug.WriteLine($"Failed to initialize logging: {ex.Message}");
+            }
             
             // Initialize database service
             _databaseService = new DatabaseService();
@@ -56,22 +66,12 @@ namespace Photobooth
             // Initialize notification service with the notification container
             NotificationService.Instance.Initialize(NotificationContainer);
             
-            InitializeAdminTapDetection();
+
             InitializeDatabaseAsync();
             InitializeApplication();
         }
 
-        /// <summary>
-        /// Initialize the admin tap detection system
-        /// </summary>
-        private void InitializeAdminTapDetection()
-        {
-            adminTapTimer = new DispatcherTimer
-            {
-                Interval = TimeSpan.FromSeconds(ADMIN_TAP_TIME_WINDOW)
-            };
-            adminTapTimer.Tick += AdminTapTimer_Tick;
-        }
+
 
         /// <summary>
         /// Initialize the database asynchronously
@@ -80,20 +80,23 @@ namespace Photobooth
         {
             try
             {
-                Console.WriteLine("MainWindow: Starting database initialization...");
+                LoggingService.Application.Information("Database initialization starting",
+                    ("ConnectionString", "Data Source=[PATH]"));
+                
                 var result = await _databaseService.InitializeAsync();
                 if (!result.Success)
                 {
-                    Console.WriteLine($"Database initialization failed: {result.ErrorMessage}");
+                    LoggingService.Application.Error("Database initialization failed", null,
+                        ("ErrorMessage", result.ErrorMessage ?? "Unknown error"));
                 }
                 else
                 {
-                    Console.WriteLine("MainWindow: Database initialization completed successfully");
+                    LoggingService.Application.Information("Database initialization completed successfully");
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Database initialization error: {ex.Message}");
+                LoggingService.Application.Error("Database initialization error", ex);
             }
         }
 
@@ -118,11 +121,15 @@ namespace Photobooth
         {
             try
             {
+                LoggingService.Application.Information("Navigating to welcome screen");
+                
                 if (welcomeScreen == null)
                 {
                     welcomeScreen = new WelcomeScreen();
                     // Subscribe to the welcome screen's navigation event
                     welcomeScreen.StartButtonClicked += WelcomeScreen_StartButtonClicked;
+                    welcomeScreen.AdminAccessRequested += WelcomeScreen_AdminAccessRequested;
+                    LoggingService.Application.Debug("Welcome screen initialized and event handlers attached");
                 }
 
                 CurrentScreenContainer.Content = welcomeScreen;
@@ -131,9 +138,12 @@ namespace Photobooth
                 currentProduct = null;
                 currentTemplate = null;
                 currentAdminAccess = AdminAccessLevel.None;
+                
+                LoggingService.Application.Information("Welcome screen loaded successfully");
             }
             catch (Exception ex)
             {
+                LoggingService.Application.Error("Navigation to welcome screen failed", ex);
                 System.Diagnostics.Debug.WriteLine($"Navigation to welcome failed: {ex.Message}");
             }
         }
@@ -176,7 +186,6 @@ namespace Photobooth
                     // Subscribe to template selection events
                     templateSelectionScreen.BackButtonClicked += TemplateSelectionScreen_BackButtonClicked;
                     templateSelectionScreen.TemplateSelected += TemplateSelectionScreen_TemplateSelected;
-                    templateSelectionScreen.AdminAccessRequested += TemplateSelectionScreen_AdminAccessRequested;
                 }
 
                 // Set the product type for template filtering
@@ -249,6 +258,46 @@ namespace Photobooth
         }
 
         /// <summary>
+        /// Navigates to the forced password change screen for setup credentials
+        /// </summary>
+        public System.Threading.Tasks.Task NavigateToForcedPasswordChange(AdminUser user, AdminAccessLevel accessLevel)
+        {
+            try
+            {
+                // Unsubscribe from existing instance to prevent memory leaks
+                if (forcedPasswordChangeScreen != null)
+                {
+                    forcedPasswordChangeScreen.PasswordChangeCompleted -= ForcedPasswordChangeScreen_PasswordChangeCompleted;
+                }
+
+                // Create new instance each time to ensure clean state
+                forcedPasswordChangeScreen = new ForcedPasswordChangeScreen(user, accessLevel, _databaseService);
+                
+                // Subscribe to password change events
+                forcedPasswordChangeScreen.PasswordChangeCompleted += ForcedPasswordChangeScreen_PasswordChangeCompleted;
+
+                CurrentScreenContainer.Content = forcedPasswordChangeScreen;
+                
+                LoggingService.Application.Information("Forced password change screen loaded",
+                    ("UserId", user.UserId),
+                    ("Username", user.Username),
+                    ("AccessLevel", accessLevel.ToString()));
+                
+                return System.Threading.Tasks.Task.CompletedTask;
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Navigation to forced password change failed", ex,
+                    ("UserId", user.UserId),
+                    ("Username", user.Username));
+                System.Diagnostics.Debug.WriteLine($"Navigation to forced password change failed: {ex.Message}");
+                // Fallback to welcome screen
+                NavigateToWelcome();
+                return System.Threading.Tasks.Task.CompletedTask;
+            }
+        }
+
+        /// <summary>
         /// Navigate to admin dashboard with specified access level
         /// Called after successful admin login
         /// </summary>
@@ -298,11 +347,38 @@ namespace Photobooth
         {
             try
             {
+                LoggingService.Application.Information("User clicked 'Touch to Start' button");
+                LoggingService.Transaction.Information("USER_INTERACTION", "Customer session started",
+                    ("Action", "TouchToStart"),
+                    ("Timestamp", DateTime.Now));
                 NavigateToProductSelection();
             }
             catch (Exception ex)
             {
+                LoggingService.Application.Error("Welcome start navigation failed", ex);
                 System.Diagnostics.Debug.WriteLine($"Welcome start navigation failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Handles admin access request from welcome screen
+        /// This is triggered by the 5-tap sequence on the welcome screen
+        /// </summary>
+        private void WelcomeScreen_AdminAccessRequested(object? sender, EventArgs e)
+        {
+            try
+            {
+                LoggingService.Application.Warning("Admin access sequence detected - 5-tap completed");
+                LoggingService.Transaction.Information("ADMIN_ACCESS", "Admin access sequence triggered",
+                    ("TriggerMethod", "5-tap sequence"),
+                    ("SourceScreen", "Welcome"));
+                System.Diagnostics.Debug.WriteLine("Admin access requested from welcome screen");
+                NavigateToAdminLogin();
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Admin access navigation failed", ex);
+                System.Diagnostics.Debug.WriteLine($"Admin access navigation failed: {ex.Message}");
             }
         }
 
@@ -366,21 +442,7 @@ namespace Photobooth
             }
         }
 
-        /// <summary>
-        /// Handles admin access request from template selection screen
-        /// This is triggered by the 5-tap sequence
-        /// </summary>
-        private void TemplateSelectionScreen_AdminAccessRequested(object? sender, EventArgs e)
-        {
-            try
-            {
-                NavigateToAdminLogin();
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Admin access navigation failed: {ex.Message}");
-            }
-        }
+
 
         /// <summary>
         /// Handles successful admin login
@@ -389,10 +451,38 @@ namespace Photobooth
         {
             try
             {
-                await NavigateToAdminDashboard(e.AccessLevel, e.UserId);
+                if (e.IsUsingSetupCredentials)
+                {
+                    LoggingService.Application.Warning("Setup credentials detected - redirecting to forced password change",
+                        ("UserId", e.UserId),
+                        ("Username", e.Username),
+                        ("AccessLevel", e.AccessLevel.ToString()));
+                    
+                    // Get user data for forced password change screen
+                    var userData = await _databaseService.GetByUserIdAsync<AdminUser>(e.UserId);
+                    if (userData.Success && userData.Data != null)
+                    {
+                        await NavigateToForcedPasswordChange(userData.Data, e.AccessLevel);
+                    }
+                    else
+                    {
+                        // Fallback - go to normal dashboard if user data retrieval fails
+                        LoggingService.Application.Error("Failed to retrieve user data for forced password change", null,
+                            ("UserId", e.UserId));
+                        await NavigateToAdminDashboard(e.AccessLevel, e.UserId);
+                    }
+                }
+                else
+                {
+                    // Normal login - go to dashboard
+                    await NavigateToAdminDashboard(e.AccessLevel, e.UserId);
+                }
             }
             catch (Exception ex)
             {
+                LoggingService.Application.Error("Admin login success navigation failed", ex,
+                    ("UserId", e.UserId),
+                    ("Username", e.Username));
                 System.Diagnostics.Debug.WriteLine($"Admin login success navigation failed: {ex.Message}");
             }
         }
@@ -431,6 +521,46 @@ namespace Photobooth
                 NavigateToWelcome();
             }
         }
+
+        /// <summary>
+        /// Handles successful password change completion
+        /// </summary>
+        private async void ForcedPasswordChangeScreen_PasswordChangeCompleted(object? sender, PasswordChangeCompletedEventArgs e)
+        {
+            try
+            {
+                LoggingService.Application.Information("Setup password changed successfully - proceeding to admin dashboard",
+                    ("UserId", e.User.UserId),
+                    ("Username", e.User.Username),
+                    ("AccessLevel", e.AccessLevel.ToString()));
+
+                // Clean up setup credentials folder now that password has been changed
+                try
+                {
+                    DatabaseService.CleanupSetupCredentials();
+                    LoggingService.Application.Information("Setup credentials folder cleaned up after password change");
+                }
+                catch (Exception cleanupEx)
+                {
+                    LoggingService.Application.Warning("Setup credentials cleanup failed after password change",
+                        ("Error", cleanupEx.Message));
+                }
+
+                // Navigate to admin dashboard with new credentials
+                await NavigateToAdminDashboard(e.AccessLevel, e.User.UserId);
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Post-password-change navigation failed", ex,
+                    ("UserId", e.User.UserId),
+                    ("Username", e.User.Username));
+                System.Diagnostics.Debug.WriteLine($"Post-password-change navigation failed: {ex.Message}");
+                // Fallback to welcome screen
+                NavigateToWelcome();
+            }
+        }
+
+
 
         #endregion
 
@@ -477,10 +607,19 @@ namespace Photobooth
         {
             try
             {
+                LoggingService.Application.Information("PhotoBoothX shutting down");
+                
                 // Cleanup screens that have Cleanup methods
                 welcomeScreen?.Cleanup();
                 productSelectionScreen?.Cleanup();
                 templateSelectionScreen?.Cleanup();
+
+                // Unsubscribe from welcome screen events
+                if (welcomeScreen != null)
+                {
+                    welcomeScreen.StartButtonClicked -= WelcomeScreen_StartButtonClicked;
+                    welcomeScreen.AdminAccessRequested -= WelcomeScreen_AdminAccessRequested;
+                }
 
                 // Unsubscribe from admin screen events
                 if (adminLoginScreen != null)
@@ -494,18 +633,19 @@ namespace Photobooth
                     adminDashboardScreen.ExitAdminRequested -= AdminDashboardScreen_ExitAdminRequested;
                 }
 
-                // Cleanup admin tap timer
-                if (adminTapTimer != null)
+                if (forcedPasswordChangeScreen != null)
                 {
-                    adminTapTimer.Stop();
-                    adminTapTimer.Tick -= AdminTapTimer_Tick;
-                    adminTapTimer = null;
+                    forcedPasswordChangeScreen.PasswordChangeCompleted -= ForcedPasswordChangeScreen_PasswordChangeCompleted;
                 }
+
+                // Shutdown logging system
+                LoggingService.Shutdown();
 
                 base.OnClosed(e);
             }
             catch (Exception ex)
             {
+                // Fallback to console if logging system is already shut down
                 System.Diagnostics.Debug.WriteLine($"Window cleanup failed: {ex.Message}");
                 base.OnClosed(e);
             }
@@ -513,78 +653,6 @@ namespace Photobooth
 
         #endregion
 
-        #region Admin Access Detection
 
-        /// <summary>
-        /// Handles taps on the admin access zone (top-left corner)
-        /// </summary>
-        private void AdminAccessZone_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-        {
-            try
-            {
-                adminTapCount++;
-                System.Diagnostics.Debug.WriteLine($"Admin tap {adminTapCount}/{ADMIN_TAP_SEQUENCE_COUNT}");
-
-                // Start or restart the timer
-                adminTapTimer?.Stop();
-                adminTapTimer?.Start();
-
-                // Check if we've reached the required tap count
-                if (adminTapCount >= ADMIN_TAP_SEQUENCE_COUNT)
-                {
-                    TriggerAdminAccess();
-                }
-
-                // Visual feedback (brief flash)
-                AdminAccessZone.Opacity = 0.3;
-                var flashTimer = new DispatcherTimer
-                {
-                    Interval = TimeSpan.FromMilliseconds(150)
-                };
-                flashTimer.Tick += (s, args) =>
-                {
-                    AdminAccessZone.Opacity = 0;
-                    flashTimer.Stop();
-                };
-                flashTimer.Start();
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Admin tap detection error: {ex.Message}");
-            }
-        }
-
-        /// <summary>
-        /// Reset admin tap count when timer expires
-        /// </summary>
-        private void AdminTapTimer_Tick(object? sender, EventArgs e)
-        {
-            adminTapTimer?.Stop();
-            adminTapCount = 0;
-            System.Diagnostics.Debug.WriteLine("Admin tap sequence reset (timeout)");
-        }
-
-        /// <summary>
-        /// Trigger admin access sequence
-        /// </summary>
-        private void TriggerAdminAccess()
-        {
-            try
-            {
-                adminTapTimer?.Stop();
-                adminTapCount = 0;
-
-                System.Diagnostics.Debug.WriteLine("Admin access sequence triggered!");
-
-                // Navigate to admin login
-                NavigateToAdminLogin();
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Admin access trigger error: {ex.Message}");
-            }
-        }
-
-        #endregion
     }
 }

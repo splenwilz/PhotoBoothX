@@ -215,13 +215,7 @@
                      Canvas.Right="128" Canvas.Bottom="128"/>
         </Canvas>
 
-        <!-- Corner Tap Area for Admin Access -->
-        <Border Name="AdminCornerTap"
-                Width="100" Height="100"
-                Background="Transparent"
-                HorizontalAlignment="Left"
-                VerticalAlignment="Top"
-                MouseLeftButtonDown="AdminCornerTap_Click"/>
+
 
         <!-- Header Row -->
         <Grid Grid.Row="0" Margin="40,40,40,20">

@@ -40,7 +40,9 @@ namespace Photobooth
         {
             InitializeComponent();
             _databaseService = new DatabaseService();
-            UsernameInput.Focus();
+            
+            // Set focus when the control is fully loaded
+            this.Loaded += (s, e) => UsernameInput.Focus();
         }
 
         #endregion
@@ -132,11 +134,37 @@ namespace Photobooth
 
                 if (accessLevel != AdminAccessLevel.None)
                 {
-                    System.Diagnostics.Debug.WriteLine($"Authentication successful, triggering login event ({stopwatch.ElapsedMilliseconds}ms)");
+                    System.Diagnostics.Debug.WriteLine($"Authentication successful, checking for setup credentials ({stopwatch.ElapsedMilliseconds}ms)");
+
+                    // Check if this is using setup credentials
+                    var isSetupCredentials = false;
+                    try
+                    {
+                        var setupCheck = await _databaseService.IsUsingSetupCredentialsAsync(username, password);
+                        isSetupCredentials = setupCheck.Success && setupCheck.Data == true;
+                        System.Diagnostics.Debug.WriteLine($"Setup credentials check: {isSetupCredentials} ({stopwatch.ElapsedMilliseconds}ms)");
+                    }
+                    catch (Exception setupEx)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Setup credentials check failed: {setupEx.Message}");
+                    }
+
+                    // Clean up setup credentials folder after successful login (only if NOT using setup creds)
+                    if (!isSetupCredentials)
+                    {
+                        try
+                        {
+                            await DatabaseService.CleanupSetupCredentialsAsync();
+                        }
+                        catch (Exception cleanupEx)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"Setup cleanup warning: {cleanupEx.Message}");
+                        }
+                    }
 
                     // Trigger login successful event immediately - we already know authResult.Data is not null from the check above
                     var userData = authResult.Data!; // Use null-forgiving operator since we know it's not null
-                    LoginSuccessful?.Invoke(this, new AdminLoginEventArgs(accessLevel, userData.UserId, userData.Username, userData.DisplayName));
+                    LoginSuccessful?.Invoke(this, new AdminLoginEventArgs(accessLevel, userData.UserId, userData.Username, userData.DisplayName, isSetupCredentials));
                 }
                 else
                 {
@@ -181,12 +209,14 @@ namespace Photobooth
             UsernameInput.Text = "";
             PasswordInput.Password = "";
             ErrorMessage.Visibility = Visibility.Collapsed;
-            UsernameInput.Focus();
 
             // Reset any error states
             LoginButton.IsEnabled = true;
             LoginButton.Content = "Login";
             LoadingOverlay.Visibility = Visibility.Collapsed;
+            
+            // Set focus to username input (use Dispatcher to ensure it happens after UI updates)
+            Dispatcher.BeginInvoke(new Action(() => UsernameInput.Focus()));
         }
 
         #endregion
@@ -201,13 +231,15 @@ namespace Photobooth
         public string UserId { get; } // GUID stored as string in database
         public string Username { get; }
         public string DisplayName { get; }
+        public bool IsUsingSetupCredentials { get; }
 
-        public AdminLoginEventArgs(AdminAccessLevel accessLevel, string userId, string username, string displayName)
+        public AdminLoginEventArgs(AdminAccessLevel accessLevel, string userId, string username, string displayName, bool isUsingSetupCredentials = false)
         {
             AccessLevel = accessLevel;
             UserId = userId;
             Username = username;
             DisplayName = displayName;
+            IsUsingSetupCredentials = isUsingSetupCredentials;
         }
     }
 }

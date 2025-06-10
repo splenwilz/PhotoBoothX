@@ -343,7 +343,7 @@
                     </Button.Effect>
                 </Button>
 
-                <!-- Demo Passwords Info -->
+                <!-- Security Notice -->
                 <Border Background="#33FFFFFF" 
                         BorderBrush="#66FFFFFF" 
                         BorderThickness="1" 
@@ -351,24 +351,14 @@
                         Padding="16"
                         Margin="0,0,0,16">
                     <StackPanel>
-                        <TextBlock Text="Demo credentials:" 
+                        <TextBlock Text="🔒 Secure Access" 
                                    FontSize="16" 
                                    FontWeight="Medium" 
                                    Foreground="White" 
                                    Margin="0,0,0,8"/>
 
-                        <TextBlock FontSize="14" Foreground="White" Margin="0,0,0,4">
-                            <Run Text="Master Access: "/>
-                            <Run Text="admin" FontWeight="Bold"/>
-                            <Run Text=" / "/>
-                            <Run Text="admin123" FontWeight="Bold"/>
-                        </TextBlock>
-
-                        <TextBlock FontSize="14" Foreground="White">
-                            <Run Text="User Access: "/>
-                            <Run Text="user" FontWeight="Bold"/>
-                            <Run Text=" / "/>
-                            <Run Text="user123" FontWeight="Bold"/>
+                        <TextBlock FontSize="14" Foreground="White" TextWrapping="Wrap">
+                            <Run Text="Use credentials created during initial setup. If you've forgotten your password, contact your system administrator or check the setup documentation."/>
                         </TextBlock>
                     </StackPanel>
                 </Border>

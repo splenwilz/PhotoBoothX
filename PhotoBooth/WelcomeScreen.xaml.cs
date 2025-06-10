@@ -5,6 +5,7 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Shapes;
 using System.Windows.Threading;
+using Photobooth.Services;
 
 namespace Photobooth
 {
@@ -21,12 +22,23 @@ namespace Photobooth
         /// </summary>
         public event EventHandler? StartButtonClicked;
 
+        /// <summary>
+        /// Event fired when admin access sequence is completed
+        /// </summary>
+        public event EventHandler? AdminAccessRequested;
+
         #endregion
 
         #region Private Fields
 
         private DispatcherTimer? animationTimer;
         private Random random = new Random();
+
+        // Admin access detection (5-tap sequence)
+        private int adminTapCount = 0;
+        private const int ADMIN_TAP_SEQUENCE_COUNT = 5;
+        private const double ADMIN_TAP_TIME_WINDOW = 3.0; // seconds
+        private DispatcherTimer? adminTapTimer;
 
         #endregion
 
@@ -41,6 +53,7 @@ namespace Photobooth
             InitializeAnimations();
             CreateFloatingParticles();
             CreateSparkles();
+            InitializeAdminTapDetection();
         }
 
         /// <summary>
@@ -325,6 +338,126 @@ namespace Photobooth
 
         #endregion
 
+        #region Admin Access
+
+        /// <summary>
+        /// Initialize the admin tap detection system
+        /// </summary>
+        private void InitializeAdminTapDetection()
+        {
+            adminTapTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromSeconds(ADMIN_TAP_TIME_WINDOW)
+            };
+            adminTapTimer.Tick += AdminTapTimer_Tick;
+        }
+
+        /// <summary>
+        /// Handles taps on the admin access zone (top-left corner)
+        /// </summary>
+        private void AdminAccessZone_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            try
+            {
+                adminTapCount++;
+                LoggingService.Application.Debug("Admin access tap detected", ("TapCount", adminTapCount), ("RequiredTaps", ADMIN_TAP_SEQUENCE_COUNT));
+
+                // Visual feedback for the tap
+                TriggerAdminIconPressEffect();
+
+                // Reset timer
+                adminTapTimer?.Stop();
+                adminTapTimer?.Start();
+
+                // Check if sequence is complete
+                if (adminTapCount >= ADMIN_TAP_SEQUENCE_COUNT)
+                {
+                    ResetAdminTapSequence();
+                    LoggingService.Application.Warning("Admin access sequence completed - 5-tap sequence detected");
+                    LoggingService.Transaction.Information("ADMIN_ACCESS", "Admin access sequence triggered", 
+                        ("TapCount", ADMIN_TAP_SEQUENCE_COUNT), ("TimeWindow", ADMIN_TAP_TIME_WINDOW));
+                    
+                    // Fire admin access event
+                    AdminAccessRequested?.Invoke(this, EventArgs.Empty);
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Admin tap detection error", ex, 
+                    ("TapCount", adminTapCount), ("SequenceCount", ADMIN_TAP_SEQUENCE_COUNT));
+            }
+        }
+
+        /// <summary>
+        /// Reset admin tap count when timer expires
+        /// </summary>
+        private void AdminTapTimer_Tick(object? sender, EventArgs e)
+        {
+            adminTapTimer?.Stop();
+            adminTapCount = 0;
+            LoggingService.Application.Debug("Admin tap sequence reset due to timeout", 
+                ("TimeWindow", ADMIN_TAP_TIME_WINDOW), ("RequiredTaps", ADMIN_TAP_SEQUENCE_COUNT));
+        }
+
+        /// <summary>
+        /// Reset the admin tap sequence
+        /// </summary>
+        private void ResetAdminTapSequence()
+        {
+            adminTapTimer?.Stop();
+            adminTapCount = 0;
+        }
+
+        /// <summary>
+        /// Triggers a visual press effect on the admin icon
+        /// </summary>
+        private void TriggerAdminIconPressEffect()
+        {
+            try
+            {
+                // Create press animation (scale down then back up)
+                var scaleDownAnimation = new DoubleAnimation
+                {
+                    From = 1.0,
+                    To = 0.8,
+                    Duration = TimeSpan.FromMilliseconds(80),
+                    EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+                };
+
+                var scaleUpAnimation = new DoubleAnimation
+                {
+                    From = 0.8,
+                    To = 1.0,
+                    Duration = TimeSpan.FromMilliseconds(120),
+                    BeginTime = TimeSpan.FromMilliseconds(80),
+                    EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+                };
+
+                // Create opacity flash (briefly more visible)
+                var flashAnimation = new DoubleAnimation
+                {
+                    From = 0.2,
+                    To = 0.7,
+                    Duration = TimeSpan.FromMilliseconds(100),
+                    AutoReverse = true
+                };
+
+                // Apply animations
+                AdminIconScale.BeginAnimation(ScaleTransform.ScaleXProperty, scaleDownAnimation);
+                AdminIconScale.BeginAnimation(ScaleTransform.ScaleYProperty, scaleDownAnimation);
+                AdminIcon.BeginAnimation(OpacityProperty, flashAnimation);
+
+                AdminIconScale.BeginAnimation(ScaleTransform.ScaleXProperty, scaleUpAnimation);
+                AdminIconScale.BeginAnimation(ScaleTransform.ScaleYProperty, scaleUpAnimation);
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Admin icon press effect animation error", ex);
+            }
+        }
+
+        #endregion
+
         #region Cleanup
 
         /// <summary>
@@ -333,6 +466,15 @@ namespace Photobooth
         public void Cleanup()
         {
             animationTimer?.Stop();
+            animationTimer = null;
+            
+            // Cleanup admin tap timer
+            if (adminTapTimer != null)
+            {
+                adminTapTimer.Stop();
+                adminTapTimer.Tick -= AdminTapTimer_Tick;
+                adminTapTimer = null;
+            }
         }
 
         #endregion

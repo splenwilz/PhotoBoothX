@@ -22,6 +22,7 @@ namespace Photobooth.Services
         
         // Specialized methods
         Task<DatabaseResult<AdminUser?>> AuthenticateAsync(string username, string password);
+        Task<DatabaseResult<bool>> IsUsingSetupCredentialsAsync(string username, string password);
         Task<DatabaseResult> UpdateAdminPasswordAsync(AdminAccessLevel accessLevel, string newPassword, string? updatedBy = null);
         Task<DatabaseResult> UpdateUserPasswordByUserIdAsync(string userId, string newPassword, string? updatedBy = null);
         Task<DatabaseResult> CreateAdminUserAsync(AdminUser user, string password, string? createdBy = null);
@@ -32,10 +33,18 @@ namespace Photobooth.Services
         Task<DatabaseResult<List<HardwareStatusDto>>> GetHardwareStatusAsync();
         Task<DatabaseResult<PrintSupply?>> GetPrintSupplyAsync(SupplyType supplyType);
         Task<DatabaseResult> UpdatePrintSupplyAsync(SupplyType supplyType, int newCount);
+        
+        // Product management methods
+        Task<DatabaseResult<List<Product>>> GetProductsAsync();
+        Task<DatabaseResult<List<ProductCategory>>> GetProductCategoriesAsync();
+        Task<DatabaseResult> UpdateProductStatusAsync(int productId, bool isActive);
+        Task<DatabaseResult> UpdateProductPriceAsync(int productId, decimal price);
+        Task<DatabaseResult> UpdateProductAsync(int productId, bool? isActive = null, decimal? price = null);
         Task<DatabaseResult<List<Setting>>> GetSettingsByCategoryAsync(string category);
         Task<DatabaseResult<T?>> GetSettingValueAsync<T>(string category, string key);
         Task<DatabaseResult> SetSettingValueAsync<T>(string category, string key, T value, string? updatedBy = null);
         Task<DatabaseResult> LogSystemEventAsync(LogLevel level, string category, string message, string? details = null, string? userId = null);
+        Task<DatabaseResult> CleanupProductSettingsAsync();
     }
 
     public class DatabaseService : IDatabaseService
@@ -56,7 +65,9 @@ namespace Photobooth.Services
             try
             {
                 // Log initialization start
-                Console.WriteLine($"Database initialization starting. Database path: {_databasePath}");
+                LoggingService.Application.Information("Database initialization starting",
+                    ("DatabasePath", _databasePath),
+                    ("ConnectionString", _connectionString.Replace(_databasePath, "[PATH]")));
                 
                 // Ensure directory exists
                 var directory = Path.GetDirectoryName(_databasePath);
@@ -300,15 +311,11 @@ namespace Photobooth.Services
         {
             Console.WriteLine($"ApplyIncrementalMigrations: Migrating from v{fromVersion} to v{toVersion}");
             
-            // Future migrations will be added here as needed
-            // Example:
-            // if (fromVersion < 2 && toVersion >= 2)
-            // {
-            //     await ApplyMigrationV2(connection);
-            // }
-            
-            Console.WriteLine("ApplyIncrementalMigrations: No migrations required for current version range");
+            // No migrations needed during development - database will be recreated with latest schema
+            Console.WriteLine("ApplyIncrementalMigrations: No migrations required during development");
         }
+
+
 
         public async Task<DatabaseResult<List<T>>> GetAllAsync<T>() where T : class, new()
         {
@@ -549,10 +556,10 @@ namespace Photobooth.Services
                     var user = MapReaderToEntity<AdminUser>(reader);
                     var storedHash = reader["PasswordHash"].ToString();
                     
-                    // For now, simple hash comparison (you should use proper password hashing)
+                    // Compare password using secure hash-only approach
                     var inputHash = HashPassword(password);
                     
-                    if (storedHash == inputHash || storedHash == password + "_hash") // Temporary for demo
+                    if (storedHash == inputHash)
                     {
                         // Update last login - do this asynchronously without blocking
                         _ = Task.Run(async () =>
@@ -585,6 +592,49 @@ namespace Photobooth.Services
             }
         }
 
+        public async Task<DatabaseResult<bool>> IsUsingSetupCredentialsAsync(string username, string password)
+        {
+            try
+            {
+                // Check if this is a setup credentials login by verifying:
+                // 1. User was created during database initialization (has null CreatedBy)
+                // 2. Password matches the stored hash (indicating they haven't changed it yet)
+                // This approach is generic and works for any username, not just "admin" or "user"
+
+                var query = "SELECT PasswordHash, CreatedBy FROM AdminUsers WHERE Username = @username AND IsActive = 1";
+                
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+                
+                using var command = new SqliteCommand(query, connection);
+                command.Parameters.AddWithValue("@username", username);
+                using var reader = await command.ExecuteReaderAsync();
+
+                if (await reader.ReadAsync())
+                {
+                    var storedHash = reader["PasswordHash"].ToString();
+                    var createdBy = reader["CreatedBy"];
+                    
+                    // Check if this user was created during setup (CreatedBy is null)
+                    var isSetupUser = createdBy == DBNull.Value || createdBy == null;
+                    
+                    // Check if password matches (indicating they're still using the original setup password)
+                    // Use secure hash-only comparison
+                    var inputHash = HashPassword(password);
+                    var passwordMatches = storedHash == inputHash;
+                    
+                    // It's setup credentials if it's a setup user AND password still matches original
+                    return DatabaseResult<bool>.SuccessResult(isSetupUser && passwordMatches);
+                }
+
+                return DatabaseResult<bool>.SuccessResult(false);
+            }
+            catch (Exception ex)
+            {
+                return DatabaseResult<bool>.ErrorResult($"Failed to check setup credentials: {ex.Message}", ex);
+            }
+        }
+
         public async Task<DatabaseResult> UpdateAdminPasswordAsync(AdminAccessLevel accessLevel, string newPassword, string? updatedBy = null)
         {
             try
@@ -612,18 +662,25 @@ namespace Photobooth.Services
         {
             try
             {
-                var query = "UPDATE AdminUsers SET PasswordHash = @newPassword WHERE UserId = @userId";
+                // Update password AND mark as no longer setup credentials by setting CreatedBy and UpdatedBy
+                var query = @"UPDATE AdminUsers 
+                             SET PasswordHash = @newPassword, 
+                                 UpdatedAt = @updatedAt,
+                                 UpdatedBy = @updatedBy,
+                                 CreatedBy = COALESCE(CreatedBy, @updatedBy)
+                             WHERE UserId = @userId";
 
                 using var connection = new SqliteConnection(_connectionString);
                 await connection.OpenAsync();
                 using var command = new SqliteCommand(query, connection);
                 command.Parameters.AddWithValue("@newPassword", HashPassword(newPassword));
                 command.Parameters.AddWithValue("@userId", userId);
+                command.Parameters.AddWithValue("@updatedAt", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+                command.Parameters.AddWithValue("@updatedBy", updatedBy ?? userId); // Self-update if no updatedBy specified
 
                 await command.ExecuteNonQueryAsync();
                 
-                // Convert string userId to int for logging (if needed) - for now just log without userId
-                await LogSystemEventAsync(LogLevel.Info, "AdminUsers", $"User password updated for userId: {userId}");
+                await LogSystemEventAsync(LogLevel.Info, "AdminUsers", $"User password updated for userId: {userId} - setup credentials converted to user-managed");
                 
                 return DatabaseResult.SuccessResult();
             }
@@ -915,6 +972,206 @@ namespace Photobooth.Services
             }
         }
 
+        public async Task<DatabaseResult<List<Product>>> GetProductsAsync()
+        {
+            try
+            {
+                var query = @"
+                    SELECT p.*, pc.Name as CategoryName 
+                    FROM Products p 
+                    LEFT JOIN ProductCategories pc ON p.CategoryId = pc.Id 
+                    ORDER BY p.SortOrder, p.Name";
+
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+                using var command = new SqliteCommand(query, connection);
+                using var reader = await command.ExecuteReaderAsync();
+
+                var products = new List<Product>();
+                while (await reader.ReadAsync())
+                {
+                    var product = MapReaderToEntity<Product>(reader);
+                    
+                    // Map ProductType from database string to enum
+                    if (reader["ProductType"] != DBNull.Value)
+                    {
+                        var productTypeStr = reader["ProductType"].ToString();
+                        if (Enum.TryParse<ProductType>(productTypeStr, out var productType))
+                        {
+                            product.ProductType = productType;
+                        }
+                    }
+                    
+                    // Map category name if available
+                    if (reader["CategoryName"] != DBNull.Value)
+                    {
+                        product.Category = new ProductCategory 
+                        { 
+                            Id = product.CategoryId, 
+                            Name = reader["CategoryName"].ToString() ?? "" 
+                        };
+                    }
+                    products.Add(product);
+                }
+
+                return DatabaseResult<List<Product>>.SuccessResult(products);
+            }
+            catch (Exception ex)
+            {
+                return DatabaseResult<List<Product>>.ErrorResult($"Failed to get products: {ex.Message}", ex);
+            }
+        }
+
+        public async Task<DatabaseResult<List<ProductCategory>>> GetProductCategoriesAsync()
+        {
+            try
+            {
+                return await GetAllAsync<ProductCategory>();
+            }
+            catch (Exception ex)
+            {
+                return DatabaseResult<List<ProductCategory>>.ErrorResult($"Failed to get product categories: {ex.Message}", ex);
+            }
+        }
+
+        public async Task<DatabaseResult> UpdateProductStatusAsync(int productId, bool isActive)
+        {
+            try
+            {
+                var query = "UPDATE Products SET IsActive = @isActive, UpdatedAt = @updatedAt WHERE Id = @id";
+
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+                using var command = new SqliteCommand(query, connection);
+                command.Parameters.AddWithValue("@isActive", isActive);
+                command.Parameters.AddWithValue("@updatedAt", DateTime.Now);
+                command.Parameters.AddWithValue("@id", productId);
+
+                var rowsAffected = await command.ExecuteNonQueryAsync();
+                if (rowsAffected > 0)
+                {
+                    await LogSystemEventAsync(LogLevel.Info, "Products", $"Product {productId} status updated to {isActive}");
+                    return DatabaseResult.SuccessResult();
+                }
+                else
+                {
+                    return DatabaseResult.ErrorResult("Product not found");
+                }
+            }
+            catch (Exception ex)
+            {
+                return DatabaseResult.ErrorResult($"Failed to update product status: {ex.Message}", ex);
+            }
+        }
+
+        public async Task<DatabaseResult> UpdateProductPriceAsync(int productId, decimal price)
+        {
+            try
+            {
+                var query = "UPDATE Products SET Price = @price, UpdatedAt = @updatedAt WHERE Id = @id";
+
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+                using var command = new SqliteCommand(query, connection);
+                command.Parameters.AddWithValue("@price", price);
+                command.Parameters.AddWithValue("@updatedAt", DateTime.Now);
+                command.Parameters.AddWithValue("@id", productId);
+
+                var rowsAffected = await command.ExecuteNonQueryAsync();
+                if (rowsAffected > 0)
+                {
+                    await LogSystemEventAsync(LogLevel.Info, "Products", $"Product {productId} price updated to ${price:F2}");
+                    return DatabaseResult.SuccessResult();
+                }
+                else
+                {
+                    return DatabaseResult.ErrorResult("Product not found");
+                }
+            }
+            catch (Exception ex)
+            {
+                return DatabaseResult.ErrorResult($"Failed to update product price: {ex.Message}", ex);
+            }
+        }
+
+        public async Task<DatabaseResult> UpdateProductAsync(int productId, bool? isActive = null, decimal? price = null)
+        {
+            // Validate that at least one parameter is provided
+            if (!isActive.HasValue && !price.HasValue)
+            {
+                return DatabaseResult.ErrorResult("At least one field (isActive or price) must be provided for update");
+            }
+
+            try
+            {
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+                
+                // Use transaction for atomic operation
+                using var transaction = connection.BeginTransaction();
+                try
+                {
+                    // Build dynamic query based on provided parameters
+                    var setParts = new List<string>();
+                    var parameters = new List<(string name, object value)>();
+                    var logMessages = new List<string>();
+
+                    if (isActive.HasValue)
+                    {
+                        setParts.Add("IsActive = @isActive");
+                        parameters.Add(("@isActive", isActive.Value));
+                        logMessages.Add($"status = {isActive.Value}");
+                    }
+
+                    if (price.HasValue)
+                    {
+                        setParts.Add("Price = @price");
+                        parameters.Add(("@price", price.Value));
+                        logMessages.Add($"price = ${price.Value:F2}");
+                    }
+
+                    setParts.Add("UpdatedAt = @updatedAt");
+                    parameters.Add(("@updatedAt", DateTime.Now));
+
+                    var query = $"UPDATE Products SET {string.Join(", ", setParts)} WHERE Id = @id";
+
+                    using var command = new SqliteCommand(query, connection, transaction);
+                    
+                    // Add all parameters
+                    command.Parameters.AddWithValue("@id", productId);
+                    foreach (var (name, value) in parameters)
+                    {
+                        command.Parameters.AddWithValue(name, value);
+                    }
+
+                    var rowsAffected = await command.ExecuteNonQueryAsync();
+                    if (rowsAffected == 0)
+                    {
+                        await transaction.RollbackAsync();
+                        return DatabaseResult.ErrorResult("Product not found");
+                    }
+
+                    // Commit the transaction
+                    await transaction.CommitAsync();
+
+                    // Log the successful update
+                    var logMessage = $"Product {productId} updated: {string.Join(", ", logMessages)}";
+                    await LogSystemEventAsync(LogLevel.Info, "Products", logMessage);
+
+                    return DatabaseResult.SuccessResult();
+                }
+                catch (Exception)
+                {
+                    await transaction.RollbackAsync();
+                    throw;
+                }
+            }
+            catch (Exception ex)
+            {
+                return DatabaseResult.ErrorResult($"Failed to update product: {ex.Message}", ex);
+            }
+        }
+
         public async Task<DatabaseResult<List<Setting>>> GetSettingsByCategoryAsync(string category)
         {
             try
@@ -1178,30 +1435,54 @@ namespace Photobooth.Services
             return Convert.ToBase64String(hashedBytes);
         }
 
+        /// <summary>
+        /// Generates a cryptographically secure random password
+        /// </summary>
+        private string GenerateSecurePassword(int length = 16)
+        {
+            const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
+            using var rng = System.Security.Cryptography.RandomNumberGenerator.Create();
+            var result = new char[length];
+            var buffer = new byte[4];
+
+            for (int i = 0; i < length; i++)
+            {
+                rng.GetBytes(buffer);
+                var randomValue = BitConverter.ToUInt32(buffer, 0);
+                result[i] = chars[(int)(randomValue % chars.Length)];
+            }
+
+            return new string(result);
+        }
+
         private async Task CreateDefaultAdminUserDirect(SqliteConnection connection)
         {
             try
             {
-                // Create default master admin
+                // Generate secure random passwords
+                var masterPassword = GenerateSecurePassword(16);
+                var userPassword = GenerateSecurePassword(16);
+
+                // Create default master admin with secure password
                 var masterAdmin = new AdminUser
                 {
                     UserId = Guid.NewGuid().ToString(),
                     Username = "admin",
                     DisplayName = "Master Administrator", 
-                    PasswordHash = HashPassword("admin123"),
+                    PasswordHash = HashPassword(masterPassword),
                     AccessLevel = Models.AdminAccessLevel.Master,
                     IsActive = true,
                     CreatedAt = DateTime.Now,
                     CreatedBy = null
                 };
 
-                // Create default user admin
+                // Create default user admin with secure password
                 var userAdmin = new AdminUser
                 {
                     UserId = Guid.NewGuid().ToString(),
                     Username = "user",
                     DisplayName = "User Administrator",
-                    PasswordHash = HashPassword("user123"), 
+                    PasswordHash = HashPassword(userPassword), 
                     AccessLevel = Models.AdminAccessLevel.User,
                     IsActive = true,
                     CreatedAt = DateTime.Now,
@@ -1234,11 +1515,159 @@ namespace Photobooth.Services
                 userCommand.Parameters.AddWithValue("@isActive", userAdmin.IsActive);
                 userCommand.Parameters.AddWithValue("@createdAt", userAdmin.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss"));
                 await userCommand.ExecuteNonQueryAsync();
+
+                // Write secure credentials to a protected file for first-time setup
+                await WriteInitialCredentialsSecurely(masterPassword, userPassword);
+
+                Console.WriteLine("🔒 Default admin users created with secure random passwords");
+                Console.WriteLine("📋 Check the setup credentials file for initial login information");
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"Error creating default admin users: {ex.Message}");
+                throw;
             }
+        }
+
+        /// <summary>
+        /// Writes initial credentials to a secure file for first-time setup
+        /// </summary>
+        private async Task WriteInitialCredentialsSecurely(string masterPassword, string userPassword)
+        {
+            try
+            {
+                // Create setup folder on Desktop - highly visible and clearly temporary
+                var desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+                var setupDir = Path.Combine(desktopPath, "PhotoBoothX-Setup-Credentials");
+                var credentialsFile = Path.Combine(setupDir, "LOGIN-CREDENTIALS.txt");
+                var readmeFile = Path.Combine(setupDir, "README-DELETE-AFTER-SETUP.txt");
+
+                Directory.CreateDirectory(setupDir);
+
+                var credentialsContent = $@"PhotoBoothX - Initial Setup Credentials
+Generated: {DateTime.Now:yyyy-MM-dd HH:mm:ss}
+
+⚠️  IMPORTANT SECURITY NOTICE:
+- These are ONE-TIME setup credentials
+- CHANGE THESE PASSWORDS immediately after first login
+- DELETE this file after completing setup
+- Keep these credentials secure until setup is complete
+
+Master Administrator Account:
+  Username: admin
+  Password: {masterPassword}
+  Access: Full admin panel access
+
+Operator Account:
+  Username: user  
+  Password: {userPassword}
+  Access: Limited access (reports, volume control)
+
+Setup Instructions:
+1. Start PhotoBoothX application
+2. Tap 5 times in top-left corner of welcome screen
+3. Login with credentials above
+4. Immediately change both passwords
+5. Application will auto-delete this folder after successful setup
+
+Security Best Practices:
+- Use strong passwords (12+ characters, mixed case, numbers, symbols)
+- Enable password rotation reminders
+- Limit operator account permissions
+- Regularly backup admin settings
+
+⚠️  This folder will be automatically deleted after first successful admin login.
+";
+
+                // Create README file explaining the folder purpose
+                var readmeContent = @"📋 PhotoBoothX Setup Credentials Folder
+
+🎯 PURPOSE:
+This folder contains your one-time setup credentials for PhotoBoothX.
+
+📁 CONTENTS:
+- LOGIN-CREDENTIALS.txt - Your admin usernames and passwords
+
+⚠️  IMPORTANT:
+- This folder is TEMPORARY and will be automatically deleted
+- Complete your admin setup BEFORE this folder disappears
+- If you need the credentials again, check before the folder auto-deletes
+
+🔧 SETUP STEPS:
+1. Open PhotoBoothX application
+2. Tap 5 times in top-left corner of welcome screen  
+3. Use credentials from LOGIN-CREDENTIALS.txt
+4. Change passwords immediately after login
+5. This folder deletes itself after successful setup
+
+🗑️  SAFE TO DELETE:
+If setup is complete, you can safely delete this entire folder manually.
+It contains no important application files.
+
+✅ Generated: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+
+                await File.WriteAllTextAsync(credentialsFile, credentialsContent);
+                await File.WriteAllTextAsync(readmeFile, readmeContent);
+
+                Console.WriteLine($"📋 Setup credentials folder created on Desktop: {setupDir}");
+                Console.WriteLine("🎯 Folder is clearly labeled and will auto-delete after setup");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Warning: Could not write credentials file: {ex.Message}");
+                Console.WriteLine($"Master admin password: {masterPassword}");
+                Console.WriteLine($"User admin password: {userPassword}");
+                Console.WriteLine("Please note these passwords for initial setup!");
+            }
+        }
+
+        /// <summary>
+        /// Cleans up the setup credentials folder after successful admin login
+        /// </summary>
+        public static void CleanupSetupCredentials()
+        {
+            try
+            {
+                var desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+                var setupDir = Path.Combine(desktopPath, "PhotoBoothX-Setup-Credentials");
+
+                if (Directory.Exists(setupDir))
+                {
+                    Directory.Delete(setupDir, true);
+                    Console.WriteLine("🗑️ Setup credentials folder automatically deleted from Desktop");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Note: Could not auto-delete setup folder: {ex.Message}");
+                Console.WriteLine("You can safely delete the PhotoBoothX-Setup-Credentials folder from Desktop manually.");
+            }
+        }
+
+        /// <summary>
+        /// Asynchronously cleans up the setup credentials folder after successful admin login
+        /// </summary>
+        public static async Task CleanupSetupCredentialsAsync()
+        {
+            await Task.Run(() =>
+            {
+                try
+                {
+                    var desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+                    var setupDir = Path.Combine(desktopPath, "PhotoBoothX-Setup-Credentials");
+
+                    if (Directory.Exists(setupDir))
+                    {
+                        Directory.Delete(setupDir, true);
+                        Console.WriteLine("🗑️ Setup credentials folder automatically deleted from Desktop");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Note: Could not auto-delete setup folder: {ex.Message}");
+                    Console.WriteLine("You can safely delete the PhotoBoothX-Setup-Credentials folder from Desktop manually.");
+                }
+            });
         }
 
         private async Task CreateDefaultSettingsDirect(SqliteConnection connection)
@@ -1247,11 +1676,9 @@ namespace Photobooth.Services
             {
                 Console.WriteLine("CreateDefaultSettingsDirect: Starting default settings creation...");
                 
+                // NOTE: Product pricing and enabled states removed - now managed exclusively in Products table
                 var defaultSettings = new[]
                 {
-                    new { Id = Guid.NewGuid().ToString(), Category = "Pricing", Key = "StripPrice", Value = "5.00", DataType = "Decimal", Description = "Price for photo strips" },
-                    new { Id = Guid.NewGuid().ToString(), Category = "Pricing", Key = "Photo4x6Price", Value = "3.00", DataType = "Decimal", Description = "Price for 4x6 photos" },
-                    new { Id = Guid.NewGuid().ToString(), Category = "Pricing", Key = "SmartphonePrice", Value = "2.00", DataType = "Decimal", Description = "Price for smartphone prints" },
                     new { Id = Guid.NewGuid().ToString(), Category = "System", Key = "Volume", Value = "75", DataType = "Integer", Description = "Audio volume level (0-100)" },
                     new { Id = Guid.NewGuid().ToString(), Category = "System", Key = "LightsEnabled", Value = "true", DataType = "Boolean", Description = "Enable camera flash lights" },
                     new { Id = Guid.NewGuid().ToString(), Category = "Payment", Key = "PulsesPerCredit", Value = "1", DataType = "Integer", Description = "Arduino pulses required per $1 credit" },
@@ -1344,5 +1771,68 @@ namespace Photobooth.Services
                 return DatabaseResult.ErrorResult($"Failed to delete admin user: {ex.Message}", ex);
             }
         }
+
+        public async Task<DatabaseResult> CleanupProductSettingsAsync()
+        {
+            try
+            {
+                Console.WriteLine("CleanupProductSettingsAsync: Starting cleanup of redundant product settings...");
+                
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+
+                // List of product-related settings to remove from Settings table
+                var productSettingsToRemove = new[]
+                {
+                    // Pricing category - now handled by Products table
+                    new { Category = "Pricing", Key = "StripPrice" },
+                    new { Category = "Pricing", Key = "Photo4x6Price" },
+                    new { Category = "Pricing", Key = "SmartphonePrice" },
+                    
+                    // Products category - now handled by Products table
+                    new { Category = "Products", Key = "StripEnabled" },
+                    new { Category = "Products", Key = "Photo4x6Enabled" },
+                    new { Category = "Products", Key = "PhonePrintsEnabled" }
+                };
+
+                int totalRemoved = 0;
+                
+                var deleteQuery = "DELETE FROM Settings WHERE Category = @category AND Key = @key";
+
+                foreach (var setting in productSettingsToRemove)
+                {
+                    using var command = new SqliteCommand(deleteQuery, connection);
+                    command.Parameters.AddWithValue("@category", setting.Category);
+                    command.Parameters.AddWithValue("@key", setting.Key);
+                    
+                    var rowsAffected = await command.ExecuteNonQueryAsync();
+                    if (rowsAffected > 0)
+                    {
+                        Console.WriteLine($"CleanupProductSettingsAsync: Removed {setting.Category}.{setting.Key} ({rowsAffected} rows)");
+                        totalRemoved += rowsAffected;
+                    }
+                    else
+                    {
+                        Console.WriteLine($"CleanupProductSettingsAsync: Setting {setting.Category}.{setting.Key} not found (already cleaned)");
+                    }
+                }
+
+                Console.WriteLine($"CleanupProductSettingsAsync: Cleanup completed. Removed {totalRemoved} total redundant settings.");
+                
+                // Log the cleanup action
+                await LogSystemEventAsync(LogLevel.Info, "Database", 
+                    $"Product settings cleanup completed", 
+                    $"Removed {totalRemoved} redundant product-related settings from Settings table. Products now managed exclusively in Products table.");
+
+                return DatabaseResult.SuccessResult();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"CleanupProductSettingsAsync error: {ex}");
+                return DatabaseResult.ErrorResult($"Failed to cleanup product settings: {ex.Message}", ex);
+            }
+        }
+
+
     }
 } 
