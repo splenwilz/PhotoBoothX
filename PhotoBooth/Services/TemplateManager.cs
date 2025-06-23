@@ -1,0 +1,1378 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.IO.Compression;
+using System.Linq;
+using System.Text.Json;
+using System.Threading.Tasks;
+using System.Windows.Media.Imaging;
+using Photobooth.Models;
+using Photobooth.Services;
+
+namespace Photobooth.Services
+{
+    public class TemplateManager
+    {
+        private readonly IDatabaseService _databaseService;
+        private readonly string _templatesDirectory;
+        private readonly string[] _imageExtensions = { ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".webp", ".png" };
+
+        public TemplateManager(IDatabaseService databaseService)
+        {
+            _databaseService = databaseService;
+            
+            // Get templates directory from project directory instead of AppData
+            _templatesDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Templates");
+            
+            // Ensure templates directory exists
+            if (!Directory.Exists(_templatesDirectory))
+            {
+                Directory.CreateDirectory(_templatesDirectory);
+            }
+            
+            System.Diagnostics.Debug.WriteLine($"TemplateManager initialized - Templates directory: {_templatesDirectory}");
+        }
+
+        /// <summary>
+        /// Upload templates from selected folders
+        /// </summary>
+        public async Task<TemplateUploadResult> UploadFromFoldersAsync(string[] folderPaths)
+        {
+            var result = new TemplateUploadResult();
+            
+            foreach (var folderPath in folderPaths)
+            {
+                try
+                {
+                    if (!Directory.Exists(folderPath))
+                    {
+                        result.Results.Add(new TemplateValidationResult
+                        {
+                            IsValid = false,
+                            Errors = { $"Folder not found: {folderPath}" }
+                        });
+                        continue;
+                    }
+                    
+                    // Find all template folders in the selected path
+                    var templateFolders = FindTemplateFolders(folderPath);
+                    
+                    foreach (var templateFolder in templateFolders)
+                    {
+                        var validationResult = await ValidateTemplateFolder(templateFolder);
+                        result.Results.Add(validationResult);
+                        
+                        if (validationResult.IsValid && validationResult.Template != null)
+                        {
+                            await ProcessValidTemplate(validationResult.Template, templateFolder);
+                            result.SuccessCount++;
+                        }
+                        else
+                        {
+                            result.FailureCount++;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    result.Results.Add(new TemplateValidationResult
+                    {
+                        IsValid = false,
+                        Errors = { $"Error processing folder '{folderPath}': {ex.Message}" }
+                    });
+                    result.FailureCount++;
+                }
+            }
+            
+            result.Success = result.SuccessCount > 0;
+            result.Message = $"Upload completed: {result.SuccessCount} successful, {result.FailureCount} failed";
+            
+            return result;
+        }
+
+        /// <summary>
+        /// Upload templates from ZIP file
+        /// </summary>
+        public async Task<TemplateUploadResult> UploadFromZipAsync(string zipFilePath)
+        {
+            var result = new TemplateUploadResult();
+            
+            try
+            {
+                if (!File.Exists(zipFilePath))
+                {
+                    result.Message = "ZIP file not found";
+                    return result;
+                }
+                
+                // Create temporary extraction directory
+                var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+                Directory.CreateDirectory(tempDir);
+                
+                try
+                {
+                    // Extract ZIP file
+                    ZipFile.ExtractToDirectory(zipFilePath, tempDir);
+                    
+                    // Find template folders in extracted content
+                    var templateFolders = FindTemplateFolders(tempDir);
+                    
+                    foreach (var templateFolder in templateFolders)
+                    {
+                        var validationResult = await ValidateTemplateFolder(templateFolder);
+                        result.Results.Add(validationResult);
+                        
+                        if (validationResult.IsValid && validationResult.Template != null)
+                        {
+                            await ProcessValidTemplate(validationResult.Template, templateFolder);
+                            result.SuccessCount++;
+                        }
+                        else
+                        {
+                            result.FailureCount++;
+                        }
+                    }
+                    
+                    result.Success = result.SuccessCount > 0;
+                    result.Message = $"ZIP upload completed: {result.SuccessCount} successful, {result.FailureCount} failed";
+                }
+                finally
+                {
+                    // Clean up temporary directory
+                    if (Directory.Exists(tempDir))
+                    {
+                        Directory.Delete(tempDir, true);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                result.Message = $"Error processing ZIP file: {ex.Message}";
+                result.FailureCount++;
+            }
+            
+            return result;
+        }
+
+        /// <summary>
+        /// Refresh templates by scanning the templates directory
+        /// </summary>
+        public async Task<TemplateUploadResult> RefreshTemplatesAsync()
+        {
+            var result = new TemplateUploadResult();
+            
+            try
+            {
+                if (!Directory.Exists(_templatesDirectory))
+                {
+                    // Create the templates directory if it doesn't exist
+                    Directory.CreateDirectory(_templatesDirectory);
+                    result.Message = "Templates directory created - no templates found";
+                    result.Success = true;
+                    return result;
+                }
+                
+                // Get existing templates from database
+                var existingTemplatesResult = await _databaseService.GetAllTemplatesAsync();
+                var existingTemplates = existingTemplatesResult.Success && existingTemplatesResult.Data != null 
+                    ? existingTemplatesResult.Data.ToList() 
+                    : new List<Template>();
+                
+                // Find all template folders
+                var templateFolders = FindTemplateFolders(_templatesDirectory);
+                
+                System.Diagnostics.Debug.WriteLine($"Found {templateFolders.Count} template folders in {_templatesDirectory}");
+                
+                var processedCount = 0;
+                var skippedCount = 0;
+                
+                foreach (var templateFolder in templateFolders)
+                {
+                    try
+                    {
+                        var folderName = Path.GetFileName(templateFolder);
+                        
+                        // Check if template already exists
+                        var existingTemplate = existingTemplates.FirstOrDefault(t => 
+                            Path.GetFileName(t.FolderPath) == folderName);
+                        
+                        if (existingTemplate != null)
+                        {
+                            // Skip existing templates
+                            skippedCount++;
+                            System.Diagnostics.Debug.WriteLine($"Skipping existing template: {folderName}");
+                            continue;
+                        }
+                        
+                        System.Diagnostics.Debug.WriteLine($"Processing new template: {folderName}");
+                        
+                        // Validate and process new template
+                        var validationResult = await ValidateTemplateFolder(templateFolder, isRefresh: true);
+                        result.Results.Add(validationResult);
+                        
+                        if (validationResult.IsValid && validationResult.Template != null)
+                        {
+                            // Don't copy files since they're already in the templates directory
+                            await ProcessValidTemplate(validationResult.Template, templateFolder, copyFiles: false);
+                            result.SuccessCount++;
+                            processedCount++;
+                            System.Diagnostics.Debug.WriteLine($"Successfully imported template: {folderName}");
+                        }
+                        else
+                        {
+                            result.FailureCount++;
+                            System.Diagnostics.Debug.WriteLine($"Failed to import template: {folderName} - {string.Join(", ", validationResult.Errors)}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        result.Results.Add(new TemplateValidationResult
+                        {
+                            IsValid = false,
+                            Errors = { $"Error processing template folder '{templateFolder}': {ex.Message}" }
+                        });
+                        result.FailureCount++;
+                        System.Diagnostics.Debug.WriteLine($"Exception processing template folder '{templateFolder}': {ex.Message}");
+                    }
+                }
+                
+                result.Success = result.SuccessCount > 0 || result.FailureCount == 0;
+                
+                // Create informative message
+                if (result.SuccessCount > 0)
+                {
+                    result.Message = $"Imported {result.SuccessCount} new templates";
+                    if (skippedCount > 0)
+                    {
+                        result.Message += $" (skipped {skippedCount} existing)";
+                    }
+                    if (result.FailureCount > 0)
+                    {
+                        result.Message += $", {result.FailureCount} failed";
+                    }
+                }
+                else if (skippedCount > 0)
+                {
+                    result.Message = $"Found {skippedCount} existing templates - no new templates to import";
+                    result.Success = true;
+                }
+                else if (templateFolders.Count == 0)
+                {
+                    result.Message = "No template folders found in templates directory";
+                    result.Success = true;
+                }
+                else
+                {
+                    // Only show this if we actually found folders but none were valid
+                    result.Message = $"Found {templateFolders.Count} template folders but none were valid to import";
+                    if (result.FailureCount > 0)
+                    {
+                        result.Message += $" ({result.FailureCount} had errors)";
+                    }
+                }
+                
+                System.Diagnostics.Debug.WriteLine($"Template refresh completed: {result.Message}");
+            }
+            catch (Exception ex)
+            {
+                result.Message = $"Error during refresh: {ex.Message}";
+                result.FailureCount++;
+                System.Diagnostics.Debug.WriteLine($"Template refresh error: {ex.Message}");
+            }
+            
+            return result;
+        }
+
+        /// <summary>
+        /// Synchronize database with file system - File system is the source of truth
+        /// Removes orphaned database records and adds new templates found on disk
+        /// PRODUCTION-READY: Handles path inconsistencies and aggressive cleanup
+        /// </summary>
+        public async Task<TemplateUploadResult> SynchronizeWithFileSystemAsync()
+        {
+            var result = new TemplateUploadResult();
+            
+            try
+            {
+                Console.WriteLine("=== TEMPLATE MANAGER SYNCHRONIZE START ===");
+                Console.WriteLine($"Templates directory: {_templatesDirectory}");
+                Console.WriteLine($"Directory exists: {Directory.Exists(_templatesDirectory)}");
+                
+                if (!Directory.Exists(_templatesDirectory))
+                {
+                    Console.WriteLine("Templates directory doesn't exist, creating it...");
+                    Directory.CreateDirectory(_templatesDirectory);
+                    result.Message = "Templates directory created - no templates found";
+                    result.Success = true;
+                    return result;
+                }
+
+                // Step 1: Get all existing templates from database
+                var existingTemplatesResult = await _databaseService.GetAllTemplatesAsync();
+                var existingTemplates = existingTemplatesResult.Success && existingTemplatesResult.Data != null 
+                    ? existingTemplatesResult.Data.ToList() 
+                    : new List<Template>();
+
+                // Step 2: Get all template folders from file system (AUTHORITATIVE SOURCE)
+                var templateFolders = FindTemplateFolders(_templatesDirectory);
+                var folderNames = templateFolders.Select(Path.GetFileName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+                Console.WriteLine($"=== FILE SYSTEM SCAN RESULTS ===");
+                Console.WriteLine($"Templates directory: {_templatesDirectory}");
+                Console.WriteLine($"Found {templateFolders.Count} template folders on disk:");
+                foreach (var folder in templateFolders)
+                {
+                    Console.WriteLine($"  • {Path.GetFileName(folder)} -> {folder}");
+                }
+                
+                Console.WriteLine($"Found {existingTemplates.Count} templates in database:");
+                foreach (var template in existingTemplates)
+                {
+                    Console.WriteLine($"  • {template.Name} (ID: {template.Id}) -> {template.FolderPath}");
+                }
+
+                // Step 3: AGGRESSIVE ORPHAN DETECTION
+                // Any template in database that doesn't have a corresponding folder on disk should be removed
+                var orphanedTemplates = new List<Template>();
+                
+                foreach (var template in existingTemplates)
+                {
+                    var folderName = Path.GetFileName(template.FolderPath);
+                    var shouldKeep = false;
+                    
+                    // Check if this template's folder exists on disk (case-insensitive)
+                    if (!string.IsNullOrEmpty(folderName))
+                    {
+                        // Look for exact folder match (case-insensitive)
+                        shouldKeep = folderNames.Contains(folderName);
+                        
+                        // Also verify the full path exists
+                        if (shouldKeep && !string.IsNullOrEmpty(template.FolderPath))
+                        {
+                            shouldKeep = Directory.Exists(template.FolderPath);
+                        }
+                    }
+                    
+                    if (!shouldKeep)
+                    {
+                        orphanedTemplates.Add(template);
+                        Console.WriteLine($"ORPHAN DETECTED: {template.Name} (ID: {template.Id})");
+                        Console.WriteLine($"  - FolderPath: '{template.FolderPath}'");
+                        Console.WriteLine($"  - FolderName: '{folderName}'");
+                        Console.WriteLine($"  - Directory exists: {Directory.Exists(template.FolderPath ?? "")}");
+                        Console.WriteLine($"  - In current folder set: {(!string.IsNullOrEmpty(folderName) ? folderNames.Contains(folderName) : false)}");
+                    }
+                }
+
+                // Step 4: AGGRESSIVELY REMOVE ALL ORPHANED TEMPLATES
+                Console.WriteLine($"=== REMOVING {orphanedTemplates.Count} ORPHANED TEMPLATES ===");
+                var removedCount = 0;
+                
+                foreach (var orphanedTemplate in orphanedTemplates)
+                {
+                    Console.WriteLine($"Removing orphaned template: {orphanedTemplate.Name} (ID: {orphanedTemplate.Id})");
+                    var deleteResult = await _databaseService.DeleteTemplateAsync(orphanedTemplate.Id);
+                    
+                    if (deleteResult.Success)
+                    {
+                        Console.WriteLine($"✓ Successfully deleted: {orphanedTemplate.Name}");
+                        removedCount++;
+                    }
+                    else
+                    {
+                        Console.WriteLine($"✗ Failed to delete: {orphanedTemplate.Name} - {deleteResult.ErrorMessage}");
+                        result.FailureCount++;
+                    }
+                }
+
+                // Step 5: ADD NEW TEMPLATES FOUND ON DISK
+                Console.WriteLine($"=== PROCESSING {templateFolders.Count} FOLDERS ON DISK ===");
+                var addedCount = 0;
+                var updatedCount = 0;
+                
+                // Get fresh list of templates after cleanup
+                var refreshedResult = await _databaseService.GetAllTemplatesAsync();
+                var currentTemplates = refreshedResult.Success && refreshedResult.Data != null 
+                    ? refreshedResult.Data.ToList() 
+                    : new List<Template>();
+
+                foreach (var templateFolder in templateFolders)
+                {
+                    try
+                    {
+                        var folderName = Path.GetFileName(templateFolder);
+                        Console.WriteLine($"Processing folder: {folderName}");
+                        
+                        // Check if template exists in database (case-insensitive)
+                        var existingTemplate = currentTemplates.FirstOrDefault(t => 
+                            !string.IsNullOrEmpty(t.FolderPath) &&
+                            string.Equals(Path.GetFileName(t.FolderPath), folderName, StringComparison.OrdinalIgnoreCase));
+
+                        if (existingTemplate == null)
+                        {
+                            // New template - validate and add
+                            Console.WriteLine($"  → NEW TEMPLATE: {folderName}");
+                            
+                            var validationResult = await ValidateTemplateFolder(templateFolder, isRefresh: true);
+                            result.Results.Add(validationResult);
+                            
+                            if (validationResult.IsValid && validationResult.Template != null)
+                            {
+                                // Ensure correct folder path (use current bin directory path)
+                                validationResult.Template.FolderPath = templateFolder;
+                                
+                                await ProcessValidTemplate(validationResult.Template, templateFolder, copyFiles: false);
+                                result.SuccessCount++;
+                                addedCount++;
+                                Console.WriteLine($"  ✓ Successfully added: {folderName}");
+                            }
+                            else
+                            {
+                                result.FailureCount++;
+                                Console.WriteLine($"  ✗ Invalid template: {folderName}");
+                            }
+                        }
+                        else
+                        {
+                            // Existing template - verify paths and update if needed
+                            Console.WriteLine($"  → EXISTING TEMPLATE: {folderName}");
+                            
+                            var needsUpdate = false;
+                            var expectedFolderPath = templateFolder;
+                            
+                            // Check if path needs updating (different case or location)
+                            if (!string.Equals(existingTemplate.FolderPath, expectedFolderPath, StringComparison.Ordinal))
+                            {
+                                Console.WriteLine($"    - Updating path: '{existingTemplate.FolderPath}' → '{expectedFolderPath}'");
+                                needsUpdate = true;
+                            }
+                            
+                            // Check if template and config files exist
+                            var expectedTemplatePath = Path.Combine(templateFolder, "template.png");
+                            var expectedConfigPath = Path.Combine(templateFolder, "config.json");
+                            
+                            if (!File.Exists(existingTemplate.TemplatePath) || 
+                                !File.Exists(existingTemplate.ConfigPath) ||
+                                !string.Equals(existingTemplate.TemplatePath, expectedTemplatePath, StringComparison.Ordinal) ||
+                                !string.Equals(existingTemplate.ConfigPath, expectedConfigPath, StringComparison.Ordinal))
+                            {
+                                Console.WriteLine($"    - Updating file paths");
+                                needsUpdate = true;
+                            }
+                            
+                            if (needsUpdate)
+                            {
+                                // Re-validate and update
+                                var validationResult = await ValidateTemplateFolder(templateFolder, isRefresh: true);
+                                if (validationResult.IsValid && validationResult.Template != null)
+                                {
+                                    // Update database record with correct paths
+                                    var updateResult = await _databaseService.UpdateTemplatePathsAsync(
+                                        existingTemplate.Id,
+                                        templateFolder,
+                                        validationResult.Template.TemplatePath,
+                                        validationResult.Template.PreviewPath
+                                    );
+                                    
+                                    if (updateResult.Success)
+                                    {
+                                        updatedCount++;
+                                        Console.WriteLine($"  ✓ Updated paths for: {folderName}");
+                                    }
+                                    else
+                                    {
+                                        Console.WriteLine($"  ✗ Failed to update: {folderName} - {updateResult.ErrorMessage}");
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                Console.WriteLine($"  ✓ No updates needed: {folderName}");
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        result.FailureCount++;
+                        Console.WriteLine($"  ✗ Error processing {Path.GetFileName(templateFolder)}: {ex.Message}");
+                    }
+                }
+
+                // Step 6: BUILD COMPREHENSIVE RESULT MESSAGE
+                var messages = new List<string>();
+                
+                if (addedCount > 0)
+                    messages.Add($"{addedCount} new templates added");
+                    
+                if (updatedCount > 0)
+                    messages.Add($"{updatedCount} templates updated");
+                    
+                if (removedCount > 0)
+                    messages.Add($"{removedCount} orphaned records removed");
+                    
+                if (result.FailureCount > 0)
+                    messages.Add($"{result.FailureCount} errors occurred");
+
+                if (messages.Count == 0)
+                {
+                    result.Message = "Database is already synchronized with file system";
+                }
+                else
+                {
+                    result.Message = "Synchronization complete: " + string.Join(", ", messages);
+                }
+
+                result.Success = true;
+                Console.WriteLine($"=== SYNCHRONIZATION COMPLETED ===");
+                Console.WriteLine($"Final result: {result.Message}");
+                Console.WriteLine($"Templates in file system: {templateFolders.Count}");
+                Console.WriteLine($"Actions taken: +{addedCount} ~{updatedCount} -{removedCount} !{result.FailureCount}");
+            }
+            catch (Exception ex)
+            {
+                result.Message = $"Error during synchronization: {ex.Message}";
+                result.FailureCount++;
+                Console.WriteLine($"SYNCHRONIZATION ERROR: {ex.Message}");
+                Console.WriteLine($"Stack trace: {ex.StackTrace}");
+            }
+            
+            return result;
+        }
+
+        /// <summary>
+        /// Find all template folders in a directory
+        /// </summary>
+        private List<string> FindTemplateFolders(string rootPath)
+        {
+            var templateFolders = new List<string>();
+            
+            try
+            {
+                // Check if root path itself is a template folder
+                if (IsTemplateFolder(rootPath))
+                {
+                    templateFolders.Add(rootPath);
+                }
+                
+                // Check subdirectories
+                var subdirectories = Directory.GetDirectories(rootPath);
+                foreach (var subdirectory in subdirectories)
+                {
+                    if (IsTemplateFolder(subdirectory))
+                    {
+                        templateFolders.Add(subdirectory);
+                    }
+                    else
+                    {
+                        // Recursively search subdirectories
+                        templateFolders.AddRange(FindTemplateFolders(subdirectory));
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error finding template folders in '{rootPath}': {ex.Message}");
+            }
+            
+            return templateFolders;
+        }
+
+        /// <summary>
+        /// Check if a folder contains a template
+        /// </summary>
+        private bool IsTemplateFolder(string folderPath)
+        {
+            return File.Exists(Path.Combine(folderPath, "template.png"));
+        }
+
+        /// <summary>
+        /// Validate a template folder and create Template object
+        /// </summary>
+        private async Task<TemplateValidationResult> ValidateTemplateFolder(string folderPath, bool isRefresh = false)
+        {
+            var result = new TemplateValidationResult();
+            var folderName = Path.GetFileName(folderPath);
+            
+            try
+            {
+                var templatePath = Path.Combine(folderPath, "template.png");
+                
+                // Validate required files
+                if (!File.Exists(templatePath))
+                {
+                    result.IsValid = false;
+                    result.Errors.Add("template.png not found");
+                    return result;
+                }
+                
+                // Get template dimensions
+                var (width, height) = GetImageDimensions(templatePath);
+                if (width == 0 || height == 0)
+                {
+                    result.IsValid = false;
+                    result.Errors.Add("Could not determine template dimensions");
+                    return result;
+                }
+                
+                // Find appropriate layout from database based on dimensions
+                var layoutId = await FindBestLayoutForDimensions(width, height);
+                if (string.IsNullOrEmpty(layoutId))
+                {
+                    result.IsValid = false;
+                    result.Errors.Add($"No suitable layout found for dimensions {width}x{height}");
+                    return result;
+                }
+                
+                // Find preview image
+                var previewPath = FindPreviewImage(folderPath);
+                if (string.IsNullOrEmpty(previewPath))
+                {
+                    previewPath = templatePath; // Use template.png as preview
+                    result.Warnings.Add("No preview image found, using template.png");
+                }
+                
+                // Determine category from folder structure or use default
+                var categoryName = DetermineCategoryFromPath(folderPath);
+                var categoryId = await GetOrCreateCategoryAsync(categoryName);
+                
+                // Create template object
+                var template = new Template
+                {
+                    Name = folderName,
+                    CategoryId = categoryId,
+                    CategoryName = categoryName,
+                    LayoutId = layoutId,
+                    FolderPath = isRefresh ? folderPath : "",
+                    TemplatePath = isRefresh ? templatePath : "",
+                    PreviewPath = isRefresh ? previewPath : "",
+                    Price = 0, // Default price
+                    Description = $"Template with dimensions {width}x{height}",
+                    FileSize = new FileInfo(templatePath).Length,
+                    HasPreview = previewPath != templatePath,
+                    ValidationWarnings = result.Warnings
+                };
+                
+                result.Template = template;
+            }
+            catch (Exception ex)
+            {
+                result.IsValid = false;
+                result.Errors.Add($"Error validating template '{folderName}': {ex.Message}");
+            }
+            
+            return result;
+        }
+        
+        /// <summary>
+        /// Find the best layout for given dimensions
+        /// </summary>
+        private async Task<string> FindBestLayoutForDimensions(int width, int height)
+        {
+            try
+            {
+                var layoutsResult = await _databaseService.GetTemplateLayoutsAsync();
+                if (!layoutsResult.Success || layoutsResult.Data == null)
+                {
+                    return "";
+                }
+                
+                var layouts = layoutsResult.Data.Where(l => l.IsActive).ToList();
+                
+                // First, try to find exact match
+                var exactMatch = layouts.FirstOrDefault(l => l.Width == width && l.Height == height);
+                if (exactMatch != null)
+                {
+                    return exactMatch.Id;
+                }
+                
+                // If no exact match, find closest match (within 20px tolerance)
+                var tolerance = 20;
+                var closeMatch = layouts.FirstOrDefault(l => 
+                    Math.Abs(l.Width - width) <= tolerance && 
+                    Math.Abs(l.Height - height) <= tolerance);
+                
+                if (closeMatch != null)
+                {
+                    return closeMatch.Id;
+                }
+                
+                // If still no match, try to find by aspect ratio and general category
+                var aspectRatio = (double)width / height;
+                
+                // Photo strip layouts (tall and narrow)
+                if (aspectRatio < 0.5 && height > 1500)
+                {
+                    var stripLayout = layouts.FirstOrDefault(l => l.Name.Contains("strip", StringComparison.OrdinalIgnoreCase));
+                    if (stripLayout != null) return stripLayout.Id;
+                }
+                
+                // Photo layouts (square or landscape)
+                if (aspectRatio >= 0.5)
+                {
+                    var photoLayout = layouts.FirstOrDefault(l => l.Name.Contains("photo", StringComparison.OrdinalIgnoreCase));
+                    if (photoLayout != null) return photoLayout.Id;
+                }
+                
+                // Fallback to first available layout
+                return layouts.FirstOrDefault()?.Id ?? "";
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error finding layout for dimensions {width}x{height}: {ex.Message}");
+                return "";
+            }
+        }
+        
+        /// <summary>
+        /// Determine category from folder path
+        /// </summary>
+        private string DetermineCategoryFromPath(string folderPath)
+        {
+            var folderName = Path.GetFileName(folderPath).ToLowerInvariant();
+            var parentFolder = Path.GetFileName(Path.GetDirectoryName(folderPath))?.ToLowerInvariant();
+            
+            // Look for category hints in folder names
+            if (folderName.Contains("fun") || folderName.Contains("party") || folderName.Contains("mixtape"))
+                return "Fun";
+            if (folderName.Contains("classic") || folderName.Contains("elegant") || folderName.Contains("minimalist"))
+                return "Classic";
+            if (folderName.Contains("holiday") || folderName.Contains("christmas") || folderName.Contains("halloween"))
+                return "Holiday";
+            if (folderName.Contains("seasonal") || folderName.Contains("summer") || folderName.Contains("winter"))
+                return "Seasonal";
+            if (folderName.Contains("film") || folderName.Contains("vintage") || folderName.Contains("retro"))
+                return "Vintage";
+            
+            // Default category
+            return "Classic";
+        }
+
+        /// <summary>
+        /// Find the best preview image in the folder
+        /// </summary>
+        private string FindPreviewImage(string folderPath)
+        {
+            try
+            {
+                var files = Directory.GetFiles(folderPath);
+                
+                // First, look for images that are NOT .png
+                var nonPngImages = files.Where(f => 
+                    _imageExtensions.Contains(Path.GetExtension(f).ToLower()) &&
+                    !Path.GetExtension(f).Equals(".png", StringComparison.OrdinalIgnoreCase) &&
+                    !Path.GetFileName(f).Equals("template.png", StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+                
+                if (nonPngImages.Any())
+                {
+                    return nonPngImages.First();
+                }
+                
+                // If no non-PNG images, look for PNG files (except template.png)
+                var pngImages = files.Where(f => 
+                    Path.GetExtension(f).Equals(".png", StringComparison.OrdinalIgnoreCase) &&
+                    !Path.GetFileName(f).Equals("template.png", StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+                
+                return pngImages.FirstOrDefault() ?? "";
+            }
+            catch
+            {
+                return "";
+            }
+        }
+
+        /// <summary>
+        /// Get image dimensions from file
+        /// </summary>
+        private (int width, int height) GetImageDimensions(string imagePath)
+        {
+            try
+            {
+                var bitmap = new BitmapImage();
+                bitmap.BeginInit();
+                bitmap.UriSource = new Uri(imagePath, UriKind.Absolute);
+                bitmap.EndInit();
+                
+                return (bitmap.PixelWidth, bitmap.PixelHeight);
+            }
+            catch
+            {
+                return (0, 0);
+            }
+        }
+
+        /// <summary>
+        /// Get existing category or create new one
+        /// </summary>
+        private async Task<int> GetOrCreateCategoryAsync(string categoryName)
+        {
+            try
+            {
+                var categoriesResult = await _databaseService.GetTemplateCategoriesAsync();
+                if (categoriesResult.Success && categoriesResult.Data != null)
+                {
+                    var existing = categoriesResult.Data.FirstOrDefault(c => 
+                        c.Name.Equals(categoryName, StringComparison.OrdinalIgnoreCase));
+                    
+                    if (existing != null)
+                    {
+                        return existing.Id;
+                    }
+                }
+                
+                // Create new category
+                var createResult = await _databaseService.CreateTemplateCategoryAsync(categoryName, $"Auto-created category for {categoryName} templates");
+                if (createResult.Success && createResult.Data != null)
+                {
+                    return createResult.Data.Id;
+                }
+                
+                return 1; // Default to first category if creation fails
+            }
+            catch
+            {
+                return 1; // Default fallback
+            }
+        }
+
+        /// <summary>
+        /// Process a valid template (copy files and save to database)
+        /// </summary>
+        private async Task ProcessValidTemplate(Template template, string sourceFolderPath, bool copyFiles = true)
+        {
+            string targetFolderPath = "";
+            
+            if (copyFiles)
+            {
+                // Get layout information to determine proper folder structure
+                var layoutResult = await _databaseService.GetTemplateLayoutAsync(template.LayoutId);
+                if (!layoutResult.Success || layoutResult.Data == null)
+                {
+                    throw new Exception($"Layout '{template.LayoutId}' not found");
+                }
+                
+                var layout = layoutResult.Data;
+                
+                // Create folder structure: Templates/{LayoutKey}/{TemplateName}/
+                var layoutFolderPath = Path.Combine(_templatesDirectory, layout.LayoutKey);
+                var folderName = Path.GetFileName(sourceFolderPath);
+                targetFolderPath = Path.Combine(layoutFolderPath, folderName);
+                
+                // Ensure layout folder exists
+                Directory.CreateDirectory(layoutFolderPath);
+                
+                // Handle name conflicts
+                int suffix = 1;
+                while (Directory.Exists(targetFolderPath))
+                {
+                    targetFolderPath = Path.Combine(layoutFolderPath, $"{folderName}_{suffix}");
+                    suffix++;
+                }
+                
+                // Copy entire folder to runtime Templates directory
+                CopyDirectory(sourceFolderPath, targetFolderPath);
+                
+                // Also copy to project source Templates directory
+                try
+                {
+                    // Get project root directory (go up from bin/Debug/net8.0-windows to project root)
+                    var currentDir = AppDomain.CurrentDomain.BaseDirectory;
+                    var projectRoot = Path.GetFullPath(Path.Combine(currentDir, "..", "..", ".."));
+                    
+                    var projectLayoutFolderPath = Path.Combine(projectRoot, "Templates", layout.LayoutKey);
+                    var projectTargetFolderPath = Path.Combine(projectLayoutFolderPath, Path.GetFileName(targetFolderPath));
+                    
+                    // Ensure project layout folder exists
+                    Directory.CreateDirectory(projectLayoutFolderPath);
+                    
+                    // Copy to project source folder
+                    CopyDirectory(sourceFolderPath, projectTargetFolderPath);
+                    
+                    Console.WriteLine($"✓ Template copied to runtime folder: {targetFolderPath}");
+                    Console.WriteLine($"✓ Template copied to project source folder: {projectTargetFolderPath}");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"⚠ Warning: Could not copy to project source folder: {ex.Message}");
+                    // Don't fail the operation if project copy fails
+                }
+                
+                // Update template paths using relative paths from Templates directory
+                var relativeFolderPath = Path.Combine("Templates", layout.LayoutKey, Path.GetFileName(targetFolderPath));
+                template.FolderPath = relativeFolderPath;
+                template.TemplatePath = Path.Combine(relativeFolderPath, "template.png");
+                template.PreviewPath = template.HasPreview 
+                    ? Path.Combine(relativeFolderPath, Path.GetFileName(template.PreviewPath))
+                    : template.TemplatePath;
+                template.ConfigPath = Path.Combine(relativeFolderPath, "config.json");
+            }
+            else
+            {
+                // Files are already in place, just update paths
+                targetFolderPath = sourceFolderPath;
+                template.FolderPath = targetFolderPath;
+                template.TemplatePath = Path.Combine(targetFolderPath, "template.png");
+                template.ConfigPath = Path.Combine(targetFolderPath, "config.json");
+                
+                // Find preview image again
+                var previewPath = FindPreviewImage(targetFolderPath);
+                template.PreviewPath = !string.IsNullOrEmpty(previewPath) ? previewPath : template.TemplatePath;
+                template.HasPreview = template.PreviewPath != template.TemplatePath;
+            }
+            
+            // Save to database
+            var createResult = await _databaseService.CreateTemplateAsync(template);
+            if (!createResult.Success)
+            {
+                throw new Exception($"Failed to save template to database: {createResult.ErrorMessage}");
+            }
+        }
+
+        /// <summary>
+        /// Copy directory recursively
+        /// </summary>
+        private void CopyDirectory(string sourceDir, string targetDir)
+        {
+            Directory.CreateDirectory(targetDir);
+            
+            // Copy files
+            foreach (var file in Directory.GetFiles(sourceDir))
+            {
+                var targetFile = Path.Combine(targetDir, Path.GetFileName(file));
+                File.Copy(file, targetFile, true);
+            }
+            
+            // Copy subdirectories
+            foreach (var subDir in Directory.GetDirectories(sourceDir))
+            {
+                var targetSubDir = Path.Combine(targetDir, Path.GetFileName(subDir));
+                CopyDirectory(subDir, targetSubDir);
+            }
+        }
+
+        /// <summary>
+        /// Recalculate file sizes for all templates
+        /// </summary>
+        public async Task<TemplateUploadResult> RecalculateAllFileSizesAsync()
+        {
+            var result = new TemplateUploadResult();
+            
+            try
+            {
+                var templatesResult = await _databaseService.GetAllTemplatesAsync();
+                if (!templatesResult.Success || templatesResult.Data == null)
+                {
+                    result.Message = "Failed to retrieve templates from database";
+                    return result;
+                }
+                
+                var updatedCount = 0;
+                
+                foreach (var template in templatesResult.Data)
+                {
+                    try
+                    {
+                        if (!string.IsNullOrEmpty(template.TemplatePath) && File.Exists(template.TemplatePath))
+                        {
+                            var fileInfo = new FileInfo(template.TemplatePath);
+                            var newSize = fileInfo.Length;
+                            
+                            if (template.FileSize != newSize)
+                            {
+                                await _databaseService.UpdateTemplateFileSizeAsync(template.Id, newSize);
+                                updatedCount++;
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        result.Results.Add(new TemplateValidationResult
+                        {
+                            IsValid = false,
+                            Errors = { $"Error updating file size for template '{template.Name}': {ex.Message}" }
+                        });
+                        result.FailureCount++;
+                    }
+                }
+                
+                result.SuccessCount = updatedCount;
+                result.Success = true;
+                result.Message = $"File sizes recalculated: {updatedCount} templates updated";
+            }
+            catch (Exception ex)
+            {
+                result.Message = $"Error recalculating file sizes: {ex.Message}";
+                result.FailureCount++;
+            }
+            
+            return result;
+        }
+
+        /// <summary>
+        /// Delete template completely (from database and file system)
+        /// </summary>
+        public async Task<TemplateValidationResult> DeleteTemplateCompletelyAsync(int templateId)
+        {
+            var result = new TemplateValidationResult();
+            
+            try
+            {
+                // Get template details first
+                var templateResult = await _databaseService.GetByIdAsync<Template>(templateId);
+                if (!templateResult.Success || templateResult.Data == null)
+                {
+                    result.IsValid = false;
+                    result.Errors.Add("Template not found in database");
+                    return result;
+                }
+                
+                var template = templateResult.Data;
+                
+                // Delete from database first
+                var deleteResult = await _databaseService.DeleteTemplateAsync(templateId);
+                if (!deleteResult.Success)
+                {
+                    result.IsValid = false;
+                    result.Errors.Add(deleteResult.ErrorMessage ?? "Failed to delete template from database");
+                    return result;
+                }
+                
+                // Delete folder from file system
+                if (!string.IsNullOrEmpty(template.FolderPath) && Directory.Exists(template.FolderPath))
+                {
+                    try
+                    {
+                        Directory.Delete(template.FolderPath, true);
+                    }
+                    catch (Exception ex)
+                    {
+                        result.Warnings.Add($"Could not delete template folder '{template.FolderPath}': {ex.Message}");
+                        // Don't fail the operation if folder deletion fails
+                    }
+                }
+                
+                result.IsValid = true;
+                return result;
+            }
+            catch (Exception ex)
+            {
+                result.IsValid = false;
+                result.Errors.Add($"Error deleting template {templateId}: {ex.Message}");
+                return result;
+            }
+        }
+
+        /// <summary>
+        /// Duplicate a template
+        /// </summary>
+        public async Task<DatabaseResult<Template>> DuplicateTemplateAsync(int templateId, string newName = "")
+        {
+            try
+            {
+                // Get original template
+                var originalResult = await _databaseService.GetByIdAsync<Template>(templateId);
+                if (!originalResult.Success || originalResult.Data == null)
+                {
+                    return DatabaseResult<Template>.ErrorResult("Template not found");
+                }
+                
+                var original = originalResult.Data;
+                
+                // Create new folder name
+                var originalFolderName = Path.GetFileName(original.FolderPath);
+                var newFolderName = $"{originalFolderName}_copy";
+                var newFolderPath = Path.Combine(_templatesDirectory, newFolderName);
+                
+                // Handle name conflicts
+                int suffix = 1;
+                while (Directory.Exists(newFolderPath))
+                {
+                    newFolderPath = Path.Combine(_templatesDirectory, $"{originalFolderName}_copy_{suffix}");
+                    suffix++;
+                }
+                
+                // Copy folder
+                CopyDirectory(original.FolderPath, newFolderPath);
+                
+                // Use provided name or generate default
+                var templateName = string.IsNullOrEmpty(newName) ? $"{original.Name} (Copy)" : newName;
+                
+                // Create new template object
+                var newTemplate = new Template
+                {
+                    Name = templateName,
+                    CategoryId = original.CategoryId,
+                    LayoutId = original.LayoutId,
+                    FolderPath = newFolderPath,
+                    TemplatePath = Path.Combine(newFolderPath, "template.png"),
+                    PreviewPath = Path.Combine(newFolderPath, Path.GetFileName(original.PreviewPath)),
+                    IsActive = original.IsActive,
+                    Price = original.Price,
+                    SortOrder = original.SortOrder + 1,
+                    Description = original.Description,
+                    FileSize = original.FileSize,
+                    UploadedAt = DateTime.Now,
+                    UploadedBy = original.UploadedBy
+                };
+                
+                // Save to database
+                var createResult = await _databaseService.CreateTemplateAsync(newTemplate);
+                if (createResult.Success && createResult.Data != null)
+                {
+                    return DatabaseResult<Template>.SuccessResult(createResult.Data);
+                }
+                
+                return DatabaseResult<Template>.ErrorResult(createResult.ErrorMessage ?? "Failed to create template");
+            }
+            catch (Exception ex)
+            {
+                return DatabaseResult<Template>.ErrorResult($"Error duplicating template {templateId}: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Rename a template (both in database and file system)
+        /// </summary>
+        public async Task<DatabaseResult<Template>> RenameTemplateAsync(int templateId, string newName)
+        {
+            try
+            {
+                // Get template details first
+                var templateResult = await _databaseService.GetByIdAsync<Template>(templateId);
+                if (!templateResult.Success || templateResult.Data == null)
+                {
+                    return DatabaseResult<Template>.ErrorResult("Template not found");
+                }
+                
+                var template = templateResult.Data;
+                var oldName = template.Name;
+                
+                // Update template name in database
+                var updateResult = await _databaseService.UpdateTemplateAsync(templateId, name: newName);
+                
+                if (updateResult.Success && updateResult.Data != null)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Template renamed from '{oldName}' to '{newName}'");
+                    return DatabaseResult<Template>.SuccessResult(updateResult.Data);
+                }
+                
+                return DatabaseResult<Template>.ErrorResult(updateResult.ErrorMessage ?? "Failed to update template");
+            }
+            catch (Exception ex)
+            {
+                return DatabaseResult<Template>.ErrorResult($"Error renaming template {templateId}: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Upload templates from selected folders with specific layout
+        /// </summary>
+        public async Task<TemplateUploadResult> UploadFromFoldersWithLayoutAsync(string[] folderPaths, string layoutId)
+        {
+            var result = new TemplateUploadResult();
+            
+            foreach (var folderPath in folderPaths)
+            {
+                try
+                {
+                    if (!Directory.Exists(folderPath))
+                    {
+                        result.Results.Add(new TemplateValidationResult
+                        {
+                            IsValid = false,
+                            Errors = { $"Folder not found: {folderPath}" }
+                        });
+                        continue;
+                    }
+                    
+                    // Find all template folders in the selected path
+                    var templateFolders = FindTemplateFolders(folderPath);
+                    
+                    foreach (var templateFolder in templateFolders)
+                    {
+                        var validationResult = await ValidateTemplateFolderWithLayout(templateFolder, layoutId);
+                        result.Results.Add(validationResult);
+                        
+                        if (validationResult.IsValid && validationResult.Template != null)
+                        {
+                            await ProcessValidTemplate(validationResult.Template, templateFolder);
+                            result.SuccessCount++;
+                        }
+                        else
+                        {
+                            result.FailureCount++;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    result.Results.Add(new TemplateValidationResult
+                    {
+                        IsValid = false,
+                        Errors = { $"Error processing folder '{folderPath}': {ex.Message}" }
+                    });
+                    result.FailureCount++;
+                }
+            }
+            
+            result.Success = result.SuccessCount > 0;
+            result.Message = $"Upload completed: {result.SuccessCount} successful, {result.FailureCount} failed";
+            
+            return result;
+        }
+
+        /// <summary>
+        /// Upload templates from ZIP file with specific layout
+        /// </summary>
+        public async Task<TemplateUploadResult> UploadFromZipWithLayoutAsync(string zipFilePath, string layoutId)
+        {
+            var result = new TemplateUploadResult();
+            
+            try
+            {
+                if (!File.Exists(zipFilePath))
+                {
+                    result.Message = "ZIP file not found";
+                    return result;
+                }
+                
+                // Create temporary extraction directory
+                var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+                Directory.CreateDirectory(tempDir);
+                
+                try
+                {
+                    // Extract ZIP file
+                    ZipFile.ExtractToDirectory(zipFilePath, tempDir);
+                    
+                    // Find template folders in extracted content
+                    var templateFolders = FindTemplateFolders(tempDir);
+                    
+                    foreach (var templateFolder in templateFolders)
+                    {
+                        var validationResult = await ValidateTemplateFolderWithLayout(templateFolder, layoutId);
+                        result.Results.Add(validationResult);
+                        
+                        if (validationResult.IsValid && validationResult.Template != null)
+                        {
+                            await ProcessValidTemplate(validationResult.Template, templateFolder);
+                            result.SuccessCount++;
+                        }
+                        else
+                        {
+                            result.FailureCount++;
+                        }
+                    }
+                    
+                    result.Success = result.SuccessCount > 0;
+                    result.Message = $"ZIP upload completed: {result.SuccessCount} successful, {result.FailureCount} failed";
+                }
+                finally
+                {
+                    // Clean up temporary directory
+                    if (Directory.Exists(tempDir))
+                    {
+                        Directory.Delete(tempDir, true);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                result.Message = $"Error processing ZIP file: {ex.Message}";
+                result.FailureCount++;
+            }
+            
+            return result;
+        }
+
+        /// <summary>
+        /// Validate a template folder with a specific layout
+        /// </summary>
+        private async Task<TemplateValidationResult> ValidateTemplateFolderWithLayout(string folderPath, string layoutId)
+        {
+            var result = new TemplateValidationResult();
+            var folderName = Path.GetFileName(folderPath);
+            
+            try
+            {
+                var templatePath = Path.Combine(folderPath, "template.png");
+                
+                // Validate required files
+                if (!File.Exists(templatePath))
+                {
+                    result.IsValid = false;
+                    result.Errors.Add("template.png not found");
+                    return result;
+                }
+                
+                // Verify layout exists
+                var layoutResult = await _databaseService.GetTemplateLayoutAsync(layoutId);
+                if (!layoutResult.Success || layoutResult.Data == null)
+                {
+                    result.IsValid = false;
+                    result.Errors.Add($"Layout '{layoutId}' not found");
+                    return result;
+                }
+                
+                var layout = layoutResult.Data;
+                
+                // Get template dimensions
+                var (width, height) = GetImageDimensions(templatePath);
+                if (width == 0 || height == 0)
+                {
+                    result.IsValid = false;
+                    result.Errors.Add("Could not determine template dimensions");
+                    return result;
+                }
+                
+                // Verify dimensions match layout (with some tolerance)
+                var widthDiff = Math.Abs(width - layout.Width);
+                var heightDiff = Math.Abs(height - layout.Height);
+                
+                if (widthDiff > 10 || heightDiff > 10) // Allow 10px tolerance
+                {
+                    result.Warnings.Add($"Template dimensions ({width}x{height}) don't exactly match layout dimensions ({layout.Width}x{layout.Height})");
+                }
+                
+                // Find preview image
+                var previewPath = FindPreviewImage(folderPath);
+                if (string.IsNullOrEmpty(previewPath))
+                {
+                    previewPath = templatePath; // Use template.png as preview
+                    result.Warnings.Add("No preview image found, using template.png");
+                }
+                
+                // Determine category from folder structure or use default
+                var categoryName = DetermineCategoryFromPath(folderPath);
+                var categoryId = await GetOrCreateCategoryAsync(categoryName);
+                
+                // Create template object
+                var template = new Template
+                {
+                    Name = folderName,
+                    CategoryId = categoryId,
+                    CategoryName = categoryName,
+                    LayoutId = layoutId,
+                    FolderPath = folderPath,
+                    TemplatePath = templatePath,
+                    PreviewPath = previewPath,
+                    Price = 0, // Default price
+                    Description = $"Template for {layout.Name} layout",
+                    FileSize = new FileInfo(templatePath).Length,
+                    HasPreview = previewPath != templatePath,
+                    ValidationWarnings = result.Warnings
+                };
+                
+                result.Template = template;
+            }
+            catch (Exception ex)
+            {
+                result.IsValid = false;
+                result.Errors.Add($"Error validating template '{folderName}': {ex.Message}");
+            }
+            
+            return result;
+        }
+    }
+} 

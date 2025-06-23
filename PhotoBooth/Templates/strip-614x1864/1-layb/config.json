@@ -1,0 +1,20 @@
+﻿{
+  "TemplateName": "I LayB",
+  "TemplateId": "1-layb",
+  "Dimensions": {
+    "Width": 1864,
+    "Height": 1228
+  },
+  "PhotoAreas": [
+    {
+      "Id": "photo1",
+      "X": 433,
+      "Y": 202,
+      "Width": 954,
+      "Height": 486
+    }
+  ],
+  "PhotoCount": 1,
+  "Category": "strip",
+  "Description": "1 LabB Special"
+}

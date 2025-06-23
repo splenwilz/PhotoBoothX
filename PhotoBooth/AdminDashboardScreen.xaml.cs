@@ -185,11 +185,126 @@ namespace Photobooth
         /// </summary>
         public AdminDashboardScreen(IDatabaseService databaseService)
         {
-            InitializeComponent();
-            _databaseService = databaseService;
-            InitializeTabMapping();
-            InitializeSalesData();
-            InitializeProductViewModels();
+            Console.WriteLine("TEST: AdminDashboardScreen constructor called!");
+            
+            try
+            {
+                Console.WriteLine("=== ADMIN DASHBOARD SCREEN CONSTRUCTOR STARTING ===");
+                Console.WriteLine("AdminDashboardScreen constructor starting...");
+                
+                Console.WriteLine("Calling InitializeComponent()...");
+                InitializeComponent();
+                Console.WriteLine("InitializeComponent() completed");
+                
+                Console.WriteLine("Setting database service...");
+                _databaseService = databaseService;
+                Console.WriteLine("Database service set");
+                
+                Console.WriteLine("Initializing tab mapping...");
+                InitializeTabMapping();
+                Console.WriteLine("Tab mapping initialized");
+                
+                Console.WriteLine("Initializing sales data...");
+                InitializeSalesData();
+                Console.WriteLine("Sales data initialized");
+                
+                Console.WriteLine("Initializing product view models...");
+                InitializeProductViewModels();
+                Console.WriteLine("Product view models initialized");
+                
+                Console.WriteLine("Initializing templates tab...");
+                InitializeTemplatesTab();
+                Console.WriteLine("Templates tab initialized");
+                
+                Console.WriteLine("AdminDashboardScreen constructor completed successfully");
+                Console.WriteLine("=== ADMIN DASHBOARD SCREEN CONSTRUCTOR COMPLETED ===");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"=== ADMIN DASHBOARD CONSTRUCTOR ERROR ===");
+                Console.WriteLine($"ERROR in AdminDashboardScreen constructor:");
+                Console.WriteLine($"Exception Type: {ex.GetType().Name}");
+                Console.WriteLine($"Message: {ex.Message}");
+                Console.WriteLine($"Stack Trace: {ex.StackTrace}");
+                if (ex.InnerException != null)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Inner Exception: {ex.InnerException.Message}");
+                }
+                throw; // Re-throw to prevent silent failures
+            }
+        }
+
+        /// <summary>
+        /// Initialize the Templates tab with the database service
+        /// </summary>
+        private void InitializeTemplatesTab()
+        {
+            try
+            {
+                Console.WriteLine("=== INITIALIZE TEMPLATES TAB STARTING ===");
+                Console.WriteLine("InitializeTemplatesTab starting...");
+                
+                // Replace the XAML-created instance with a properly initialized one
+                Console.WriteLine($"TemplatesTabControlInstance null check: {TemplatesTabControlInstance == null}");
+                if (TemplatesTabControlInstance != null)
+                {
+                    Console.WriteLine("TemplatesTabControlInstance found, replacing with database-injected version...");
+                    
+                    var parent = TemplatesTabControlInstance.Parent as Panel;
+                    Console.WriteLine($"Parent null check: {parent == null}");
+                    if (parent != null)
+                    {
+                        Console.WriteLine($"Parent found: {parent.GetType().Name}");
+                        Console.WriteLine($"Parent children count: {parent.Children.Count}");
+                        
+                        var index = parent.Children.IndexOf(TemplatesTabControlInstance);
+                        Console.WriteLine($"TemplatesTabControlInstance index: {index}");
+                        
+                        if (index >= 0)
+                        {
+                            Console.WriteLine($"Removing old instance at index {index}");
+                            parent.Children.RemoveAt(index);
+                            Console.WriteLine($"Old instance removed. Children count now: {parent.Children.Count}");
+                            
+                            Console.WriteLine("Creating new TemplatesTabControl with database service...");
+                            var newTemplatesControl = new Views.TemplatesTabControl(_databaseService);
+                            Console.WriteLine("New TemplatesTabControl created successfully");
+                            
+                            Console.WriteLine($"Inserting new control at index {index}");
+                            parent.Children.Insert(index, newTemplatesControl);
+                            Console.WriteLine($"TemplatesTabControl replacement completed successfully. Children count: {parent.Children.Count}");
+                        }
+                        else
+                        {
+                            Console.WriteLine("ERROR: TemplatesTabControlInstance not found in parent's children");
+                        }
+                    }
+                    else
+                    {
+                        Console.WriteLine("Warning: TemplatesTabControlInstance parent is null");
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("Warning: TemplatesTabControlInstance is null");
+                }
+                
+                Console.WriteLine("InitializeTemplatesTab completed");
+                Console.WriteLine("=== INITIALIZE TEMPLATES TAB COMPLETED ===");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"=== INITIALIZE TEMPLATES TAB ERROR ===");
+                Console.WriteLine($"ERROR in InitializeTemplatesTab:");
+                Console.WriteLine($"Exception Type: {ex.GetType().Name}");
+                Console.WriteLine($"Message: {ex.Message}");
+                Console.WriteLine($"Stack Trace: {ex.StackTrace}");
+                if (ex.InnerException != null)
+                {
+                    Console.WriteLine($"Inner Exception: {ex.InnerException.Message}");
+                }
+                // Don't throw here - let the admin screen continue without templates tab if needed
+            }
         }
 
         /// <summary>
@@ -472,8 +587,22 @@ namespace Photobooth
                             await LoadProductsData();
                             break;
                         case "TemplatesTab":
+                            System.Diagnostics.Debug.WriteLine("=== TEMPLATES TAB CLICKED ===");
                             TemplatesTabContent.Visibility = Visibility.Visible;
                             BreadcrumbText.Text = "Templates";
+                            
+                            // Manually trigger template loading since the Loaded event might not fire for replaced controls
+                            System.Diagnostics.Debug.WriteLine("Looking for TemplatesTabControl in TemplatesTabContent...");
+                            var templatesControl = FindTemplatesTabControl(TemplatesTabContent);
+                            if (templatesControl != null)
+                            {
+                                System.Diagnostics.Debug.WriteLine("TemplatesTabControl found, triggering manual load...");
+                                await templatesControl.ManualLoadTemplatesAsync();
+                            }
+                            else
+                            {
+                                System.Diagnostics.Debug.WriteLine("WARNING: TemplatesTabControl not found in TemplatesTabContent");
+                            }
                             break;
                         case "DiagnosticsTab":
                             DiagnosticsTabContent.Visibility = Visibility.Visible;
@@ -2254,6 +2383,29 @@ namespace Photobooth
         }
 
         #endregion
+
+        /// <summary>
+        /// Helper method to find TemplatesTabControl in the content
+        /// </summary>
+        private Views.TemplatesTabControl? FindTemplatesTabControl(Panel parent)
+        {
+            foreach (var child in parent.Children)
+            {
+                if (child is Views.TemplatesTabControl templatesControl)
+                {
+                    return templatesControl;
+                }
+                
+                if (child is Panel childPanel)
+                {
+                    var found = FindTemplatesTabControl(childPanel);
+                    if (found != null) return found;
+                }
+            }
+            return null;
+        }
+
+
     }
 
     #region Data Models
