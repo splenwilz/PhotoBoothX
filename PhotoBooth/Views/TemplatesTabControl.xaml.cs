@@ -40,7 +40,34 @@ namespace Photobooth.Views
         private string _sortOrder = "asc";
         private bool _showAllSeasons = false; // New field to track seasonal filter bypass
 
+        // Performance optimization fields
+        private bool _isDataLoaded = false;
+        private DateTime _lastSyncTime = DateTime.MinValue;
+        private readonly TimeSpan _syncCooldown = GetCacheTimeout(); // Configurable cache timeout
+        private bool _isInitialLoad = true;
+        private readonly System.Diagnostics.Stopwatch _performanceStopwatch = new();
+
         // Modal state fields removed - using CategoryManagementDialog instead
+
+        #endregion
+
+        #region Configuration
+
+        /// <summary>
+        /// Get cache timeout from configuration or environment variable, with fallback to default
+        /// </summary>
+        private static TimeSpan GetCacheTimeout()
+        {
+            // Allow override via environment variable for testing
+            var envTimeout = Environment.GetEnvironmentVariable("PHOTOBOOTH_CACHE_TIMEOUT_MINUTES");
+            if (!string.IsNullOrEmpty(envTimeout) && int.TryParse(envTimeout, out var minutes))
+            {
+                return TimeSpan.FromMinutes(Math.Max(1, minutes)); // Minimum 1 minute
+            }
+            
+            // Default: 5 minutes for production use
+            return TimeSpan.FromMinutes(5);
+        }
 
         #endregion
 
@@ -48,37 +75,22 @@ namespace Photobooth.Views
 
         public TemplatesTabControl()
         {
-            Console.WriteLine("=== TEMPLATES TAB CONTROL CONSTRUCTOR (No Database) ===");
-            
             try
             {
                 InitializeComponent();
-                Console.WriteLine("InitializeComponent completed successfully");
                 
                 _allTemplates = new ObservableCollection<Template>();
                 _filteredTemplates = new ObservableCollection<Template>();
                 _selectedTemplateIds = new HashSet<int>();
-                Console.WriteLine("Collections initialized");
                 
                 // Initialize database service - will be set properly when the control is used
                 _databaseService = new DatabaseService();
                 _templateManager = new TemplateManager(_databaseService);
-                Console.WriteLine("Database service and template manager initialized");
                 
                 // Don't load data in parameterless constructor - wait for proper initialization
-                Console.WriteLine("=== TEMPLATES TAB CONTROL CONSTRUCTOR (No Database) COMPLETED ===");
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"=== TEMPLATES TAB CONTROL CONSTRUCTOR ERROR ===");
-                Console.WriteLine($"Exception Type: {ex.GetType().Name}");
-                Console.WriteLine($"Message: {ex.Message}");
-                Console.WriteLine($"Stack Trace: {ex.StackTrace}");
-                if (ex.InnerException != null)
-                {
-                    Console.WriteLine($"Inner Exception: {ex.InnerException.Message}");
-                    Console.WriteLine($"Inner Stack Trace: {ex.InnerException.StackTrace}");
-                }
                 throw; // Re-throw to prevent silent failures
             }
         }
@@ -90,8 +102,6 @@ namespace Photobooth.Views
             _allTemplates = new ObservableCollection<Template>();
             _filteredTemplates = new ObservableCollection<Template>();
             _selectedTemplateIds = new HashSet<int>();
-            
-            Console.WriteLine("=== TEMPLATES TAB CONTROL CONSTRUCTOR (With Database) ===");
             
             InitializeComponent();
             
@@ -113,8 +123,6 @@ namespace Photobooth.Views
                 await LoadTemplatesAsync();
                 await UpdateSystemDatePreviewAsync();
             };
-            
-            Console.WriteLine("=== TEMPLATES TAB CONTROL CONSTRUCTOR (With Database) COMPLETED ===");
         }
 
 
@@ -123,50 +131,69 @@ namespace Photobooth.Views
 
         #region Event Handlers
 
-        private async Task LoadTemplatesAsync()
+        /// <summary>
+        /// Optimized template loading for faster tab switching
+        /// Only performs synchronization when necessary (cooldown period or forced refresh)
+        /// </summary>
+        private async Task LoadTemplatesOptimizedAsync(bool forceSync = false)
         {
+            _performanceStopwatch.Restart();
             try
             {
-                Console.WriteLine("=== LOAD TEMPLATES ASYNC STARTED ===");
                 LoadingPanel.Visibility = Visibility.Visible;
                 EmptyStatePanel.Visibility = Visibility.Collapsed;
 
-                // Step 1: Synchronize database with file system (file system is source of truth)
-                Console.WriteLine("Starting template synchronization with file system...");
-                await SynchronizeTemplatesWithFileSystemAsync();
+                var shouldSync = forceSync || 
+                                _isInitialLoad || 
+                                !_isDataLoaded || 
+                                DateTime.Now - _lastSyncTime > _syncCooldown;
 
-                // Step 2: Load all templates from database (now synchronized)
-                Console.WriteLine("Loading templates from database...");
+                if (shouldSync)
+                {
+                    Console.WriteLine($"Performing full sync - ForceSync: {forceSync}, InitialLoad: {_isInitialLoad}, DataLoaded: {_isDataLoaded}, LastSync: {_lastSyncTime}, CacheTimeout: {_syncCooldown.TotalMinutes}min");
+                    
+                    // Step 1: Synchronize database with file system (file system is source of truth)
+                    var syncStopwatch = System.Diagnostics.Stopwatch.StartNew();
+                    await SynchronizeTemplatesWithFileSystemAsync();
+                    syncStopwatch.Stop();
+                    Console.WriteLine($"File system sync completed in {syncStopwatch.ElapsedMilliseconds}ms");
+                    
+                    _lastSyncTime = DateTime.Now;
+                    _isInitialLoad = false;
+                }
+                else
+                {
+                    Console.WriteLine($"Skipping sync - using cached data (last sync: {(DateTime.Now - _lastSyncTime).TotalMinutes:F1}min ago)");
+                }
+
+                // Step 2: Load all templates from database (always fresh for accurate data)
                 var result = await _databaseService.GetAllTemplatesAsync(_showAllSeasons);
                 
                 if (result.Success && result.Data != null)
                 {
-                    Console.WriteLine($"Database returned {result.Data.Count()} templates");
                     _allTemplates.Clear();
                     foreach (var template in result.Data)
                     {
                         _allTemplates.Add(template);
-                        Console.WriteLine($"  - Template: {template.Name} (ID: {template.Id}, FolderPath: {template.FolderPath})");
                     }
-                    
-                    Console.WriteLine($"Loaded {_allTemplates.Count} templates from database");
+                    _isDataLoaded = true;
                 }
                 else
                 {
-                    Console.WriteLine($"Failed to load templates: {result.ErrorMessage}");
                     _allTemplates.Clear();
                 }
 
                 // Step 3: Apply filtering and display
-                Console.WriteLine("Applying filters and sorting...");
                 FilterAndSortTemplates();
                 UpdateTemplateCount();
-                Console.WriteLine("=== LOAD TEMPLATES ASYNC COMPLETED ===");
+                
+                _performanceStopwatch.Stop();
+                Console.WriteLine($"Template loading completed in {_performanceStopwatch.ElapsedMilliseconds}ms (Sync: {(shouldSync ? "Yes" : "No")})");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error loading templates: {ex.Message}");
-                Console.WriteLine($"Stack trace: {ex.StackTrace}");
+                _performanceStopwatch.Stop();
+                Console.WriteLine($"Error in optimized template loading after {_performanceStopwatch.ElapsedMilliseconds}ms: {ex.Message}");
                 MessageBox.Show($"Error loading templates: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 _allTemplates.Clear();
                 EmptyStatePanel.Visibility = Visibility.Visible;
@@ -175,6 +202,26 @@ namespace Photobooth.Views
             {
                 LoadingPanel.Visibility = Visibility.Collapsed;
             }
+        }
+
+        /// <summary>
+        /// Original full template loading method - forces synchronization
+        /// Use this for explicit refresh operations
+        /// </summary>
+        private async Task LoadTemplatesAsync()
+        {
+            await LoadTemplatesOptimizedAsync(forceSync: true);
+        }
+
+        /// <summary>
+        /// Clear cached data to force fresh loading on next access
+        /// Use when file system changes occur (upload, delete, etc.)
+        /// </summary>
+        private void InvalidateCache()
+        {
+            _isDataLoaded = false;
+            _lastSyncTime = DateTime.MinValue;
+            Console.WriteLine("Template cache invalidated - next load will perform full sync");
         }
 
         private async void UploadTemplatesButton_Click(object sender, RoutedEventArgs e)
@@ -200,6 +247,7 @@ namespace Photobooth.Views
                 // Refresh templates if any were uploaded successfully
                 if (uploadResult.SuccessCount > 0)
                 {
+                    InvalidateCache(); // Force fresh sync since files were added
                     await LoadTemplatesAsync();
                 }
                 }
@@ -219,64 +267,43 @@ namespace Photobooth.Views
         {
             try
             {
-                Console.WriteLine("=== EXPORT BUTTON CLICK STARTED ===");
-                Console.WriteLine($"_allTemplates count: {_allTemplates?.Count ?? 0}");
-                Console.WriteLine($"_selectedTemplateIds count: {_selectedTemplateIds?.Count ?? 0}");
-                Console.WriteLine($"_databaseService is null: {_databaseService == null}");
-                
                 // Null checks for required parameters
                 if (_databaseService == null)
                 {
-                    Console.WriteLine("ERROR: DatabaseService is null");
                     NotificationService.Instance.ShowError("Export Error", "Database service is not available. Please try refreshing the page.");
                     return;
                 }
                 
                 if (_allTemplates == null)
                 {
-                    Console.WriteLine("ERROR: AllTemplates is null");
                     NotificationService.Instance.ShowError("Export Error", "Template data is not available. Please try refreshing the templates.");
                     return;
                 }
                 
                 if (_selectedTemplateIds == null)
                 {
-                    Console.WriteLine("ERROR: SelectedTemplateIds is null");
                     NotificationService.Instance.ShowError("Export Error", "Selection data is not available. Please try refreshing the page.");
                     return;
                 }
                 
                 // Show the export dialog
                 var parentWindow = Window.GetWindow(this);
-                Console.WriteLine($"Parent window is null: {parentWindow == null}");
                 
-                Console.WriteLine("About to call ShowExportDialogAsync...");
                 var exportCompleted = await Controls.TemplateExportDialog.ShowExportDialogAsync(
                     parentWindow, 
                     _databaseService, 
                     _allTemplates.ToList(), // Convert ObservableCollection to List
                     _selectedTemplateIds);
                 
-                Console.WriteLine($"Export dialog completed: {exportCompleted}");
-                
                 // The export dialog handles all success/error notifications internally
                 if (exportCompleted)
                 {
                     // Optionally refresh the template list or perform any cleanup
                     System.Diagnostics.Debug.WriteLine("Template export completed successfully");
-                    Console.WriteLine("Template export completed successfully");
                 }
-                
-                Console.WriteLine("=== EXPORT BUTTON CLICK COMPLETED ===");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"=== EXPORT BUTTON CLICK ERROR ===");
-                Console.WriteLine($"Exception type: {ex.GetType().Name}");
-                Console.WriteLine($"Exception message: {ex.Message}");
-                Console.WriteLine($"Exception stack trace: {ex.StackTrace}");
-                Console.WriteLine($"Inner exception: {ex.InnerException?.Message}");
-                
                 LoggingService.Application.Error("Error opening export dialog", ex);
                 NotificationService.Instance.ShowError("Export Error", "An error occurred while opening the export dialog. Please try again.");
             }
@@ -797,17 +824,10 @@ namespace Photobooth.Views
         {
             try
             {
-                Console.WriteLine("=== SYNCHRONIZE TEMPLATES WITH FILE SYSTEM STARTED ===");
                 var result = await _templateManager.SynchronizeWithFileSystemAsync();
-                
-                Console.WriteLine($"Sync result: Success={result.Success}, SuccessCount={result.SuccessCount}, FailureCount={result.FailureCount}");
-                Console.WriteLine($"Sync message: {result.Message}");
                 
                 if (!result.Success || result.FailureCount > 0)
                 {
-                    // Log synchronization issues but don't block the UI
-                    Console.WriteLine($"Template synchronization completed with issues: {result.Message}");
-                    
                     // Only show message if there were actual errors (not just cleanup)
                     if (!string.IsNullOrEmpty(result.Message) && result.FailureCount > 0)
                     {
@@ -819,16 +839,9 @@ namespace Photobooth.Views
                         }
                     }
                 }
-                else
-                {
-                    Console.WriteLine($"Template synchronization successful: {result.Message}");
-                }
-                Console.WriteLine("=== SYNCHRONIZE TEMPLATES WITH FILE SYSTEM COMPLETED ===");
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Template synchronization error: {ex.Message}");
-                Console.WriteLine($"Stack trace: {ex.StackTrace}");
                 // Don't block UI loading for sync errors
             }
         }
@@ -932,6 +945,7 @@ namespace Photobooth.Views
                 }
 
                 _selectedTemplateIds.Clear();
+                InvalidateCache(); // Force fresh sync since templates were deleted
                 await LoadTemplatesAsync();
                 UpdateBulkActionsVisibility();
                 
@@ -1921,8 +1935,10 @@ namespace Photobooth.Views
         /// </summary>
         public async Task ManualLoadTemplatesAsync()
         {
-            System.Diagnostics.Debug.WriteLine("=== MANUAL LOAD TEMPLATES TRIGGERED ===");
-            await LoadTemplatesAsync();
+            Console.WriteLine("=== MANUAL LOAD TEMPLATES TRIGGERED ===");
+            
+            // Use optimized loading for faster tab switching
+            await LoadTemplatesOptimizedAsync();
         }
 
         /// <summary>
@@ -2069,37 +2085,29 @@ namespace Photobooth.Views
 
         #region Category Management Modal
 
-        private async void ManageCategoriesButton_Click(object sender, RoutedEventArgs e)
+        private void ManageCategoriesButton_Click(object sender, RoutedEventArgs e)
         {
             try
             {
-                Console.WriteLine("=== ManageCategoriesButton_Click Start ===");
+                // Show the category management modal (in-window)
+                // Create and show the modal
+                var modal = new Photobooth.Controls.CategoryManagementModal();
                 
-                // Show the category management dialog
-                Console.WriteLine("Getting parent window...");
-                var parentWindow = Window.GetWindow(this);
-                Console.WriteLine($"Parent window found: {parentWindow != null}");
-                
-                Console.WriteLine("Creating CategoryManagementDialog...");
-                bool categoriesChanged = Photobooth.Controls.CategoryManagementDialog.ShowCategoryDialog(parentWindow);
-                Console.WriteLine($"Dialog closed. Categories changed: {categoriesChanged}");
-                
-                // If categories were changed, refresh both categories and templates
-                if (categoriesChanged)
+                // Subscribe to the categories changed event
+                modal.CategoriesChangedEvent += async (sender, categoriesChanged) =>
                 {
-                    Console.WriteLine("Refreshing categories and templates...");
-                    await LoadTemplateCategoriesAsync();
-                    await LoadTemplatesAsync(); // Refresh templates to reflect category changes
-                    Console.WriteLine("Refresh completed");
-                }
+                    if (categoriesChanged)
+                    {
+                        await LoadTemplateCategoriesAsync();
+                        await LoadTemplatesAsync(); // Refresh templates to reflect category changes
+                    }
+                };
                 
-                Console.WriteLine("=== ManageCategoriesButton_Click Complete ===");
+                ModalService.Instance.ShowModal(modal);
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR in ManageCategoriesButton_Click: {ex.Message}");
-                Console.WriteLine($"Stack trace: {ex.StackTrace}");
-                LoggingService.Application.Error("Error opening category management dialog", ex);
+                LoggingService.Application.Error("Error opening category management modal", ex);
                 MessageBox.Show("An error occurred. Please try again.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
@@ -2254,8 +2262,8 @@ namespace Photobooth.Views
 
                 LoadingPanel.Visibility = Visibility.Visible;
                 
-                // Use TemplateManager to rename the template
-                var renameResult = await _templateManager.RenameTemplateAsync(template.Id, newName);
+                // Use TemplateManager to rename the template completely (database + folder)
+                var renameResult = await _templateManager.RenameTemplateCompletelyAsync(template.Id, newName);
                 
                 if (renameResult.Success && renameResult.Data != null)
                 {

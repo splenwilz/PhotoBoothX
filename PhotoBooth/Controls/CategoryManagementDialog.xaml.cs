@@ -22,45 +22,39 @@ namespace Photobooth.Controls
         {
             try
             {
-                Console.WriteLine("=== CategoryManagementDialog Constructor Start ===");
-                
-                Console.WriteLine("Initializing component...");
+
+
                 InitializeComponent();
-                Console.WriteLine("InitializeComponent completed");
-                
-                Console.WriteLine("Creating database service...");
+
+
                 _databaseService = new DatabaseService();
-                Console.WriteLine("Database service created");
-                
+
                 // Find the ScrollViewer for smooth scrolling to edit form
                 Loaded += (s, e) => {
                     try
                     {
-                        Console.WriteLine("Dialog Loaded event triggered");
+
                         _dialogScrollViewer = FindChild<ScrollViewer>(this);
-                        Console.WriteLine("ScrollViewer found: " + (_dialogScrollViewer != null));
-                        
-                        Console.WriteLine("Populating day combo boxes...");
+
+
                         PopulateDayComboBoxes();
-                        Console.WriteLine("Day combo boxes populated");
+
                     }
-                    catch (Exception ex)
+                    catch
                     {
-                        Console.WriteLine($"Error in Loaded event: {ex.Message}");
-                        Console.WriteLine($"Stack trace: {ex.StackTrace}");
+
+
                     }
                 };
-                
-                Console.WriteLine("Loading categories...");
+
                 LoadCategories();
-                Console.WriteLine("LoadCategories called");
-                
-                Console.WriteLine("=== CategoryManagementDialog Constructor Complete ===");
+
+
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"ERROR in CategoryManagementDialog constructor: {ex.Message}");
-                Console.WriteLine($"Stack trace: {ex.StackTrace}");
+
+
                 throw;
             }
         }
@@ -84,61 +78,142 @@ namespace Photobooth.Controls
         }
 
         /// <summary>
-        /// Populate day combo boxes with days 1-31
+        /// Populate day combo boxes with proper days based on selected months
         /// </summary>
         private void PopulateDayComboBoxes()
         {
             try
             {
-                Console.WriteLine("PopulateDayComboBoxes: Starting");
-                
-                Console.WriteLine("Checking if StartDayComboBox exists: " + (StartDayComboBox != null));
-                Console.WriteLine("Checking if EndDayComboBox exists: " + (EndDayComboBox != null));
-                
-                if (StartDayComboBox == null)
+
+                if (StartDayComboBox == null || EndDayComboBox == null)
                 {
-                    Console.WriteLine("ERROR: StartDayComboBox is null!");
+
                     return;
                 }
                 
-                if (EndDayComboBox == null)
-                {
-                    Console.WriteLine("ERROR: EndDayComboBox is null!");
-                    return;
-                }
-                
-                Console.WriteLine("Clearing existing items...");
-                StartDayComboBox.Items.Clear();
-                EndDayComboBox.Items.Clear();
-                Console.WriteLine("Items cleared");
-                
-                Console.WriteLine("Adding day items 1-31...");
-                for (int day = 1; day <= 31; day++)
-                {
-                    var dayString = day.ToString("00");
-                    
-                    var startItem = new ComboBoxItem
-                    {
-                        Content = day.ToString(),
-                        Tag = dayString
-                    };
-                    StartDayComboBox.Items.Add(startItem);
-                    
-                    var endItem = new ComboBoxItem
-                    {
-                        Content = day.ToString(),
-                        Tag = dayString
-                    };
-                    EndDayComboBox.Items.Add(endItem);
-                }
-                
-                Console.WriteLine("PopulateDayComboBoxes: Completed successfully");
+                // Initialize with 31 days, will be adjusted based on month selection
+                PopulateDayComboBox(StartDayComboBox, 31);
+                PopulateDayComboBox(EndDayComboBox, 31);
+
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"ERROR in PopulateDayComboBoxes: {ex.Message}");
-                Console.WriteLine($"Stack trace: {ex.StackTrace}");
+
+
             }
+        }
+
+        /// <summary>
+        /// Populate a single day combo box with specified number of days
+        /// </summary>
+        private void PopulateDayComboBox(ComboBox dayComboBox, int maxDays)
+        {
+            var selectedValue = (dayComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString();
+            dayComboBox.Items.Clear();
+            
+            for (int day = 1; day <= maxDays; day++)
+            {
+                var dayString = day.ToString("00");
+                var item = new ComboBoxItem
+                {
+                    Content = day.ToString(),
+                    Tag = dayString
+                };
+                dayComboBox.Items.Add(item);
+                
+                // Restore selection if it's still valid
+                if (selectedValue == dayString)
+                {
+                    dayComboBox.SelectedItem = item;
+                }
+            }
+            
+            // If previous selection is now invalid, select the last available day
+            if (dayComboBox.SelectedItem == null && selectedValue != null)
+            {
+                if (int.TryParse(selectedValue, out int previousDay) && previousDay > maxDays)
+                {
+                    dayComboBox.SelectedIndex = maxDays - 1; // Select last day
+                }
+            }
+        }
+
+        /// <summary>
+        /// Get the number of days in a specific month, considering leap years
+        /// </summary>
+        private int GetDaysInMonth(int month, int year = 0)
+        {
+            // Use current year if not specified
+            if (year == 0) year = DateTime.Now.Year;
+            
+            return month switch
+            {
+                2 => DateTime.IsLeapYear(year) ? 29 : 28, // February
+                4 or 6 or 9 or 11 => 30, // April, June, September, November
+                _ => 31 // January, March, May, July, August, October, December
+            };
+        }
+
+        /// <summary>
+        /// Update day combo box based on selected month
+        /// </summary>
+        private void UpdateDayComboBoxForMonth(ComboBox monthComboBox, ComboBox dayComboBox)
+        {
+            if (monthComboBox.SelectedItem is ComboBoxItem selectedMonth)
+            {
+                if (int.TryParse(selectedMonth.Tag?.ToString(), out int month))
+                {
+                    var daysInMonth = GetDaysInMonth(month);
+                    PopulateDayComboBox(dayComboBox, daysInMonth);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Validate seasonal dates for leap year and month length issues
+        /// </summary>
+        private string ValidateSeasonalDates(ComboBoxItem startMonthItem, ComboBoxItem startDayItem, 
+                                           ComboBoxItem endMonthItem, ComboBoxItem endDayItem)
+        {
+            var warnings = new List<string>();
+            
+            // Parse start date
+            if (int.TryParse(startMonthItem.Tag?.ToString(), out int startMonth) &&
+                int.TryParse(startDayItem.Tag?.ToString(), out int startDay))
+            {
+                var startDaysInMonth = GetDaysInMonth(startMonth);
+                if (startDay > startDaysInMonth)
+                {
+                    string monthName = startMonthItem.Content?.ToString() ?? "Unknown";
+                    warnings.Add($"{monthName} only has {startDaysInMonth} days, not {startDay}");
+                }
+                
+                // Special check for February 29th in non-leap years
+                if (startMonth == 2 && startDay == 29 && !DateTime.IsLeapYear(DateTime.Now.Year))
+                {
+                    warnings.Add($"February 29th does not exist in {DateTime.Now.Year} (not a leap year)");
+                }
+            }
+            
+            // Parse end date
+            if (int.TryParse(endMonthItem.Tag?.ToString(), out int endMonth) &&
+                int.TryParse(endDayItem.Tag?.ToString(), out int endDay))
+            {
+                var endDaysInMonth = GetDaysInMonth(endMonth);
+                if (endDay > endDaysInMonth)
+                {
+                    string monthName = endMonthItem.Content?.ToString() ?? "Unknown";
+                    warnings.Add($"{monthName} only has {endDaysInMonth} days, not {endDay}");
+                }
+                
+                // Special check for February 29th in non-leap years
+                if (endMonth == 2 && endDay == 29 && !DateTime.IsLeapYear(DateTime.Now.Year))
+                {
+                    warnings.Add($"February 29th does not exist in {DateTime.Now.Year} (not a leap year)");
+                }
+            }
+            
+            return warnings.Count > 0 ? string.Join(", ", warnings) : "";
         }
 
         /// <summary>
@@ -168,6 +243,16 @@ namespace Photobooth.Controls
         /// </summary>
         private void SeasonDate_Changed(object sender, SelectionChangedEventArgs e)
         {
+            // Update day combo box based on selected month
+            if (sender == StartMonthComboBox)
+            {
+                UpdateDayComboBoxForMonth(StartMonthComboBox, StartDayComboBox);
+            }
+            else if (sender == EndMonthComboBox)
+            {
+                UpdateDayComboBoxForMonth(EndMonthComboBox, EndDayComboBox);
+            }
+            
             UpdateSeasonPreview();
         }
 
@@ -199,19 +284,16 @@ namespace Photobooth.Controls
         {
             try
             {
-                Console.WriteLine("UpdateSeasonPreview: Starting");
-                
+
                 // Add null checks for controls that might not be initialized yet during XAML loading
                 if (StartMonthComboBox == null || StartDayComboBox == null || 
                     EndMonthComboBox == null || EndDayComboBox == null || 
                     SeasonPriorityTextBox == null || SeasonPreviewText == null)
                 {
-                    Console.WriteLine("UpdateSeasonPreview: Controls not yet initialized, skipping");
+
                     return;
                 }
-                
-                Console.WriteLine("UpdateSeasonPreview: All controls available, proceeding");
-                
+
                 if (StartMonthComboBox.SelectedItem is ComboBoxItem startMonthItem &&
                     StartDayComboBox.SelectedItem is ComboBoxItem startDayItem &&
                     EndMonthComboBox.SelectedItem is ComboBoxItem endMonthItem &&
@@ -226,24 +308,34 @@ namespace Photobooth.Controls
                     string priorityText = int.TryParse(SeasonPriorityTextBox.Text, out int priority) ? 
                         $" (Priority: {priority})" : "";
                     
+                    // Validate dates
+                    var dateValidation = ValidateSeasonalDates(startMonthItem, startDayItem, endMonthItem, endDayItem);
+                    
                     // Check if it spans years
                     bool spansYears = string.Compare(startDate, endDate) > 0;
                     string spanText = spansYears ? " (spans New Year)" : "";
                     
-                    SeasonPreviewText.Text = $"Active: {startMonthName} {startDayItem.Content} - {endMonthName} {endDayItem.Content}{spanText}{priorityText}";
-                    Console.WriteLine($"UpdateSeasonPreview: Preview updated to '{SeasonPreviewText.Text}'");
+                    string previewText = $"Active: {startMonthName} {startDayItem.Content} - {endMonthName} {endDayItem.Content}{spanText}{priorityText}";
+                    
+                    // Add validation warnings
+                    if (!string.IsNullOrEmpty(dateValidation))
+                    {
+                        previewText += $"\n⚠️ {dateValidation}";
+                    }
+                    
+                    SeasonPreviewText.Text = previewText;
+
                 }
                 else
                 {
                     SeasonPreviewText.Text = "Set all dates to see preview";
-                    Console.WriteLine("UpdateSeasonPreview: Not all dates selected, showing default message");
+
                 }
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"ERROR in UpdateSeasonPreview: {ex.Message}");
-                Console.WriteLine($"Stack trace: {ex.StackTrace}");
-                
+
+
                 // Try to set a safe fallback if SeasonPreviewText exists
                 if (SeasonPreviewText != null)
                 {
@@ -308,36 +400,37 @@ namespace Photobooth.Controls
         {
             try
             {
-                Console.WriteLine("=== ShowCategoryDialog Start ===");
-                
-                Console.WriteLine("Creating CategoryManagementDialog instance...");
+
+
                 var dialog = new CategoryManagementDialog();
-                Console.WriteLine("Dialog instance created successfully");
-                
+
                 if (owner != null)
                 {
-                    Console.WriteLine("Setting dialog owner...");
+
                     dialog.Owner = owner;
-                    Console.WriteLine("Dialog owner set");
+
                 }
                 else
                 {
-                    Console.WriteLine("Using MainWindow as owner...");
+
                     dialog.Owner = Application.Current.MainWindow;
-                    Console.WriteLine("MainWindow owner set");
+
                 }
-                
-                Console.WriteLine("Showing dialog...");
-                dialog.ShowDialog();
-                Console.WriteLine("Dialog closed");
-                
-                Console.WriteLine($"Returning CategoriesChanged: {dialog.CategoriesChanged}");
+
+                // Use Show() instead of ShowDialog() to allow interaction with parent window (keyboard)
+                // This allows the virtual keyboard in the main window to remain accessible
+                dialog.Show();
+
+                // Since this is now non-modal, we'll track changes differently
+                // For now, always return true to refresh when dialog is closed
+                // TODO: Consider using events to notify when categories change
+
                 return dialog.CategoriesChanged;
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"ERROR in ShowCategoryDialog: {ex.Message}");
-                Console.WriteLine($"Stack trace: {ex.StackTrace}");
+
+
                 throw;
             }
         }
@@ -346,40 +439,36 @@ namespace Photobooth.Controls
         {
             try
             {
-                Console.WriteLine("LoadCategories: Starting");
-                
-                Console.WriteLine("Calling GetAllTemplateCategoriesAsync...");
+
+
                 var result = await _databaseService.GetAllTemplateCategoriesAsync();
-                Console.WriteLine($"Database result: Success={result.Success}, Data count={result.Data?.Count ?? 0}");
-                
-                Console.WriteLine("Clearing CategoriesListPanel...");
+
+
                 CategoriesListPanel.Children.Clear();
-                Console.WriteLine("CategoriesListPanel cleared");
-                
+
                 if (result.Success && result.Data != null)
                 {
-                    Console.WriteLine($"Processing {result.Data.Count} categories...");
+
                     foreach (var category in result.Data)
                     {
-                        Console.WriteLine($"Creating list item for category: {category.Name}");
+
                         var categoryItem = CreateCategoryListItem(category);
                         CategoriesListPanel.Children.Add(categoryItem);
-                        Console.WriteLine($"Added category item: {category.Name}");
+
                     }
-                    Console.WriteLine("All categories processed successfully");
+
                 }
                 else
                 {
-                    Console.WriteLine($"Database error: {result.ErrorMessage}");
+
                     NotificationService.Instance.ShowError("Loading Failed", $"Failed to load categories: {result.ErrorMessage}");
                 }
-                
-                Console.WriteLine("LoadCategories: Completed");
+
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR in LoadCategories: {ex.Message}");
-                Console.WriteLine($"Stack trace: {ex.StackTrace}");
+
+
                 LoggingService.Application.Error("Error loading categories", ex);
                 NotificationService.Instance.ShowError("Loading Error", "Error loading categories. Please try again.");
             }
@@ -672,26 +761,21 @@ namespace Photobooth.Controls
         {
             try
             {
-                Console.WriteLine($"=== TOGGLE CATEGORY UI DEBUG ===");
-                Console.WriteLine($"Category: {category.Name} (ID: {category.Id})");
-                Console.WriteLine($"Current IsActive: {category.IsActive}");
-                
+
+
                 string action = category.IsActive ? "deactivate" : "activate";
-                Console.WriteLine($"Action: {action}");
-                
+
                 // Get template count for this category
-                Console.WriteLine("Getting templates for category...");
+
                 var templatesResult = await _databaseService.GetTemplatesByCategoryAsync(category.Id);
                 int templateCount = templatesResult.Success ? templatesResult.Data?.Count ?? 0 : 0;
-                Console.WriteLine($"Template count result: Success={templatesResult.Success}, Count={templateCount}");
-                
+
                 string message = $"Are you sure you want to {action} the category '{category.Name}'?";
                 if (templateCount > 0)
                 {
                     message += $"\n\nThis will also {action} {templateCount} template{(templateCount == 1 ? "" : "s")} in this category.";
                 }
-                Console.WriteLine($"Confirmation message: {message}");
-                
+
                 bool confirmed = ConfirmationDialog.ShowConfirmation(
                     $"{char.ToUpper(action[0])}{action.Substring(1)} Category",
                     message,
@@ -699,18 +783,15 @@ namespace Photobooth.Controls
                     "Cancel",
                     this
                 );
-                
-                Console.WriteLine($"User confirmed: {confirmed}");
-                
+
                 if (confirmed)
                 {
-                    Console.WriteLine($"Calling UpdateTemplateCategoryStatusAsync({category.Id}, {!category.IsActive})");
+
                     var result = await _databaseService.UpdateTemplateCategoryStatusAsync(category.Id, !category.IsActive);
-                    Console.WriteLine($"Update result: Success={result.Success}, Error={result.ErrorMessage}");
-                    
+
                     if (result.Success)
                     {
-                        Console.WriteLine("✅ Update successful, refreshing UI");
+
                         CategoriesChanged = true;
                         LoadCategories();
                         LoggingService.Application.Information("Category {Action}: {CategoryName}", 
@@ -721,13 +802,12 @@ namespace Photobooth.Controls
                         {
                             successMessage += $"\n{templateCount} template{(templateCount == 1 ? "" : "s")} {(templateCount == 1 ? "was" : "were")} also {action}d.";
                         }
-                        
-                        Console.WriteLine($"Success message: {successMessage}");
+
                         NotificationService.Instance.ShowSuccess($"Category {char.ToUpper(action[0])}{action.Substring(1)}d", successMessage);
                     }
                     else
                     {
-                        Console.WriteLine("❌ Update failed");
+
                         NotificationService.Instance.ShowError($"Failed to {char.ToUpper(action[0])}{action.Substring(1)} Category", 
                             $"Could not {action} category '{category.Name}': {result.ErrorMessage}");
                     }
@@ -735,7 +815,7 @@ namespace Photobooth.Controls
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ UI Exception: {ex.Message}");
+
                 LoggingService.Application.Error("Error toggling category status", ex);
                 NotificationService.Instance.ShowError("Unexpected Error", 
                     $"Error updating category '{category.Name}' status. Please try again.");

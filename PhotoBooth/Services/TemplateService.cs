@@ -25,13 +25,21 @@ namespace Photobooth.Services
         {
             try
             {
+                // Validate source file exists and is accessible
+                if (!File.Exists(sourceFilePath))
+                    throw new FileNotFoundException("Source file not found", sourceFilePath);
+                
                 // Generate unique filename
                 var extension = Path.GetExtension(sourceFilePath);
-                var fileName = $"{templateName}_{DateTime.Now:yyyyMMdd_HHmmss}{extension}";
+                var fileName = $"{templateName}_{DateTime.Now:yyyyMMdd_HHmmss}_{Guid.NewGuid():N}{extension}";
                 var filePath = Path.Combine(_templatesFolder, fileName);
                 
+                // Ensure the destination doesn't already exist
+                if (File.Exists(filePath))
+                    throw new InvalidOperationException($"Destination file already exists: {filePath}");
+                
                 // Copy original file
-                File.Copy(sourceFilePath, filePath, true);
+                File.Copy(sourceFilePath, filePath, false);
                 
                 // Get file info
                 var fileInfo = new FileInfo(filePath);

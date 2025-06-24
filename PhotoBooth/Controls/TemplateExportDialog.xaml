@@ -39,6 +39,13 @@
             </Setter>
         </Style>
 
+        <!-- ComboBox Error Style -->
+        <Style x:Key="ComboBoxErrorStyle" TargetType="ComboBox">
+            <Setter Property="BorderBrush" Value="#DC2626"/>
+            <Setter Property="BorderThickness" Value="2"/>
+            <Setter Property="Background" Value="#FEF2F2"/>
+        </Style>
+
         <!-- Secondary Button Style -->
         <Style x:Key="SecondaryButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
@@ -133,10 +140,16 @@
                             <RadioButton Name="ExportCategoryRadio" Content="Export by Category" 
                                         FontSize="14" Foreground="#374151" Margin="0,0,0,8"
                                         Checked="ExportOption_Changed"/>
+                            <StackPanel Margin="20,0,0,12">
                             <ComboBox Name="CategoryComboBox" Width="200" Height="32" 
-                                     HorizontalAlignment="Left" Margin="20,0,0,0"
+                                         HorizontalAlignment="Left"
                                      DisplayMemberPath="Name" SelectedValuePath="Id"
-                                     IsEnabled="False"/>
+                                         IsEnabled="False" SelectionChanged="CategoryComboBox_SelectionChanged"/>
+                                <TextBlock Name="CategoryErrorText" 
+                                          Text="Please select a category to export"
+                                          FontSize="12" Foreground="#DC2626" 
+                                          Margin="0,4,0,0" Visibility="Collapsed"/>
+                            </StackPanel>
                         </StackPanel>
                     </Border>
 

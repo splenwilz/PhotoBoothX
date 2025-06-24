@@ -91,59 +91,50 @@ namespace Photobooth.Services
                 
                 // Ensure directory exists
                 var directory = Path.GetDirectoryName(_databasePath);
-                Console.WriteLine($"Database directory: {directory}");
-                
+
                 if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
                 {
-                    Console.WriteLine("Creating database directory...");
+
                     Directory.CreateDirectory(directory);
-                    Console.WriteLine($"Directory created successfully: {directory}");
+
                 }
                 else if (!string.IsNullOrEmpty(directory))
                 {
-                    Console.WriteLine($"Directory already exists: {directory}");
+
                 }
 
-                Console.WriteLine("Opening database connection...");
                 using var connection = new SqliteConnection(_connectionString);
                 await connection.OpenAsync();
-                Console.WriteLine("Database connection opened successfully");
 
                 // Check if database is already initialized
                 var checkQuery = "SELECT name FROM sqlite_master WHERE type='table' AND name='AdminUsers';";
                 using var checkCommand = new SqliteCommand(checkQuery, connection);
                 var tableExists = await checkCommand.ExecuteScalarAsync();
-                
-                Console.WriteLine($"AdminUsers table exists: {tableExists != null}");
-                
+
                 if (tableExists != null)
                 {
                     // Database already initialized - check for and apply migrations
-                    Console.WriteLine("Database already initialized, applying migrations...");
+
                     await ApplyMigrations(connection);
-                    Console.WriteLine("Database initialization completed (existing database)");
+
                     return DatabaseResult.SuccessResult();
                 }
 
                 // Database needs initialization - read and execute schema
                 var schemaPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Database_Schema.sql");
-                Console.WriteLine($"Schema file path: {schemaPath}");
-                
+
                 if (!File.Exists(schemaPath))
                 {
                     var errorMsg = $"Database schema file not found at: {schemaPath}";
-                    Console.WriteLine(errorMsg);
+
                     return DatabaseResult.ErrorResult(errorMsg);
                 }
 
-                Console.WriteLine("Reading schema file...");
                 var schemaScript = await File.ReadAllTextAsync(schemaPath);
-                Console.WriteLine($"Schema file read successfully. Length: {schemaScript.Length} characters");
 
                 // Split and execute commands
                 var commands = schemaScript.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
-                Console.WriteLine($"Found {commands.Length} SQL commands to execute");
-                
+
                 using var transaction = connection.BeginTransaction();
                 try
                 {
@@ -151,8 +142,7 @@ namespace Photobooth.Services
                     foreach (var commandText in commands)
                     {
                         commandIndex++;
-                        Console.WriteLine($"Processing command {commandIndex}/{commands.Length}");
-                        
+
                         // Clean up the command - remove comments and whitespace
                         var lines = commandText.Split('\n');
                         var cleanLines = new List<string>();
@@ -184,39 +174,34 @@ namespace Photobooth.Services
                         
                         if (cleanLines.Count == 0)
                         {
-                            Console.WriteLine($"Command {commandIndex} is empty after cleaning, skipping");
+
                             continue;
                         }
                         
                         var trimmedCommand = string.Join(" ", cleanLines);
-                        Console.WriteLine($"Executing command {commandIndex}: {trimmedCommand.Substring(0, Math.Min(100, trimmedCommand.Length))}...");
 
                         using var command = new SqliteCommand(trimmedCommand, connection, transaction);
                         await command.ExecuteNonQueryAsync();
-                        Console.WriteLine($"Command {commandIndex} executed successfully");
+
                     }
 
-                    Console.WriteLine("Committing transaction...");
                     await transaction.CommitAsync();
-                    Console.WriteLine("Transaction committed successfully");
-                    
+
                     // Create default admin users (only for new database)
-                    Console.WriteLine("Creating default admin users...");
+
                     await CreateDefaultAdminUserDirect(connection);
-                    Console.WriteLine("Default admin users created successfully");
-                    
+
                     // Create default system settings (only for new database)
-                    Console.WriteLine("Creating default system settings...");
+
                     await CreateDefaultSettingsDirect(connection);
-                    Console.WriteLine("Default system settings created successfully");
-                    
-                    Console.WriteLine("Database initialization completed successfully");
+
+
                     return DatabaseResult.SuccessResult();
                 }
-                catch (Exception ex)
+                catch
                 {
-                    Console.WriteLine($"Transaction error: {ex.Message}");
-                    Console.WriteLine($"Stack trace: {ex.StackTrace}");
+
+
                     await transaction.RollbackAsync();
                     throw;
                 }
@@ -224,40 +209,37 @@ namespace Photobooth.Services
             catch (Exception ex)
             {
                 var errorMsg = $"Database initialization failed: {ex.Message}";
-                Console.WriteLine(errorMsg);
-                Console.WriteLine($"Stack trace: {ex.StackTrace}");
+
+
                 return DatabaseResult.ErrorResult(errorMsg, ex);
             }
         }
 
         private async Task ApplyMigrations(SqliteConnection connection)
         {
-            Console.WriteLine("ApplyMigrations: Checking database schema version...");
-            
+
             try
             {
                 // Get current schema version
                 var currentVersion = await GetDatabaseVersionAsync(connection);
                 var expectedVersion = GetExpectedSchemaVersion();
-                
-                Console.WriteLine($"ApplyMigrations: Current DB version: {currentVersion}, Expected: {expectedVersion}");
-                
+
                 if (currentVersion == expectedVersion)
                 {
-                    Console.WriteLine("ApplyMigrations: Database schema is up to date");
+
                     return;
                 }
                 
                 // Apply incremental migrations for version differences
-                ApplyIncrementalMigrations(connection, currentVersion, expectedVersion);
+                await ApplyIncrementalMigrations(connection, currentVersion, expectedVersion);
                 
                 // Update database version
                 await SetDatabaseVersionAsync(connection, expectedVersion);
-                Console.WriteLine($"ApplyMigrations: Database updated to version {expectedVersion}");
+
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"ApplyMigrations: Error during migration: {ex.Message}");
+
                 // For now, continue - in the future could implement rollback logic
             }
         }
@@ -298,9 +280,9 @@ namespace Photobooth.Services
                 var result = await versionCmd.ExecuteScalarAsync();
                 return result != null ? Convert.ToInt32(result) : 1;
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"GetDatabaseVersionAsync error: {ex.Message}");
+
                 return 1; // Default to version 1
             }
         }
@@ -315,9 +297,9 @@ namespace Photobooth.Services
                 cmd.Parameters.AddWithValue("@updatedAt", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
                 await cmd.ExecuteNonQueryAsync();
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"SetDatabaseVersionAsync error: {ex.Message}");
+
             }
         }
         
@@ -326,22 +308,20 @@ namespace Photobooth.Services
             return 1; // Keep at version 1 since we recreate DB instead of migrating
         }
         
-        private async void ApplyIncrementalMigrations(SqliteConnection connection, int fromVersion, int toVersion)
+        private async Task ApplyIncrementalMigrations(SqliteConnection connection, int fromVersion, int toVersion)
         {
-            Console.WriteLine($"ApplyIncrementalMigrations: Applying migrations from version {fromVersion} to {toVersion}");
-            
+
             // Apply version-specific migrations
             for (int version = fromVersion + 1; version <= toVersion; version++)
             {
-                Console.WriteLine($"ApplyIncrementalMigrations: Applying migration to version {version}");
-                
+
                 switch (version)
                 {
                     case 2:
                         await ApplyLayoutUUIDMigration(connection);
                         break;
                     default:
-                        Console.WriteLine($"ApplyIncrementalMigrations: No migration defined for version {version}");
+
                         break;
                 }
             }
@@ -352,8 +332,7 @@ namespace Photobooth.Services
         /// </summary>
         private async Task ApplyLayoutUUIDMigration(SqliteConnection connection)
         {
-            Console.WriteLine("ApplyLayoutUUIDMigration: Starting UUID layout migration");
-            
+
             try
             {
                 var migrationSql = @"
@@ -480,24 +459,15 @@ ALTER TABLE Templates_new RENAME TO Templates;
 -- Commit the transaction
 COMMIT;";
 
-                // Execute the migration
-                var commands = migrationSql.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
-                
-                foreach (var commandText in commands)
-                {
-                    var trimmedCommand = commandText.Trim();
-                    if (string.IsNullOrEmpty(trimmedCommand) || trimmedCommand.StartsWith("--"))
-                        continue;
-                        
-                    using var command = new SqliteCommand(trimmedCommand, connection);
-                    await command.ExecuteNonQueryAsync();
-                }
-                
-                Console.WriteLine("ApplyLayoutUUIDMigration: UUID layout migration completed successfully");
+                // Execute the migration as a single script to handle edge cases properly
+                using var command = new SqliteCommand(migrationSql, connection);
+                command.CommandTimeout = 300; // 5 minutes for complex migrations
+                await command.ExecuteNonQueryAsync();
+
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"ApplyLayoutUUIDMigration: Migration failed: {ex.Message}");
+
                 throw;
             }
         }
@@ -886,8 +856,7 @@ COMMIT;";
         {
             try
             {
-                Console.WriteLine($"CreateAdminUserAsync: Starting creation of user '{user.Username}', access level: {user.AccessLevel}");
-                
+
                 var query = @"
                     INSERT INTO AdminUsers (UserId, Username, DisplayName, PasswordHash, AccessLevel, IsActive, CreatedAt, UpdatedAt, CreatedBy, UpdatedBy)
                     VALUES (@userId, @username, @displayName, @passwordHash, @accessLevel, @isActive, @createdAt, @updatedAt, @createdBy, @updatedBy)";
@@ -906,10 +875,8 @@ COMMIT;";
                 command.Parameters.AddWithValue("@createdBy", (object?)createdBy ?? DBNull.Value);
                 command.Parameters.AddWithValue("@updatedBy", (object?)createdBy ?? DBNull.Value);
 
-                Console.WriteLine($"CreateAdminUserAsync: Executing query with parameters - UserId={user.UserId}, Username={user.Username}, CreatedBy={createdBy}");
                 await command.ExecuteNonQueryAsync();
-                Console.WriteLine($"CreateAdminUserAsync: User '{user.Username}' created successfully");
-                
+
                 // Use file-based logging instead of database logging
                 LoggingService.Application.Information("Admin user created",
                     ("Username", user.Username),
@@ -920,7 +887,7 @@ COMMIT;";
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"CreateAdminUserAsync error: {ex}");
+
                 return DatabaseResult.ErrorResult($"Failed to create admin user: {ex.Message}", ex);
             }
         }
@@ -1558,6 +1525,19 @@ COMMIT;";
         {
             try
             {
+                // Validate seasonal dates if provided
+                if (isSeasonalCategory)
+                {
+                    try
+                    {
+                        seasonStartDate = TemplateCategory.ValidateAndFormatSeasonalDate(seasonStartDate);
+                        seasonEndDate = TemplateCategory.ValidateAndFormatSeasonalDate(seasonEndDate);
+                    }
+                    catch (ArgumentException ex)
+                    {
+                        return DatabaseResult<TemplateCategory>.ErrorResult(ex.Message);
+                    }
+                }
                 var query = @"
                     INSERT INTO TemplateCategories (Name, Description, IsActive, SortOrder, 
                                                     IsSeasonalCategory, SeasonStartDate, SeasonEndDate, SeasonalPriority, CreatedAt)
@@ -1615,6 +1595,19 @@ COMMIT;";
         {
             try
             {
+                // Validate seasonal dates if provided
+                if (isSeasonalCategory)
+                {
+                    try
+                    {
+                        seasonStartDate = TemplateCategory.ValidateAndFormatSeasonalDate(seasonStartDate);
+                        seasonEndDate = TemplateCategory.ValidateAndFormatSeasonalDate(seasonEndDate);
+                    }
+                    catch (ArgumentException ex)
+                    {
+                        return DatabaseResult<TemplateCategory>.ErrorResult(ex.Message);
+                    }
+                }
                 var query = @"
                     UPDATE TemplateCategories 
                     SET Name = @name, Description = @description, 
@@ -1687,9 +1680,7 @@ COMMIT;";
         {
             try
             {
-                Console.WriteLine($"=== UPDATE CATEGORY STATUS DEBUG ===");
-                Console.WriteLine($"CategoryId: {categoryId}");
-                Console.WriteLine($"New IsActive: {isActive}");
+
 
                 using var connection = new SqliteConnection(_connectionString);
                 await connection.OpenAsync();
@@ -1708,11 +1699,10 @@ COMMIT;";
                     categoryCommand.Parameters.AddWithValue("@id", categoryId);
 
                     var categoryRowsAffected = await categoryCommand.ExecuteNonQueryAsync();
-                    Console.WriteLine($"Category rows affected: {categoryRowsAffected}");
-                    
+
                     if (categoryRowsAffected == 0)
                     {
-                        Console.WriteLine("❌ Category not found, rolling back");
+
                         transaction.Rollback();
                         return DatabaseResult.ErrorResult("Template category not found");
                     }
@@ -1722,7 +1712,6 @@ COMMIT;";
                     using var countCommand = new SqliteCommand(countQuery, connection, transaction);
                     countCommand.Parameters.AddWithValue("@categoryId", categoryId);
                     var templateCount = Convert.ToInt32(await countCommand.ExecuteScalarAsync());
-                    Console.WriteLine($"Templates found in category: {templateCount}");
 
                     // Update all templates in this category to match the category status
                     var templatesQuery = @"
@@ -1735,11 +1724,9 @@ COMMIT;";
                     templatesCommand.Parameters.AddWithValue("@categoryId", categoryId);
 
                     var templateRowsAffected = await templatesCommand.ExecuteNonQueryAsync();
-                    Console.WriteLine($"Template rows affected: {templateRowsAffected}");
 
                     // Commit the transaction
                     transaction.Commit();
-                    Console.WriteLine("✅ Transaction committed successfully");
 
                     // Use file-based logging instead of database logging
                     LoggingService.Application.Information("Template category status updated",
@@ -1749,16 +1736,16 @@ COMMIT;";
                         
                     return DatabaseResult.SuccessResult();
                 }
-                catch (Exception ex)
+                catch
                 {
-                    Console.WriteLine($"❌ Exception in transaction: {ex.Message}");
+
                     transaction.Rollback();
                     throw;
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ Outer exception: {ex.Message}");
+
                 return DatabaseResult.ErrorResult($"Failed to update template category status: {ex.Message}", ex);
             }
         }
@@ -2422,8 +2409,7 @@ COMMIT;";
         {
             try
             {
-                Console.WriteLine($"SetSettingValueAsync called: {category}.{key} = {value}");
-                
+
                 var stringValue = value?.ToString() ?? "";
                 var dataType = GetDataTypeString<T>();
 
@@ -2437,8 +2423,7 @@ COMMIT;";
                 checkCommand.Parameters.AddWithValue("@key", key);
                 
                 var exists = Convert.ToInt32(await checkCommand.ExecuteScalarAsync()) > 0;
-                Console.WriteLine($"SetSettingValueAsync: Setting exists: {exists}");
-                
+
                 if (exists)
                 {
                     // Update existing setting
@@ -2456,7 +2441,7 @@ COMMIT;";
                 updateCommand.Parameters.AddWithValue("@updatedBy", (object?)updatedBy ?? DBNull.Value);
 
                     var updatedRows = await updateCommand.ExecuteNonQueryAsync();
-                    Console.WriteLine($"SetSettingValueAsync: UPDATE affected {updatedRows} rows");
+
                 }
                 else
                 {
@@ -2475,7 +2460,7 @@ COMMIT;";
                     insertCommand.Parameters.AddWithValue("@updatedBy", (object?)updatedBy ?? DBNull.Value);
 
                     var insertedRows = await insertCommand.ExecuteNonQueryAsync();
-                    Console.WriteLine($"SetSettingValueAsync: INSERT affected {insertedRows} rows");
+
                 }
 
                 // Use file-based logging instead of database logging
@@ -2485,12 +2470,11 @@ COMMIT;";
                     ("Value", stringValue),
                     ("UpdatedBy", updatedBy ?? "Unknown"));
 
-                Console.WriteLine($"SetSettingValueAsync: Successfully saved {category}.{key}");
                 return DatabaseResult.SuccessResult();
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"SetSettingValueAsync error: {ex}");
+
                 return DatabaseResult.ErrorResult($"Failed to set setting value: {ex.Message}", ex);
             }
         }
@@ -2581,59 +2565,93 @@ COMMIT;";
         {
             try
             {
-                Console.WriteLine($"DeleteAdminUserAsync: Attempting to delete user '{userId}', deleted by '{deletedBy}'");
-                
+
                 // First check if the user exists and get their username for logging
                 var userResult = await GetByUserIdAsync<AdminUser>(userId);
                 if (!userResult.Success || userResult.Data == null)
                 {
-                    Console.WriteLine($"DeleteAdminUserAsync: User '{userId}' not found");
+
                     return DatabaseResult.ErrorResult($"User with ID '{userId}' not found");
                 }
                 
                 var username = userResult.Data.Username;
-                Console.WriteLine($"DeleteAdminUserAsync: Found user '{username}' to delete");
 
                 using var connection = new SqliteConnection(_connectionString);
                 await connection.OpenAsync();
-                
-                // Temporarily disable foreign key constraints to work around migration issues
-                Console.WriteLine("DeleteAdminUserAsync: Disabling foreign key constraints temporarily");
-                using var disableFkCmd = new SqliteCommand("PRAGMA foreign_keys = OFF;", connection);
-                await disableFkCmd.ExecuteNonQueryAsync();
+                using var transaction = connection.BeginTransaction();
 
-                var query = "DELETE FROM AdminUsers WHERE UserId = @userId";
-                using var command = new SqliteCommand(query, connection);
-                command.Parameters.AddWithValue("@userId", userId);
-
-                var rowsAffected = await command.ExecuteNonQueryAsync();
-                Console.WriteLine($"DeleteAdminUserAsync: {rowsAffected} rows affected");
-                
-                // Re-enable foreign key constraints
-                Console.WriteLine("DeleteAdminUserAsync: Re-enabling foreign key constraints");
-                using var enableFkCmd = new SqliteCommand("PRAGMA foreign_keys = ON;", connection);
-                await enableFkCmd.ExecuteNonQueryAsync();
-                
-                if (rowsAffected > 0)
+                try
                 {
-                    // Use file-based logging instead of database logging
-                    LoggingService.Application.Information("Admin user deleted",
-                        ("Username", username),
-                        ("UserId", userId),
-                        ("DeletedBy", deletedBy ?? "Unknown"));
-                        
-                    Console.WriteLine($"DeleteAdminUserAsync: User '{username}' deleted successfully");
-                    return DatabaseResult.SuccessResult();
+                    // Properly handle foreign key relationships instead of disabling constraints
+                    
+                    // 1. Update Templates.UploadedBy to NULL where it references this user
+                    var updateTemplatesCmd = new SqliteCommand(
+                        "UPDATE Templates SET UploadedBy = NULL WHERE UploadedBy = @userId", 
+                        connection, transaction);
+                    updateTemplatesCmd.Parameters.AddWithValue("@userId", userId);
+                    await updateTemplatesCmd.ExecuteNonQueryAsync();
+                    
+                    // 2. Update Settings.UpdatedBy to NULL where it references this user
+                    var updateSettingsCmd = new SqliteCommand(
+                        "UPDATE Settings SET UpdatedBy = NULL WHERE UpdatedBy = @userId", 
+                        connection, transaction);
+                    updateSettingsCmd.Parameters.AddWithValue("@userId", userId);
+                    await updateSettingsCmd.ExecuteNonQueryAsync();
+                    
+                    // 3. Update BusinessInfo.UpdatedBy to NULL where it references this user
+                    var updateBusinessInfoCmd = new SqliteCommand(
+                        "UPDATE BusinessInfo SET UpdatedBy = NULL WHERE UpdatedBy = @userId", 
+                        connection, transaction);
+                    updateBusinessInfoCmd.Parameters.AddWithValue("@userId", userId);
+                    await updateBusinessInfoCmd.ExecuteNonQueryAsync();
+                    
+                    // 4. Update SystemErrors.ResolvedBy to NULL where it references this user
+                    var updateErrorsCmd = new SqliteCommand(
+                        "UPDATE SystemErrors SET ResolvedBy = NULL WHERE ResolvedBy = @userId", 
+                        connection, transaction);
+                    updateErrorsCmd.Parameters.AddWithValue("@userId", userId);
+                    await updateErrorsCmd.ExecuteNonQueryAsync();
+                    
+                    // 5. Update AdminUsers self-references (CreatedBy, UpdatedBy) to NULL
+                    var updateAdminUsersCmd = new SqliteCommand(
+                        "UPDATE AdminUsers SET CreatedBy = NULL, UpdatedBy = NULL WHERE CreatedBy = @userId OR UpdatedBy = @userId", 
+                        connection, transaction);
+                    updateAdminUsersCmd.Parameters.AddWithValue("@userId", userId);
+                    await updateAdminUsersCmd.ExecuteNonQueryAsync();
+                    
+                    // 6. Now safely delete the admin user
+                    var deleteCmd = new SqliteCommand("DELETE FROM AdminUsers WHERE UserId = @userId", connection, transaction);
+                    deleteCmd.Parameters.AddWithValue("@userId", userId);
+                    var rowsAffected = await deleteCmd.ExecuteNonQueryAsync();
+                    
+                    // Commit the transaction
+                    transaction.Commit();
+                    
+                    if (rowsAffected > 0)
+                    {
+                        // Use file-based logging instead of database logging
+                        LoggingService.Application.Information("Admin user deleted",
+                            ("Username", username),
+                            ("UserId", userId),
+                            ("DeletedBy", deletedBy ?? "Unknown"));
+
+                        return DatabaseResult.SuccessResult();
+                    }
+                    else
+                    {
+                        return DatabaseResult.ErrorResult("User not found or already deleted");
+                    }
                 }
-                else
+                catch
                 {
-                    Console.WriteLine($"DeleteAdminUserAsync: No rows affected, user may have already been deleted");
-                    return DatabaseResult.ErrorResult("User not found or already deleted");
+                    // Rollback transaction on error
+                    transaction.Rollback();
+                    throw; // Re-throw to be caught by outer catch block
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"DeleteAdminUserAsync error: {ex}");
+
                 return DatabaseResult.ErrorResult($"Failed to delete admin user: {ex.Message}", ex);
             }
         }
@@ -2891,12 +2909,11 @@ COMMIT;";
                 // Write secure credentials to a protected file for first-time setup
                 await WriteInitialCredentialsSecurely(masterPassword, userPassword);
 
-                Console.WriteLine("🔒 Default admin users created with secure random passwords");
-                Console.WriteLine("📋 Check the setup credentials file for initial login information");
+
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Error creating default admin users: {ex.Message}");
+
                 throw;
             }
         }
@@ -2978,15 +2995,12 @@ It contains no important application files.
                 await File.WriteAllTextAsync(credentialsFile, credentialsContent);
                 await File.WriteAllTextAsync(readmeFile, readmeContent);
 
-                Console.WriteLine($"📋 Setup credentials folder created on Desktop: {setupDir}");
-                Console.WriteLine("🎯 Folder is clearly labeled and will auto-delete after setup");
+
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Warning: Could not write credentials file: {ex.Message}");
-                Console.WriteLine($"Master admin password: {masterPassword}");
-                Console.WriteLine($"User admin password: {userPassword}");
-                Console.WriteLine("Please note these passwords for initial setup!");
+
+
             }
         }
 
@@ -3000,13 +3014,13 @@ It contains no important application files.
                 if (Directory.Exists(setupDir))
                 {
                     Directory.Delete(setupDir, true);
-                    Console.WriteLine("🗑️ Setup credentials folder automatically deleted from Desktop");
+
                 }
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Note: Could not auto-delete setup folder: {ex.Message}");
-                Console.WriteLine("You can safely delete the PhotoBoothX-Setup-Credentials folder from Desktop manually.");
+
+
             }
         }
 
@@ -3022,13 +3036,13 @@ It contains no important application files.
                     if (Directory.Exists(setupDir))
                     {
                         Directory.Delete(setupDir, true);
-                        Console.WriteLine("🗑️ Setup credentials folder automatically deleted from Desktop");
+
                     }
                 }
-                catch (Exception ex)
+                catch
                 {
-                    Console.WriteLine($"Note: Could not auto-delete setup folder: {ex.Message}");
-                    Console.WriteLine("You can safely delete the PhotoBoothX-Setup-Credentials folder from Desktop manually.");
+
+
                 }
             });
         }
@@ -3037,8 +3051,7 @@ It contains no important application files.
         {
             try
             {
-                Console.WriteLine("CreateDefaultSettingsDirect: Starting default settings creation...");
-                
+
                 // NOTE: Product pricing and enabled states removed - now managed exclusively in Products table
                 var defaultSettings = new[]
                 {
@@ -3067,14 +3080,13 @@ It contains no important application files.
                     command.Parameters.AddWithValue("@updatedAt", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
                     
                     await command.ExecuteNonQueryAsync();
-                    Console.WriteLine($"CreateDefaultSettingsDirect: Created setting {setting.Category}.{setting.Key}");
+
                 }
-                
-                Console.WriteLine("CreateDefaultSettingsDirect: All default settings created successfully");
+
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"CreateDefaultSettingsDirect error: {ex.Message}");
+
                 throw;
             }
         }

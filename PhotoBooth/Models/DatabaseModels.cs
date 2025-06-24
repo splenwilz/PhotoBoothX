@@ -96,6 +96,37 @@ namespace Photobooth.Models
         
         public DateTime CreatedAt { get; set; } = DateTime.Now;
         
+        // Validation helper methods
+        public static bool IsValidSeasonalDate(string? date)
+        {
+            if (string.IsNullOrEmpty(date))
+                return true; // NULL/empty is valid
+                
+            // Check MM-DD format using regex
+            return System.Text.RegularExpressions.Regex.IsMatch(date, @"^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$");
+        }
+        
+        public static string? ValidateAndFormatSeasonalDate(string? date)
+        {
+            if (string.IsNullOrEmpty(date))
+                return null;
+                
+            // Remove any extra spaces
+            date = date.Trim();
+            
+            // If it's already in correct format, return it
+            if (IsValidSeasonalDate(date))
+                return date;
+                
+            // Try to parse and reformat common variations
+            if (DateTime.TryParse($"2000-{date}", out var parsedDate))
+            {
+                return $"{parsedDate.Month:D2}-{parsedDate.Day:D2}";
+            }
+            
+            throw new ArgumentException($"Invalid seasonal date format: '{date}'. Expected MM-DD format (e.g., '02-14')");
+        }
+        
         // Computed properties for seasonal logic
         public bool IsCurrentlyInSeason
         {
@@ -161,7 +192,7 @@ namespace Photobooth.Models
         public int Y { get; set; }
         public int Width { get; set; }
         public int Height { get; set; }
-        public int Rotation { get; set; } = 0;
+        public double Rotation { get; set; } = 0;
     }
 
     public class TemplateDimensions
@@ -211,7 +242,7 @@ namespace Photobooth.Models
                 Y = pa.Y,
                 Width = pa.Width,
                 Height = pa.Height,
-                Rotation = (int)pa.Rotation
+                Rotation = pa.Rotation
             }).ToList() ?? new List<PhotoArea>();
         }
         
@@ -249,6 +280,10 @@ namespace Photobooth.Models
         public string EndDate { get; set; } = string.Empty;   // MM-DD format
         public bool IsActive { get; set; } = true;
         public DateTime CreatedAt { get; set; } = DateTime.Now;
+        
+        // Validation helper methods (reusing from TemplateCategory)
+        public static bool IsValidSeasonalDate(string? date) => TemplateCategory.IsValidSeasonalDate(date);
+        public static string? ValidateAndFormatSeasonalDate(string? date) => TemplateCategory.ValidateAndFormatSeasonalDate(date);
     }
 
     public class TemplateUsageStat

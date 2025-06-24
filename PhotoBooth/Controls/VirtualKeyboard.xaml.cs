@@ -21,32 +21,63 @@ namespace Photobooth.Controls
         #region Private Fields
 
         private VirtualKeyboardMode _currentMode;
-        private bool _isShiftPressed = false;
-        private bool _isCapsLockOn = false;
-        private bool _isExtraTransparent = false;
         
         // Drag and resize functionality fields
         private bool _isDragging = false;
         private Point _dragStartPoint;
         private FrameworkElement? _parentContainer;
 
-        // Size presets for touch-friendly resizing
-        private KeyboardSize _currentSize = KeyboardSize.Large;
+        // Services for testability
+        private readonly IKeyboardSizeService _sizeService;
+        private readonly IKeyboardStateService _stateService;
+        private readonly IKeyboardStyleService _styleService;
+        private readonly IKeyboardInputService _inputService;
+
+        // Static readonly collections for performance optimization
+        private static readonly HashSet<string> ShiftedCharacters = new HashSet<string> 
+        { 
+            "!", "@", "#", "$", "%", "^", "&", "*", "(", ")", "_", "+", 
+            "{", "}", ":", "\"", "<", ">", "?" 
+        };
 
         #endregion
 
         #region Constructor
 
         public VirtualKeyboard(VirtualKeyboardMode mode = VirtualKeyboardMode.Text, bool extraTransparent = false)
+            : this(mode, 
+                   new KeyboardSizeService(), 
+                   new KeyboardStateService(), 
+                   new KeyboardStyleService(extraTransparent), 
+                   new KeyboardInputService())
+        {
+        }
+
+        public VirtualKeyboard(VirtualKeyboardMode mode, 
+                              IKeyboardSizeService sizeService,
+                              IKeyboardStateService stateService,
+                              IKeyboardStyleService styleService,
+                              IKeyboardInputService inputService)
         {
             InitializeComponent();
+            
+            _sizeService = sizeService ?? throw new ArgumentNullException(nameof(sizeService));
+            _stateService = stateService ?? throw new ArgumentNullException(nameof(stateService));
+            _styleService = styleService ?? throw new ArgumentNullException(nameof(styleService));
+            _inputService = inputService ?? throw new ArgumentNullException(nameof(inputService));
+            
             _currentMode = mode;
-            _isExtraTransparent = extraTransparent;
+            
+            // Wire up input service events
+            _inputService.OnKeyPressed += (key) => OnKeyPressed?.Invoke(key);
+            _inputService.OnSpecialKeyPressed += (specialKey) => OnSpecialKeyPressed?.Invoke(specialKey);
+            
             SetKeyboardMode(mode);
             
-            if (_isExtraTransparent)
+            // Apply transparency after the control is loaded to ensure visual tree is ready
+            if (_styleService.IsExtraTransparent)
             {
-                ApplyExtraTransparency();
+                this.Loaded += (sender, e) => _styleService.ApplyExtraTransparency(this);
             }
         }
 
@@ -79,7 +110,7 @@ namespace Photobooth.Controls
                     break;
             }
 
-            UpdateKeyCase();
+            _stateService.UpdateKeyCase(this, _currentMode);
         }
 
         /// <summary>
@@ -98,42 +129,10 @@ namespace Photobooth.Controls
         /// <summary>
         /// Update key case and shift states for letters, numbers, and punctuation
         /// </summary>
-        private void UpdateKeyCase()
+        public void UpdateKeyCase()
         {
-            if (_currentMode != VirtualKeyboardMode.Text && _currentMode != VirtualKeyboardMode.Password)
-                return;
-
-            bool shouldBeUppercase = _isCapsLockOn || _isShiftPressed;
-
-            // Update all letter keys
-            var letterKeys = new[]
-            {
-                KeyQ, KeyW, KeyE, KeyR, KeyT, KeyY, KeyU, KeyI, KeyO, KeyP,
-                KeyA, KeyS, KeyD, KeyF, KeyG, KeyH, KeyJ, KeyK, KeyL,
-                KeyZ, KeyX, KeyC, KeyV, KeyB, KeyN, KeyM
-            };
-
-            foreach (var key in letterKeys)
-            {
-                if (key != null)
-                {
-                    var letter = key.Content.ToString();
-                    if (!string.IsNullOrEmpty(letter))
-                    {
-                        key.Content = shouldBeUppercase ? letter.ToUpper() : letter.ToLower();
-                    }
-                }
-            }
-
-            // Update number and punctuation keys with shift mappings
-            UpdateNumberAndPunctuationKeys();
-
-            // Reset shift after use (but not caps lock)
-            if (_isShiftPressed)
-            {
-                _isShiftPressed = false;
-                UpdateShiftButtonState();
-            }
+            _stateService.UpdateKeyCase(this, _currentMode);
+            _stateService.UpdateShiftButtonState(this);
         }
 
         /// <summary>
@@ -187,7 +186,7 @@ namespace Photobooth.Controls
                             if (currentContent.Length == 1 && mappings.ContainsKey(currentContent))
                             {
                                 // Only apply shift mapping if shift is pressed
-                                if (_isShiftPressed)
+                                if (_stateService.IsShiftPressed)
                                 {
                                     button.Content = mappings[currentContent];
                                 }
@@ -212,9 +211,9 @@ namespace Photobooth.Controls
                     UpdateButtonsInContainer(child, mappings);
                 }
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Error updating buttons in container: {ex.Message}");
+
             }
         }
 
@@ -223,81 +222,31 @@ namespace Photobooth.Controls
         /// </summary>
         private bool IsShiftedCharacter(string character)
         {
-            var shiftedChars = new HashSet<string> { "!", "@", "#", "$", "%", "^", "&", "*", "(", ")", "_", "+", "{", "}", ":", "\"", "<", ">", "?" };
-            return shiftedChars.Contains(character);
+            return ShiftedCharacters.Contains(character);
         }
 
         /// <summary>
         /// Update shift button visual state
         /// </summary>
-        private void UpdateShiftButtonState()
+        public void UpdateShiftButtonState()
         {
-            if (ShiftButton != null)
-            {
-                if (_isShiftPressed)
-                {
-                    ShiftButton.Style = (Style)FindResource("ActionKeyStyle");
-                    ShiftButton.Content = "⇧ SHIFT";
-                }
-                else
-                {
-                    ShiftButton.Style = (Style)FindResource("SpecialKeyStyle");
-                    ShiftButton.Content = "⇧ Shift";
-                }
-            }
+            _stateService.UpdateShiftButtonState(this);
         }
 
         /// <summary>
         /// Update caps lock button visual state
         /// </summary>
-        private void UpdateCapsLockButtonState()
+        public void UpdateCapsLockButtonState()
         {
-            if (CapsLockButton != null)
-            {
-                if (_isCapsLockOn)
-                {
-                    CapsLockButton.Style = (Style)FindResource("ActionKeyStyle");
-                    CapsLockButton.Content = "⇪ CAPS";
-                }
-                else
-                {
-                    CapsLockButton.Style = (Style)FindResource("SpecialKeyStyle");
-                    CapsLockButton.Content = "⇪ Caps";
-                }
-            }
+            _stateService.UpdateCapsLockButtonState(this);
         }
 
         /// <summary>
         /// Apply extra transparency for login screen
         /// </summary>
-        private void ApplyExtraTransparency()
+        public void ApplyExtraTransparency()
         {
-            try
-            {
-                // Make the main container even more transparent
-                this.Opacity = 0.6; // Even more transparent overall
-                
-                // Find the main border and make it more transparent
-                if (this.Content is Border mainBorder)
-                {
-                    if (mainBorder.Background is SolidColorBrush backgroundBrush)
-                    {
-                        backgroundBrush.Opacity = 0.15; // Much more transparent
-                    }
-                    
-                    if (mainBorder.BorderBrush is SolidColorBrush borderBrush)
-                    {
-                        borderBrush.Opacity = 0.1; // Very transparent border
-                    }
-                }
-                
-                // Make all buttons more transparent
-                ApplyTransparentButtonStyles();
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error applying extra transparency: {ex.Message}");
-            }
+            _styleService.ApplyExtraTransparency(this);
         }
 
         /// <summary>
@@ -356,9 +305,9 @@ namespace Photobooth.Controls
                 // Apply to all buttons recursively
                 ApplyStyleToAllButtons(this, transparentKeyStyle);
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Error applying transparent button styles: {ex.Message}");
+
             }
         }
 
@@ -382,9 +331,9 @@ namespace Photobooth.Controls
                     ApplyStyleToAllButtons(child, style);
                 }
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Error applying style to buttons: {ex.Message}");
+
             }
         }
 
@@ -410,29 +359,25 @@ namespace Photobooth.Controls
         /// </summary>
         private void KeyButton_Click(object sender, RoutedEventArgs e)
         {
-            Console.WriteLine("KeyButton_Click triggered");
-            
-            if (sender is Button button && button.Content != null)
+
+
+            if (sender is Button button)
             {
-                var key = button.Content.ToString();
-                Console.WriteLine($"Key pressed: '{key}'");
-                
-                if (!string.IsNullOrEmpty(key))
+
+
+                _inputService.HandleKeyClick(button, e);
+
+                // Update case after typing a letter (for shift behavior)
+                if (_currentMode == VirtualKeyboardMode.Text || _currentMode == VirtualKeyboardMode.Password)
                 {
-                    Console.WriteLine($"Invoking OnKeyPressed with: '{key}'");
-                    OnKeyPressed?.Invoke(key);
-                    
-                    // Update case after typing a letter (for shift behavior)
-                    if (_currentMode == VirtualKeyboardMode.Text || _currentMode == VirtualKeyboardMode.Password)
-                    {
-                        UpdateKeyCase();
-                    }
+                    UpdateKeyCase();
                 }
             }
             else
             {
-                Console.WriteLine("Button or content is null");
+
             }
+
         }
 
         /// <summary>
@@ -440,19 +385,26 @@ namespace Photobooth.Controls
         /// </summary>
         private void SpaceButton_Click(object sender, RoutedEventArgs e)
         {
-            Console.WriteLine("SpaceButton_Click triggered");
+
+
             OnSpecialKeyPressed?.Invoke(VirtualKeyboardSpecialKey.Space);
+
         }
 
         private void BackspaceButton_Click(object sender, RoutedEventArgs e)
         {
-            Console.WriteLine("BackspaceButton_Click triggered");
+
+
             OnSpecialKeyPressed?.Invoke(VirtualKeyboardSpecialKey.Backspace);
+
         }
 
         private void EnterButton_Click(object sender, RoutedEventArgs e)
         {
+
+
             OnSpecialKeyPressed?.Invoke(VirtualKeyboardSpecialKey.Enter);
+
         }
 
         private void TabButton_Click(object sender, RoutedEventArgs e)
@@ -462,19 +414,16 @@ namespace Photobooth.Controls
 
         private void ShiftButton_Click(object sender, RoutedEventArgs e)
         {
-            _isShiftPressed = !_isShiftPressed;
+            _stateService.ToggleShift();
             UpdateShiftButtonState();
             UpdateKeyCase();
         }
 
         private void CapsLockButton_Click(object sender, RoutedEventArgs e)
         {
-            _isCapsLockOn = !_isCapsLockOn;
+            _stateService.ToggleCapsLock();
             UpdateCapsLockButtonState();
             UpdateKeyCase();
-            
-            // Update caps lock button appearance (if we had one in our layout)
-            // CapsLockButton.Style = _isCapsLockOn ? (Style)FindResource("ActionKeyStyle") : (Style)FindResource("SpecialKeyStyle");
         }
 
         /// <summary>
@@ -510,42 +459,42 @@ namespace Photobooth.Controls
         #region Drag and Resize Functionality
 
         /// <summary>
-        /// Keyboard size presets for touch-friendly resizing
-        /// </summary>
-        public enum KeyboardSize
-        {
-            Small,
-            Medium,
-            Large
-        }
-
-        /// <summary>
         /// Initialize drag functionality - should be called when keyboard is added to parent
         /// </summary>
         public void InitializeDragResize(FrameworkElement parentContainer)
         {
             _parentContainer = parentContainer;
-            Console.WriteLine("Drag functionality initialized");
-            
+
             // Set initial size immediately
-            ApplyKeyboardSize(_currentSize);
+            ApplyKeyboardSize(KeyboardSize.Large);
             
             // Also apply size after the control is fully loaded (for cases where ActualWidth isn't available yet)
             this.Loaded += (s, e) => {
-                Console.WriteLine($"Keyboard loaded, parent ActualWidth: {_parentContainer?.ActualWidth}");
+
                 // Re-apply the current size to ensure full width works properly
-                ApplyKeyboardSize(_currentSize);
+                ApplyKeyboardSize(KeyboardSize.Large);
             };
         }
 
         /// <summary>
         /// Apply a preset keyboard size
         /// </summary>
-        private void ApplyKeyboardSize(KeyboardSize size)
+        public void ApplyKeyboardSize(KeyboardSize size)
+        {
+            // Call the service to update button states and track current size
+            _sizeService.ApplyKeyboardSize(this, size);
+            
+            // Call the legacy method to handle the actual sizing and positioning logic
+            ApplyKeyboardSizeLegacy(size);
+        }
+
+        /// <summary>
+        /// Legacy method for compatibility - delegates to service
+        /// </summary>
+        private void ApplyKeyboardSizeLegacy(KeyboardSize size)
         {
             try
             {
-                _currentSize = size;
                 
                 double width, height, layoutHeight;
                 
@@ -553,25 +502,25 @@ namespace Photobooth.Controls
                 {
                     case KeyboardSize.Small:
                         width = 800;
-                        height = 240;
-                        layoutHeight = 160;
+                        height = 220;
+                        layoutHeight = 140;
                         break;
                     case KeyboardSize.Medium:
                         width = 1000;
-                        height = 280;
-                        layoutHeight = 200;
+                        height = 260;
+                        layoutHeight = 180;
                         break;
                     case KeyboardSize.Large:
                         // Large size should be truly full width - use stretch instead of fixed width
                         width = double.NaN; // Use NaN to allow stretching
-                        height = 320;
-                        layoutHeight = 240;
+                        height = 290;
+                        layoutHeight = 210;
                         break;
                     default:
                         // Default to Large size - full width
                         width = double.NaN; // Use NaN to allow stretching
-                        height = 320;
-                        layoutHeight = 240;
+                        height = 290;
+                        layoutHeight = 210;
                         break;
                 }
 
@@ -610,13 +559,13 @@ namespace Photobooth.Controls
                         if (_parentContainer.ActualWidth > 0)
                         {
                             this.Width = _parentContainer.ActualWidth;
-                            Console.WriteLine($"Large keyboard set to parent width: {_parentContainer.ActualWidth}");
+
                         }
                         else
                         {
                             // Fallback for when parent width isn't available yet - use a very large width
                             this.Width = 1600; // Large fallback that will be corrected on Loaded event
-                            Console.WriteLine("Large keyboard using fallback width (parent not ready)");
+
                         }
                     }
                     else
@@ -636,45 +585,20 @@ namespace Photobooth.Controls
                         }
                     }
                 }
-                
-                Console.WriteLine($"Applied keyboard size: {size} ({width}x{height})");
+
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Error applying keyboard size: {ex.Message}");
+
             }
         }
 
         /// <summary>
         /// Update size button visual states
         /// </summary>
-        private void UpdateSizeButtonStates()
+        public void UpdateSizeButtonStates()
         {
-            try
-            {
-                // Reset all buttons to normal state
-                SmallSizeButton.Style = (Style)FindResource("SpecialKeyStyle");
-                MediumSizeButton.Style = (Style)FindResource("SpecialKeyStyle");
-                LargeSizeButton.Style = (Style)FindResource("SpecialKeyStyle");
-
-                // Highlight the active button
-                switch (_currentSize)
-                {
-                    case KeyboardSize.Small:
-                        SmallSizeButton.Style = (Style)FindResource("ActionKeyStyle");
-                        break;
-                    case KeyboardSize.Medium:
-                        MediumSizeButton.Style = (Style)FindResource("ActionKeyStyle");
-                        break;
-                    case KeyboardSize.Large:
-                        LargeSizeButton.Style = (Style)FindResource("ActionKeyStyle");
-                        break;
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error updating size button states: {ex.Message}");
-            }
+            _sizeService.UpdateSizeButtonStates(this);
         }
 
         /// <summary>
@@ -708,7 +632,7 @@ namespace Photobooth.Controls
         {
             if (_parentContainer == null)
             {
-                Console.WriteLine("Cannot drag - parent container not set");
+
                 return;
             }
 
@@ -740,13 +664,12 @@ namespace Photobooth.Controls
                 // Add mouse move and up handlers
                 HeaderGrid.MouseMove += HeaderGrid_MouseMove;
                 HeaderGrid.MouseLeftButtonUp += HeaderGrid_MouseLeftButtonUp;
-                
-                Console.WriteLine($"Started dragging at {_dragStartPoint}");
+
                 e.Handled = true;
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Error starting drag: {ex.Message}");
+
                 _isDragging = false;
             }
         }
@@ -800,12 +723,11 @@ namespace Photobooth.Controls
 
                 // Update drag start point for next move
                 _dragStartPoint = currentPosition;
-                
-                Console.WriteLine($"Dragging to {newLeft:F1}, {newTop:F1}");
+
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Error during drag: {ex.Message}");
+
                 // Stop dragging on error
                 _isDragging = false;
                 HeaderGrid.ReleaseMouseCapture();
@@ -827,13 +749,12 @@ namespace Photobooth.Controls
                     // Remove mouse handlers
                     HeaderGrid.MouseMove -= HeaderGrid_MouseMove;
                     HeaderGrid.MouseLeftButtonUp -= HeaderGrid_MouseLeftButtonUp;
-                    
-                    Console.WriteLine("Drag ended");
+
                 }
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Error ending drag: {ex.Message}");
+
                 _isDragging = false;
             }
         }

@@ -33,42 +33,28 @@ namespace Photobooth.Controls
 
         public TemplateExportDialog(IDatabaseService databaseService, List<Template> allTemplates, HashSet<int> selectedTemplateIds)
         {
-            Console.WriteLine("=== TEMPLATE EXPORT DIALOG CONSTRUCTOR STARTED ===");
-            
+
             try
             {
-                Console.WriteLine("About to call InitializeComponent...");
+
                 InitializeComponent();
-                Console.WriteLine("InitializeComponent completed");
-                
-                Console.WriteLine($"databaseService is null: {databaseService == null}");
-                Console.WriteLine($"allTemplates is null: {allTemplates == null}");
-                Console.WriteLine($"allTemplates count: {allTemplates?.Count ?? 0}");
-                Console.WriteLine($"selectedTemplateIds is null: {selectedTemplateIds == null}");
-                Console.WriteLine($"selectedTemplateIds count: {selectedTemplateIds?.Count ?? 0}");
-                
+
+
                 _databaseService = databaseService ?? throw new ArgumentNullException(nameof(databaseService));
-                Console.WriteLine("Database service assigned");
-                
+
                 _allTemplates = allTemplates ?? throw new ArgumentNullException(nameof(allTemplates));
-                Console.WriteLine("All templates assigned");
-                
+
                 _selectedTemplateIds = selectedTemplateIds ?? throw new ArgumentNullException(nameof(selectedTemplateIds));
-                Console.WriteLine("Selected template IDs assigned");
-                
-                Console.WriteLine("About to attach Loaded event handler...");
+
+
                 Loaded += TemplateExportDialog_Loaded;
-                Console.WriteLine("Loaded event handler attached");
-                
-                Console.WriteLine("=== TEMPLATE EXPORT DIALOG CONSTRUCTOR COMPLETED ===");
+
+
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"=== TEMPLATE EXPORT DIALOG CONSTRUCTOR ERROR ===");
-                Console.WriteLine($"Exception type: {ex.GetType().Name}");
-                Console.WriteLine($"Exception message: {ex.Message}");
-                Console.WriteLine($"Exception stack trace: {ex.StackTrace}");
-                Console.WriteLine($"Inner exception: {ex.InnerException?.Message}");
+
+
                 throw;
             }
         }
@@ -79,32 +65,27 @@ namespace Photobooth.Controls
 
         private async void TemplateExportDialog_Loaded(object sender, RoutedEventArgs e)
         {
-            Console.WriteLine("=== TEMPLATE EXPORT DIALOG LOADED EVENT STARTED ===");
-            
+
             try
             {
-                Console.WriteLine("About to load categories...");
+
                 await LoadCategoriesAsync();
-                Console.WriteLine("Categories loaded successfully");
-                
-                Console.WriteLine("About to update counts...");
+
+
                 UpdateCounts();
-                Console.WriteLine("Counts updated successfully");
-                
-                Console.WriteLine("About to update summary...");
+
+
                 UpdateSummary();
-                Console.WriteLine("Summary updated successfully");
-                
-                Console.WriteLine("=== TEMPLATE EXPORT DIALOG LOADED EVENT COMPLETED ===");
+
+
+                UpdateExportButtonState();
+
+
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"=== TEMPLATE EXPORT DIALOG LOADED EVENT ERROR ===");
-                Console.WriteLine($"Exception type: {ex.GetType().Name}");
-                Console.WriteLine($"Exception message: {ex.Message}");
-                Console.WriteLine($"Exception stack trace: {ex.StackTrace}");
-                Console.WriteLine($"Inner exception: {ex.InnerException?.Message}");
-                
+
+
                 // Don't rethrow here, just log the error to prevent dialog from crashing
                 // Set some default values to ensure the dialog can still be used
                 try
@@ -127,6 +108,17 @@ namespace Photobooth.Controls
                 if (CategoryComboBox != null)
                 {
                     CategoryComboBox.IsEnabled = ExportCategoryRadio?.IsChecked == true;
+                    
+                    // Reset category validation when switching away from category export
+                    if (ExportCategoryRadio?.IsChecked != true)
+                    {
+                        HideCategoryValidationError();
+                    }
+                    else
+                    {
+                        // Validate category selection when switching to category export
+                        ValidateCategorySelection();
+                    }
                 }
                 
                 // Only update summary if all required controls are loaded
@@ -134,11 +126,28 @@ namespace Photobooth.Controls
                 {
                     UpdateSummary();
                 }
+                
+                // Update export button state
+                UpdateExportButtonState();
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Error in ExportOption_Changed: {ex.Message}");
+
                 // Don't crash the dialog for this
+            }
+        }
+
+        private void CategoryComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            try
+            {
+                ValidateCategorySelection();
+                UpdateSummary();
+                UpdateExportButtonState();
+            }
+            catch
+            {
+
             }
         }
 
@@ -146,12 +155,32 @@ namespace Photobooth.Controls
         {
             try
             {
+                // Validate export requirements first
+                if (ExportCategoryRadio?.IsChecked == true && CategoryComboBox?.SelectedItem == null)
+                {
+                    MessageBox.Show("Please select a category to export.", "Export Templates", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    ValidateCategorySelection(); // Show visual validation error
+                    return;
+                }
+                
                 // Get templates to export
                 var templatesToExport = GetTemplatesToExport();
                 
                 if (!templatesToExport.Any())
                 {
-                    MessageBox.Show("No templates to export.", "Export Templates", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    string message = "No templates to export.";
+                    
+                    // Provide more specific message based on export type
+                    if (ExportSelectedRadio?.IsChecked == true)
+                    {
+                        message = "No templates are selected for export. Please select templates first.";
+                    }
+                    else if (ExportCategoryRadio?.IsChecked == true && CategoryComboBox?.SelectedItem is TemplateCategory category)
+                    {
+                        message = $"No templates found in the '{category.Name}' category.";
+                    }
+                    
+                    MessageBox.Show(message, "Export Templates", MessageBoxButton.OK, MessageBoxImage.Warning);
                     return;
                 }
 
@@ -216,6 +245,110 @@ namespace Photobooth.Controls
 
         #endregion
 
+        #region Validation Methods
+
+        private bool ValidateCategorySelection()
+        {
+            try
+            {
+                // Only validate if Export by Category is selected
+                if (ExportCategoryRadio?.IsChecked != true)
+                {
+                    HideCategoryValidationError();
+                    return true;
+                }
+
+                // Check if a category is selected
+                bool isValid = CategoryComboBox?.SelectedItem != null;
+
+                if (isValid)
+                {
+                    HideCategoryValidationError();
+                }
+                else
+                {
+                    ShowCategoryValidationError();
+                }
+
+                return isValid;
+            }
+            catch
+            {
+
+                return false;
+            }
+        }
+
+        private void ShowCategoryValidationError()
+        {
+            try
+            {
+                if (CategoryComboBox != null && CategoryErrorText != null)
+                {
+                    CategoryComboBox.Style = (Style)FindResource("ComboBoxErrorStyle");
+                    CategoryErrorText.Visibility = Visibility.Visible;
+                }
+            }
+            catch
+            {
+
+            }
+        }
+
+        private void HideCategoryValidationError()
+        {
+            try
+            {
+                if (CategoryComboBox != null && CategoryErrorText != null)
+                {
+                    CategoryComboBox.ClearValue(StyleProperty);
+                    CategoryErrorText.Visibility = Visibility.Collapsed;
+                }
+            }
+            catch
+            {
+
+            }
+        }
+
+        private bool IsExportValid()
+        {
+            try
+            {
+                // Check if Export by Category is selected and validate it
+                if (ExportCategoryRadio?.IsChecked == true)
+                {
+                    return ValidateCategorySelection();
+                }
+
+                // For other export options, check if we have templates to export
+                var templates = GetTemplatesToExport();
+                return templates.Any();
+            }
+            catch
+            {
+
+                return false;
+            }
+        }
+
+        private void UpdateExportButtonState()
+        {
+            try
+            {
+                if (ExportButton != null)
+                {
+                    ExportButton.IsEnabled = IsExportValid();
+                }
+            }
+            catch
+            {
+
+            }
+        }
+
+        #endregion
+
         #region Private Methods
 
         private async Task LoadCategoriesAsync()
@@ -232,6 +365,9 @@ namespace Photobooth.Controls
                     {
                         CategoryComboBox.SelectedIndex = 0;
                     }
+                    
+                    // Update export button state after categories are loaded
+                    UpdateExportButtonState();
                 }
             }
             catch (Exception ex)
@@ -265,10 +401,13 @@ namespace Photobooth.Controls
                 {
                     SummaryText.Text = $"Ready to export {count} template{(count == 1 ? "" : "s")}{includeInactiveText} as ZIP file, {organizeText}{includePreviewsText}.";
                 }
+                
+                // Update export button state when summary changes
+                UpdateExportButtonState();
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Error in UpdateSummary: {ex.Message}");
+
                 // Set a safe default
                 if (SummaryText != null)
                 {
@@ -310,9 +449,9 @@ namespace Photobooth.Controls
 
                 return templates;
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Error in GetTemplatesToExport: {ex.Message}");
+
                 return new List<Template>(); // Return empty list on error
             }
         }
@@ -459,69 +598,56 @@ namespace Photobooth.Controls
         public static Task<bool> ShowExportDialogAsync(Window? owner, IDatabaseService? databaseService, 
             List<Template>? allTemplates, HashSet<int>? selectedTemplateIds)
         {
-            Console.WriteLine("=== SHOW EXPORT DIALOG ASYNC STARTED ===");
-            
+
             try
             {
-                Console.WriteLine("Method started on UI thread");
-                Console.WriteLine($"Parameters - owner is null: {owner == null}");
-                Console.WriteLine($"Parameters - databaseService is null: {databaseService == null}");
-                Console.WriteLine($"Parameters - allTemplates is null: {allTemplates == null}");
-                Console.WriteLine($"Parameters - selectedTemplateIds is null: {selectedTemplateIds == null}");
-                
+
+
                 // Defensive null checks
                 if (databaseService == null)
                 {
-                    Console.WriteLine("ERROR: databaseService parameter is null");
+
                     throw new ArgumentNullException(nameof(databaseService));
                 }
                 
                 if (allTemplates == null)
                 {
-                    Console.WriteLine("ERROR: allTemplates parameter is null");
+
                     throw new ArgumentNullException(nameof(allTemplates));
                 }
                 
                 if (selectedTemplateIds == null)
                 {
-                    Console.WriteLine("ERROR: selectedTemplateIds parameter is null");
+
                     throw new ArgumentNullException(nameof(selectedTemplateIds));
                 }
-                
-                Console.WriteLine("About to create TemplateExportDialog...");
+
                 var dialog = new TemplateExportDialog(databaseService, allTemplates, selectedTemplateIds);
-                Console.WriteLine("TemplateExportDialog created successfully");
-                
-                Console.WriteLine("Setting dialog owner...");
+
+
                 if (owner != null)
                 {
-                    Console.WriteLine("Setting dialog owner to provided window");
+
                     dialog.Owner = owner;
                 }
                 else
                 {
-                    Console.WriteLine("Setting dialog owner to MainWindow");
+
                     dialog.Owner = Application.Current.MainWindow;
                 }
-                Console.WriteLine("Dialog owner set successfully");
-                
-                Console.WriteLine("About to show dialog...");
+
+
                 dialog.ShowDialog();
-                Console.WriteLine("Dialog closed");
-                
+
                 var result = dialog.ExportCompleted;
-                Console.WriteLine($"Export completed result: {result}");
-                
-                Console.WriteLine("=== SHOW EXPORT DIALOG ASYNC COMPLETED ===");
+
+
                 return Task.FromResult(result);
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"=== SHOW EXPORT DIALOG ASYNC ERROR ===");
-                Console.WriteLine($"Exception type: {ex.GetType().Name}");
-                Console.WriteLine($"Exception message: {ex.Message}");
-                Console.WriteLine($"Exception stack trace: {ex.StackTrace}");
-                Console.WriteLine($"Inner exception: {ex.InnerException?.Message}");
+
+
                 throw;
             }
         }

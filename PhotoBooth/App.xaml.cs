@@ -1,4 +1,4 @@
-﻿using System.Configuration;
+using System.Configuration;
 using System.Data;
 using System.Windows;
 using System.Runtime.InteropServices;
@@ -31,9 +31,8 @@ namespace PhotoBooth
             // Allocate a console window for debug output
 #if DEBUG
             AllocConsole();
-            Console.WriteLine("=== PhotoBooth Debug Console ===");
-            Console.WriteLine("Debug messages will appear here...");
-            Console.WriteLine("===================================");
+
+
 #endif
         }
 

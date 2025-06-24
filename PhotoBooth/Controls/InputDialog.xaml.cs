@@ -61,6 +61,11 @@ namespace Photobooth.Controls
         /// </summary>
         public static string? ShowInputDialog(string title, string message, string defaultValue = "", Window? owner = null)
         {
+            if (string.IsNullOrEmpty(title))
+                throw new ArgumentException("Title cannot be null or empty", nameof(title));
+            if (string.IsNullOrEmpty(message))
+                throw new ArgumentException("Message cannot be null or empty", nameof(message));
+            
             var dialog = new InputDialog();
             dialog.SetContent(title, message, defaultValue);
             

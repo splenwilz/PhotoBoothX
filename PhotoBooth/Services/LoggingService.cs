@@ -122,10 +122,10 @@ namespace Photobooth.Services
                         ("LogDirectory", _logDirectory),
                         ("Loggers", "Application, Hardware, Transaction, Error, Performance"));
                 }
-                catch (Exception ex)
+                catch
                 {
                     // Fallback to console if logging setup fails
-                    Console.WriteLine($"Failed to initialize logging: {ex.Message}");
+
                     throw;
                 }
             }
@@ -150,9 +150,9 @@ namespace Photobooth.Services
                 
                 _isInitialized = false;
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Error during logging shutdown: {ex.Message}");
+
             }
         }
 
@@ -277,9 +277,9 @@ namespace Photobooth.Services
                 // Use a simple, safe template that doesn't include user-provided keys
                 contextLogger.Write(level, "{Category}: {Message}", category, message);
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Logging error: {ex.Message}");
+
             }
         }
 
@@ -335,9 +335,9 @@ namespace Photobooth.Services
                     }
                 }
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Logging error: {ex.Message}");
+
             }
         }
     }

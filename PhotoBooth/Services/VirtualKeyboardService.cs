@@ -18,6 +18,9 @@ namespace Photobooth.Services
 
         public static VirtualKeyboardService Instance => _instance ??= new VirtualKeyboardService();
 
+        // Event to notify when keyboard visibility changes
+        public event EventHandler<bool>? KeyboardVisibilityChanged;
+
         private VirtualKeyboardService() { }
 
         /// <summary>
@@ -53,17 +56,17 @@ namespace Photobooth.Services
                         if (currentMode != keyboardMode)
                         {
                             _currentKeyboard.ChangeMode(keyboardMode);
-                            Console.WriteLine($"Reusing existing keyboard, changed mode from {currentMode} to {keyboardMode}");
+
                         }
                         else
                         {
-                            Console.WriteLine($"Reusing existing keyboard, switched active input to: {_activeInput?.GetType().Name}");
+
                         }
                         return;
                     }
                     else
                     {
-                        Console.WriteLine($"Keyboard mode changed from {currentMode} to {keyboardMode}, recreating keyboard");
+
                     }
                 }
 
@@ -95,94 +98,205 @@ namespace Photobooth.Services
                     _currentKeyboard.OnSpecialKeyPressed -= HandleSpecialKeyPressed;
                     _currentKeyboard.OnKeyboardClosed -= HandleKeyboardClosed;
                     _currentKeyboard = null;
-                    Console.WriteLine("Previous virtual keyboard hidden");
+
                 }
 
-                // Set the new active input and parent window
+                // Set the new active input and determine the correct parent window
                 _activeInput = inputControl;
-                _parentWindow = parentWindow;
-                Console.WriteLine($"Active input set to: {_activeInput?.GetType().Name}");
 
-                // Find the main container (usually a Grid or Panel at the root)
-                if (parentWindow.Content is Panel mainPanel)
+
+                // Always use the main application window for keyboard positioning, even for modal dialogs
+                var mainWindow = GetMainApplicationWindow(parentWindow);
+                _parentWindow = mainWindow;
+
+
+                // Check if input control's window is different from main window
+                var inputWindow = Window.GetWindow(_activeInput);
+
+
+                // Find the main container (usually a Grid or Panel at the root) in the main window
+                if (_parentWindow?.Content is Panel mainPanel)
                 {
                     _keyboardContainer = mainPanel;
                 }
-                else if (parentWindow.Content is Border border && border.Child is Panel panel)
+                else if (_parentWindow?.Content is Border border && border.Child is Panel panel)
                 {
                     _keyboardContainer = panel;
                 }
-                else if (parentWindow.Content is Grid grid)
+                else if (_parentWindow?.Content is Grid grid)
                 {
                     _keyboardContainer = grid;
                 }
 
                 if (_keyboardContainer == null)
                 {
-                    Console.WriteLine("Could not find suitable container for virtual keyboard");
+
                     return;
                 }
 
                 // Use delayed login screen check to ensure visual tree is fully loaded
+                // Pass the original parentWindow for login detection, but use mainWindow for positioning
                 CheckLoginScreenWithDelayAndCreate(parentWindow, keyboardMode);
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Error showing virtual keyboard: {ex.Message}");
+
             }
-                }
+        }
 
         /// <summary>
         /// Ensure the active input control has focus and shows the cursor
         /// </summary>
         private void EnsureInputFocus()
         {
-            if (_activeInput == null) return;
+            if (_activeInput == null) 
+            {
+
+                return;
+            }
 
             try
             {
-                // Ensure the input control is focusable and focus it
-                if (_activeInput.Focusable)
+
+
+                // Find the window that contains the active input control
+                var inputWindow = Window.GetWindow(_activeInput);
+
+
+                // If the input is in a different window (modal dialog), handle cross-window focus
+                if (inputWindow != null && inputWindow != _parentWindow)
                 {
-                    _activeInput.Focus();
-                    Keyboard.Focus(_activeInput);
-                    Console.WriteLine($"Focus set to: {_activeInput.GetType().Name}");
+
+
+                    // DON'T make the modal topmost - this blocks keyboard button clicks
+                    // Instead, just ensure the modal is active but allow main window to receive input
+                    if (!inputWindow.IsActive)
+                    {
+                        inputWindow.Activate();
+
+                    }
+                    
+                    // Keep both windows accessible - don't use topmost
+                    // This allows the modal to receive text input while keyboard buttons remain clickable
+
+
+                }
+                else
+                {
+
                 }
                 
-                // For TextBox, also ensure cursor is visible
-                if (_activeInput is TextBox textBox && textBox.IsLoaded)
+                // Use Dispatcher to ensure focus happens after window activation
+                _activeInput.Dispatcher.BeginInvoke(new Action(() =>
                 {
-                    // This ensures the caret is visible and blinking
-                    textBox.Select(textBox.Text?.Length ?? 0, 0);
-                }
-                // For PasswordBox, ensure cursor is positioned correctly at the end
-                else if (_activeInput is PasswordBox passwordBox && passwordBox.IsLoaded)
-                {
-                    // Use Dispatcher to ensure the caret positioning happens after the UI updates
-                    passwordBox.Dispatcher.BeginInvoke(new Action(() =>
+                    try
                     {
-                        try
+                        // For cross-window scenarios, ensure the input window is brought to foreground
+                        var inputWindow = Window.GetWindow(_activeInput);
+                        if (inputWindow != null && inputWindow != _parentWindow)
                         {
-                            // Move cursor to the end of the password
-                            passwordBox.Focus();
-                            
-                            // Use reflection to set the caret position to the end
-                            var passwordLength = passwordBox.Password?.Length ?? 0;
-                            var selectMethod = passwordBox.GetType().GetMethod("Select", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                            selectMethod?.Invoke(passwordBox, new object[] { passwordLength, 0 });
+                            // Bring the modal window to foreground without making it topmost
+                            inputWindow.Activate();
+                            inputWindow.Focus();
+
                         }
-                        catch (Exception reflectionEx)
+                        
+                        // Ensure the input control is focusable and focus it
+
+
+                        if (_activeInput.Focusable)
                         {
-                            Console.WriteLine($"Reflection approach failed, using alternative: {reflectionEx.Message}");
-                            // Fallback - just ensure focus
-                            passwordBox.Focus();
+                            var focusResult1 = _activeInput.Focus();
+                            var focusResult2 = Keyboard.Focus(_activeInput);
+
+
+                            // Check if focus was actually set
+                            var currentFocus = Keyboard.FocusedElement;
+
+
                         }
-                    }), System.Windows.Threading.DispatcherPriority.Render);
-                }
+                        else
+                        {
+
+                        }
+                        
+                        // For TextBox, also ensure cursor is visible
+                        if (_activeInput is TextBox textBox && textBox.IsLoaded)
+                        {
+                            // This ensures the caret is visible and blinking
+                            textBox.Select(textBox.Text?.Length ?? 0, 0);
+                        }
+                        // For PasswordBox, ensure cursor is positioned correctly at the end
+                        else if (_activeInput is PasswordBox passwordBox && passwordBox.IsLoaded)
+                        {
+                            try
+                            {
+                                // Move cursor to the end of the password
+                                passwordBox.Focus();
+                                
+                                // Use reflection to set the caret position to the end
+                                var passwordLength = passwordBox.Password?.Length ?? 0;
+                                var selectMethod = passwordBox.GetType().GetMethod("Select", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                                selectMethod?.Invoke(passwordBox, new object[] { passwordLength, 0 });
+                            }
+                            catch
+                            {
+
+                                // Fallback - just ensure focus
+                                passwordBox.Focus();
+                            }
+                        }
+                    }
+                    catch
+                    {
+
+                    }
+                }), System.Windows.Threading.DispatcherPriority.Input);
+
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Error ensuring input focus: {ex.Message}");
+
+            }
+        }
+
+        /// <summary>
+        /// Get the main application window, avoiding modal dialogs
+        /// </summary>
+        private Window GetMainApplicationWindow(Window currentWindow)
+        {
+            try
+            {
+                // If this is the main window, use it
+                if (currentWindow == Application.Current.MainWindow)
+                {
+                    return currentWindow;
+                }
+                
+                // If this is a modal dialog with an owner, check if the owner is the main window
+                if (currentWindow.Owner != null)
+                {
+                    if (currentWindow.Owner == Application.Current.MainWindow)
+                    {
+                        return currentWindow.Owner;
+                    }
+                    // Recursively check if the owner's owner is the main window (nested modals)
+                    return GetMainApplicationWindow(currentWindow.Owner);
+                }
+                
+                // Fallback to Application.Current.MainWindow if available
+                if (Application.Current.MainWindow != null)
+                {
+                    return Application.Current.MainWindow;
+                }
+                
+                // Last resort - use the current window
+                return currentWindow;
+            }
+            catch
+            {
+
+                return currentWindow; // Fallback
             }
         }
 
@@ -195,23 +309,22 @@ namespace Photobooth.Services
             {
                 // First immediate check
                 var isLoginScreen = IsLoginScreen(parentWindow);
-                Console.WriteLine($"Immediate login screen check: {isLoginScreen}");
 
                 // If not detected as login screen, wait a bit for visual tree to load and check again
                 if (!isLoginScreen)
                 {
-                    Console.WriteLine("Login screen not detected immediately, checking again after delay...");
-                    await System.Threading.Tasks.Task.Delay(100); // Short delay for visual tree to load
+
+                    await System.Threading.Tasks.Task.Delay(200); // Increased delay for visual tree to load
                     isLoginScreen = IsLoginScreen(parentWindow);
-                    Console.WriteLine($"Delayed login screen check: {isLoginScreen}");
+
                 }
 
                 // Create keyboard with appropriate transparency
                 CreateAndShowKeyboard(keyboardMode, isLoginScreen);
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Error in delayed login screen check: {ex.Message}");
+
                 // Fallback - create keyboard without transparency
                 CreateAndShowKeyboard(keyboardMode, false);
             }
@@ -226,13 +339,11 @@ namespace Photobooth.Services
             {
                 // Create and configure virtual keyboard
                 _currentKeyboard = new VirtualKeyboard(keyboardMode, isLoginScreen);
-                Console.WriteLine($"Virtual keyboard created with transparency: {isLoginScreen}");
-                
-                Console.WriteLine("Subscribing to keyboard events");
+
+
                 _currentKeyboard.OnKeyPressed += HandleKeyPressed;
                 _currentKeyboard.OnSpecialKeyPressed += HandleSpecialKeyPressed;
                 _currentKeyboard.OnKeyboardClosed += HandleKeyboardClosed;
-                Console.WriteLine("Event subscription complete");
 
                 // Position keyboard at bottom of screen initially
                 _currentKeyboard.VerticalAlignment = VerticalAlignment.Bottom;
@@ -276,17 +387,18 @@ namespace Photobooth.Services
                     
                     // Ensure the input field has focus when keyboard is shown
                     EnsureInputFocus();
-                    
-                    Console.WriteLine($"Virtual keyboard shown with drag/resize functionality and transparency: {isLoginScreen}");
+
+                    // Notify that keyboard is now visible
+                    KeyboardVisibilityChanged?.Invoke(this, true);
                 }
                 else
                 {
-                    Console.WriteLine("Error: Keyboard container is null, cannot add keyboard");
+
                 }
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Error creating and showing virtual keyboard: {ex.Message}");
+
             }
         }
 
@@ -324,16 +436,18 @@ namespace Photobooth.Services
                     _currentKeyboard.OnSpecialKeyPressed -= HandleSpecialKeyPressed;
                     _currentKeyboard.OnKeyboardClosed -= HandleKeyboardClosed;
                     _currentKeyboard = null;
-                    Console.WriteLine("Virtual keyboard hidden");
+
+                    // Notify that keyboard is now hidden
+                    KeyboardVisibilityChanged?.Invoke(this, false);
                 }
 
                 _activeInput = null;
                 _keyboardContainer = null;
                 _parentWindow = null;
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Error hiding virtual keyboard: {ex.Message}");
+
             }
         }
 
@@ -378,34 +492,30 @@ namespace Photobooth.Services
                 // Check window type or title to determine if it's the login screen
                 var windowType = window.GetType().Name;
                 var windowTitle = window.Title ?? "";
-                
-                Console.WriteLine($"Window type: {windowType}, Title: {windowTitle}");
-                
+
                 // VERY RESTRICTIVE: Only apply transparency if we can confirm this is definitely the login screen
                 // Must have BOTH AdminLoginScreen UserControl AND specific login controls
                 if (window.Content != null)
                 {
                     var hasAdminLoginScreen = HasAdminLoginScreenUserControl(window.Content);
                     var hasSpecificLoginControls = HasSpecificLoginControls(window.Content);
-                    
-                    Console.WriteLine($"Has AdminLoginScreen UserControl: {hasAdminLoginScreen}");
-                    Console.WriteLine($"Has specific login controls: {hasSpecificLoginControls}");
-                    
+
+
                     // BOTH conditions must be true
                     if (hasAdminLoginScreen && hasSpecificLoginControls)
                     {
-                        Console.WriteLine("CONFIRMED: This is the login screen (both UserControl and controls found)");
+
                         return true;
                     }
                 }
                 
                 // Don't rely on window type or title alone - too unreliable
-                Console.WriteLine("NOT CONFIRMED as login screen - applying normal keyboard styling");
+
                 return false;
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Error detecting login screen: {ex.Message}");
+
                 return false;
             }
         }
@@ -422,7 +532,7 @@ namespace Photobooth.Services
                     // Check if this is the AdminLoginScreen UserControl specifically
                     if (content.GetType().Name == "AdminLoginScreen")
                     {
-                        Console.WriteLine("Found AdminLoginScreen UserControl (exact match)");
+
                         return true;
                     }
                     
@@ -440,9 +550,9 @@ namespace Photobooth.Services
                 
                 return false;
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Error checking for AdminLoginScreen UserControl: {ex.Message}");
+
                 return false;
             }
         }
@@ -461,15 +571,13 @@ namespace Photobooth.Services
                 var hasUsername = foundControls.Contains("usernameinput");
                 var hasPassword = foundControls.Contains("passwordinput");
                 var hasLoginButton = foundControls.Contains("loginbutton");
-                
-                Console.WriteLine($"Found controls: {string.Join(", ", foundControls)}");
-                Console.WriteLine($"Has Username: {hasUsername}, Has Password: {hasPassword}, Has LoginButton: {hasLoginButton}");
-                
+
+
                 return hasUsername && hasPassword && hasLoginButton;
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Error checking for specific login controls: {ex.Message}");
+
                 return false;
             }
         }
@@ -489,7 +597,7 @@ namespace Photobooth.Services
                     if (name == "usernameinput" || name == "passwordinput" || name == "loginbutton")
                     {
                         foundControls.Add(name);
-                        Console.WriteLine($"Found specific login control: {name}");
+
                     }
                 }
                 
@@ -504,9 +612,9 @@ namespace Photobooth.Services
                     }
                 }
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Error in CheckForSpecificLoginControls: {ex.Message}");
+
             }
         }
 
@@ -515,37 +623,55 @@ namespace Photobooth.Services
         /// </summary>
         private void HandleKeyPressed(string key)
         {
-            Console.WriteLine($"HandleKeyPressed called with key: '{key}'");
-            
+
+
             if (_activeInput == null) 
             {
-                Console.WriteLine("No active input control");
+
                 return;
             }
 
             try
             {
-                Console.WriteLine($"Active input type: {_activeInput.GetType().Name}");
-                
+
+
+                // Check current focus before we ensure focus
+                var currentFocusBefore = Keyboard.FocusedElement;
+
+
                 // Ensure the input control has focus before processing key
                 EnsureInputFocus();
                 
+                // Check focus after ensuring focus
+                var currentFocusAfter = Keyboard.FocusedElement;
+
+
                 if (_activeInput is TextBox textBox)
                 {
-                    var caretIndex = textBox.CaretIndex;
-                    var currentText = textBox.Text ?? "";
-                    
-                    Console.WriteLine($"Current text: '{currentText}', Caret: {caretIndex}");
-                    
-                    // Insert character at caret position
-                    var newText = currentText.Insert(caretIndex, key);
-                    textBox.Text = newText;
-                    textBox.CaretIndex = caretIndex + 1;
-                    
-                    // Ensure focus is maintained after text change
-                    textBox.Focus();
-                    
-                    Console.WriteLine($"New text: '{newText}'");
+                    // Use Dispatcher to ensure proper threading for cross-window operations
+                    textBox.Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        try
+                        {
+                            var caretIndex = textBox.CaretIndex;
+                            var currentText = textBox.Text ?? "";
+
+
+                            // Insert character at caret position
+                            var newText = currentText.Insert(caretIndex, key);
+                            textBox.Text = newText;
+                            textBox.CaretIndex = caretIndex + 1;
+                            
+                            // Ensure focus is maintained after text change
+                            var focusResult = textBox.Focus();
+
+
+                        }
+                        catch
+                        {
+
+                        }
+                    }), System.Windows.Threading.DispatcherPriority.Input);
                 }
                 else if (_activeInput is PasswordBox passwordBox)
                 {
@@ -564,20 +690,20 @@ namespace Photobooth.Services
                             var selectMethod = passwordBox.GetType().GetMethod("Select", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
                             selectMethod?.Invoke(passwordBox, new object[] { passwordLength, 0 });
                         }
-                        catch (Exception ex)
+                        catch
                         {
-                            Console.WriteLine($"Error positioning password cursor: {ex.Message}");
+
                             passwordBox.Focus(); // Fallback
                         }
                     }), System.Windows.Threading.DispatcherPriority.Input);
-                    
-                    Console.WriteLine($"Added to password box");
+
                 }
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Error handling key press: {ex.Message}");
+
             }
+
         }
 
         /// <summary>
@@ -585,11 +711,10 @@ namespace Photobooth.Services
         /// </summary>
         private void HandleSpecialKeyPressed(VirtualKeyboardSpecialKey specialKey)
         {
-            Console.WriteLine($"HandleSpecialKeyPressed called with: {specialKey}");
-            
+
             if (_activeInput == null) 
             {
-                Console.WriteLine("No active input control for special key");
+
                 return;
             }
 
@@ -598,26 +723,26 @@ namespace Photobooth.Services
                 switch (specialKey)
                 {
                     case VirtualKeyboardSpecialKey.Backspace:
-                        Console.WriteLine("Handling backspace");
+
                         HandleBackspace();
                         break;
                     case VirtualKeyboardSpecialKey.Enter:
-                        Console.WriteLine("Handling enter");
+
                         HandleEnter();
                         break;
                     case VirtualKeyboardSpecialKey.Space:
-                        Console.WriteLine("Handling space");
+
                         HandleKeyPressed(" ");
                         break;
                     case VirtualKeyboardSpecialKey.Tab:
-                        Console.WriteLine("Handling tab");
+
                         HandleTab();
                         break;
                 }
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Error handling special key: {ex.Message}");
+
             }
         }
 
@@ -631,18 +756,29 @@ namespace Photobooth.Services
             
             if (_activeInput is TextBox textBox)
             {
-                var caretIndex = textBox.CaretIndex;
-                var currentText = textBox.Text ?? "";
-                
-                if (caretIndex > 0 && currentText.Length > 0)
+                // Use Dispatcher to ensure proper threading for cross-window operations
+                textBox.Dispatcher.BeginInvoke(new Action(() =>
                 {
-                    var newText = currentText.Remove(caretIndex - 1, 1);
-                    textBox.Text = newText;
-                    textBox.CaretIndex = caretIndex - 1;
-                    
-                    // Ensure focus is maintained after text change
-                    textBox.Focus();
-                }
+                    try
+                    {
+                        var caretIndex = textBox.CaretIndex;
+                        var currentText = textBox.Text ?? "";
+                        
+                        if (caretIndex > 0 && currentText.Length > 0)
+                        {
+                            var newText = currentText.Remove(caretIndex - 1, 1);
+                            textBox.Text = newText;
+                            textBox.CaretIndex = caretIndex - 1;
+                            
+                            // Ensure focus is maintained after text change
+                            textBox.Focus();
+                        }
+                    }
+                    catch
+                    {
+
+                    }
+                }), System.Windows.Threading.DispatcherPriority.Input);
             }
             else if (_activeInput is PasswordBox passwordBox)
             {
@@ -663,9 +799,9 @@ namespace Photobooth.Services
                             var selectMethod = passwordBox.GetType().GetMethod("Select", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
                             selectMethod?.Invoke(passwordBox, new object[] { passwordLength, 0 });
                         }
-                        catch (Exception ex)
+                        catch
                         {
-                            Console.WriteLine($"Error positioning password cursor after backspace: {ex.Message}");
+
                             passwordBox.Focus(); // Fallback
                         }
                     }), System.Windows.Threading.DispatcherPriority.Input);

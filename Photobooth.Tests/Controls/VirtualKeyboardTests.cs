@@ -157,41 +157,35 @@ namespace Photobooth.Tests.Controls
         public void OnKeyPressed_EventHandler_CanSubscribeAndUnsubscribe()
         {
             // Arrange
-            _keyboard = new VirtualKeyboard(VirtualKeyboardMode.Text, false);
+            var inputService = new KeyboardInputService();
+            _keyboard = new VirtualKeyboard(VirtualKeyboardMode.Text, 
+                new KeyboardSizeService(), 
+                new KeyboardStateService(), 
+                new KeyboardStyleService(), 
+                inputService);
+            
             var keyPressed = false;
             var handler = new System.Action<string>((key) => keyPressed = true);
 
             // Act - Subscribe
             _keyboard.OnKeyPressed += handler;
             
-            // Simulate key press using reflection to access private method
-            var method = typeof(VirtualKeyboard).GetMethod("HandleKeyClick", 
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            if (method != null)
-            {
-                // Create a mock button for testing
+            // Simulate key press through the input service
                 var button = new Button { Content = "A" };
-                method.Invoke(_keyboard, new object[] { button, new RoutedEventArgs() });
-            }
+            inputService.HandleKeyClick(button, new RoutedEventArgs());
 
             // Assert
-            if (method != null)
-            {
                 keyPressed.Should().BeTrue();
-            }
 
             // Act - Unsubscribe
             _keyboard.OnKeyPressed -= handler;
             keyPressed = false;
             
-            if (method != null)
-            {
-                var button = new Button { Content = "B" };
-                method.Invoke(_keyboard, new object[] { button, new RoutedEventArgs() });
-            }
+            var button2 = new Button { Content = "B" };
+            inputService.HandleKeyClick(button2, new RoutedEventArgs());
 
             // Assert - Should not be triggered after unsubscribe
-            // Note: This is testing the event mechanism, actual behavior may vary
+            keyPressed.Should().BeFalse();
         }
 
         [TestMethod]
@@ -263,19 +257,9 @@ namespace Photobooth.Tests.Controls
             // Arrange
             _keyboard = new VirtualKeyboard(VirtualKeyboardMode.Text, false);
 
-            // Act
-            var method = typeof(VirtualKeyboard).GetMethod("ApplyKeyboardSize", 
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            
-            if (method != null)
-            {
-                // Get KeyboardSize enum type
-                var sizeEnumType = method.GetParameters()[0].ParameterType;
-                var smallSize = Enum.Parse(sizeEnumType, "Small");
-                
-                var act = () => method.Invoke(_keyboard, new object[] { smallSize });
+            // Act & Assert
+            var act = () => _keyboard.ApplyKeyboardSize(KeyboardSize.Small);
                 act.Should().NotThrow();
-            }
         }
 
         [TestMethod]
@@ -284,18 +268,9 @@ namespace Photobooth.Tests.Controls
             // Arrange
             _keyboard = new VirtualKeyboard(VirtualKeyboardMode.Text, false);
 
-            // Act
-            var method = typeof(VirtualKeyboard).GetMethod("ApplyKeyboardSize", 
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            
-            if (method != null)
-            {
-                var sizeEnumType = method.GetParameters()[0].ParameterType;
-                var mediumSize = Enum.Parse(sizeEnumType, "Medium");
-                
-                var act = () => method.Invoke(_keyboard, new object[] { mediumSize });
+            // Act & Assert
+            var act = () => _keyboard.ApplyKeyboardSize(KeyboardSize.Medium);
                 act.Should().NotThrow();
-            }
         }
 
         [TestMethod]
@@ -304,18 +279,9 @@ namespace Photobooth.Tests.Controls
             // Arrange
             _keyboard = new VirtualKeyboard(VirtualKeyboardMode.Text, false);
 
-            // Act
-            var method = typeof(VirtualKeyboard).GetMethod("ApplyKeyboardSize", 
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            
-            if (method != null)
-            {
-                var sizeEnumType = method.GetParameters()[0].ParameterType;
-                var largeSize = Enum.Parse(sizeEnumType, "Large");
-                
-                var act = () => method.Invoke(_keyboard, new object[] { largeSize });
+            // Act & Assert
+            var act = () => _keyboard.ApplyKeyboardSize(KeyboardSize.Large);
                 act.Should().NotThrow();
-            }
         }
 
         #endregion
@@ -329,14 +295,8 @@ namespace Photobooth.Tests.Controls
             _keyboard = new VirtualKeyboard(VirtualKeyboardMode.Text, false);
 
             // Act & Assert
-            var method = typeof(VirtualKeyboard).GetMethod("UpdateKeyCase", 
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            
-            if (method != null)
-            {
-                var act = () => method.Invoke(_keyboard, new object[0]);
+            var act = () => _keyboard.UpdateKeyCase();
                 act.Should().NotThrow();
-            }
         }
 
         [TestMethod]
@@ -346,14 +306,8 @@ namespace Photobooth.Tests.Controls
             _keyboard = new VirtualKeyboard(VirtualKeyboardMode.Text, false);
 
             // Act & Assert
-            var method = typeof(VirtualKeyboard).GetMethod("UpdateShiftButtonState", 
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            
-            if (method != null)
-            {
-                var act = () => method.Invoke(_keyboard, new object[0]);
+            var act = () => _keyboard.UpdateShiftButtonState();
                 act.Should().NotThrow();
-            }
         }
 
         [TestMethod]
@@ -363,14 +317,8 @@ namespace Photobooth.Tests.Controls
             _keyboard = new VirtualKeyboard(VirtualKeyboardMode.Text, false);
 
             // Act & Assert
-            var method = typeof(VirtualKeyboard).GetMethod("UpdateCapsLockButtonState", 
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            
-            if (method != null)
-            {
-                var act = () => method.Invoke(_keyboard, new object[0]);
+            var act = () => _keyboard.UpdateCapsLockButtonState();
                 act.Should().NotThrow();
-            }
         }
 
         #endregion
@@ -384,14 +332,8 @@ namespace Photobooth.Tests.Controls
             _keyboard = new VirtualKeyboard(VirtualKeyboardMode.Text, false);
 
             // Act & Assert
-            var method = typeof(VirtualKeyboard).GetMethod("ApplyExtraTransparency", 
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            
-            if (method != null)
-            {
-                var act = () => method.Invoke(_keyboard, new object[0]);
+            var act = () => _keyboard.ApplyExtraTransparency();
                 act.Should().NotThrow();
-            }
         }
 
         #endregion

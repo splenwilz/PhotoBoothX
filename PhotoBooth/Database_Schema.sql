@@ -60,6 +60,8 @@ CREATE TABLE Products (
 -- =============================================
 
 -- Template categories (Fun, Classic, Holiday, Seasonal, etc.)
+-- Note: Seasonal dates use TEXT with CHECK constraints for MM-DD format validation
+-- This provides good performance for year-agnostic seasonal comparisons while ensuring data integrity
 CREATE TABLE TemplateCategories (
     Id INTEGER PRIMARY KEY AUTOINCREMENT,
     Name TEXT NOT NULL UNIQUE,
@@ -68,8 +70,8 @@ CREATE TABLE TemplateCategories (
     SortOrder INTEGER NOT NULL DEFAULT 0,
     -- Seasonal functionality
     IsSeasonalCategory BOOLEAN NOT NULL DEFAULT 0,
-    SeasonStartDate TEXT, -- MM-DD format (e.g., "02-01" for Valentine's)
-    SeasonEndDate TEXT,   -- MM-DD format (e.g., "02-20")
+    SeasonStartDate TEXT CHECK (SeasonStartDate IS NULL OR SeasonStartDate GLOB '[0-1][0-9]-[0-3][0-9]'), -- MM-DD format (e.g., "02-01" for Valentine's) with validation
+    SeasonEndDate TEXT CHECK (SeasonEndDate IS NULL OR SeasonEndDate GLOB '[0-1][0-9]-[0-3][0-9]'),   -- MM-DD format (e.g., "02-20") with validation
     SeasonalPriority INTEGER NOT NULL DEFAULT 0, -- Higher numbers appear first during season
     CreatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -130,8 +132,8 @@ CREATE TABLE SeasonalSchedules (
     Id INTEGER PRIMARY KEY AUTOINCREMENT,
     Name TEXT NOT NULL,
     Description TEXT,
-    StartDate TEXT NOT NULL, -- MM-DD format
-    EndDate TEXT NOT NULL,   -- MM-DD format
+    StartDate TEXT NOT NULL CHECK (StartDate GLOB '[0-1][0-9]-[0-3][0-9]'), -- MM-DD format with validation
+    EndDate TEXT NOT NULL CHECK (EndDate GLOB '[0-1][0-9]-[0-3][0-9]'),   -- MM-DD format with validation
     IsActive BOOLEAN NOT NULL DEFAULT 1,
     CreatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

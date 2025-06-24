@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -66,6 +66,8 @@ namespace Photobooth
             // Initialize notification service with the notification container
             NotificationService.Instance.Initialize(NotificationContainer);
             
+            // Initialize modal service with the modal overlay containers
+            ModalService.Instance.Initialize(ModalOverlayContainer, ModalContentContainer, ModalBackdrop);
 
             InitializeDatabaseAsync();
             InitializeApplication();

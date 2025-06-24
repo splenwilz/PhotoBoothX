@@ -69,7 +69,7 @@
     </UserControl.Resources>
 
     <!-- Main Keyboard Container -->
-    <Border BorderThickness="1,1,1,0" CornerRadius="12,12,0,0" Padding="16" Name="MainBorder">
+    <Border BorderThickness="1,1,1,0" CornerRadius="12,12,0,0" Padding="4,10,4,0" Name="MainBorder">
         <Border.Background>
             <SolidColorBrush Color="#F8FAFC" Opacity="0.6"/>
         </Border.Background>
@@ -85,7 +85,7 @@
             <!-- Main content -->
             <StackPanel Name="MainContent">
                 <!-- Keyboard Header (Draggable) -->
-                <Grid Margin="0,0,0,12" Name="HeaderGrid" Background="Transparent" 
+                <Grid Margin="0,8,0,6" Name="HeaderGrid" Background="Transparent" 
                       MouseLeftButtonDown="HeaderGrid_MouseLeftButtonDown" Cursor="SizeAll">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
@@ -136,7 +136,7 @@
                 </Grid>
 
                 <!-- Text Mode Layout -->
-                <Grid Name="TextModeLayout" Height="200">
+                <Grid Name="TextModeLayout" Height="180">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="*"/>
                         <RowDefinition Height="*"/>
@@ -145,7 +145,7 @@
                     </Grid.RowDefinitions>
 
                     <!-- Row 1: Numbers and Punctuation -->
-                    <UniformGrid Grid.Row="0" Rows="1" Columns="12" Margin="0,0,0,4">
+                    <UniformGrid Grid.Row="0" Rows="1" Columns="12" Margin="0,0,0,1">
                         <Button Content="1" Style="{StaticResource VirtualKeyStyle}" Click="KeyButton_Click"/>
                         <Button Content="2" Style="{StaticResource VirtualKeyStyle}" Click="KeyButton_Click"/>
                         <Button Content="3" Style="{StaticResource VirtualKeyStyle}" Click="KeyButton_Click"/>
@@ -161,7 +161,7 @@
                     </UniformGrid>
 
                     <!-- Row 2: QWERTY with punctuation -->
-                    <Grid Grid.Row="1" Margin="0,0,0,4">
+                    <Grid Grid.Row="1" Margin="0,0,0,1">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="*"/>
@@ -192,7 +192,7 @@
                     </Grid>
 
                     <!-- Row 3: ASDF + Caps Lock with punctuation -->
-                    <Grid Grid.Row="2" Margin="0,0,0,4">
+                    <Grid Grid.Row="2" Margin="0,0,0,1">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="1.5*"/>
                             <ColumnDefinition Width="*"/>
@@ -259,7 +259,7 @@
                 </Grid>
 
                 <!-- Numeric Mode Layout -->
-                <Grid Name="NumericModeLayout" Height="200" Visibility="Collapsed">
+                <Grid Name="NumericModeLayout" Height="180" Visibility="Collapsed">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="*"/>
                         <RowDefinition Height="*"/>

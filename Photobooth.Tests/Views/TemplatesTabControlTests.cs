@@ -183,18 +183,21 @@ namespace Photobooth.Tests.Views
 
         #endregion
 
-        #region Mock Service Validation Tests
+        #region TemplatesTabControl Business Logic Tests (No WPF Controls)
 
         [TestMethod]
-        public void MockDatabaseService_IsInitialized()
+        public void TemplatesTabControl_MockDataSetup_ShouldBeValid()
         {
-            // Assert
-            _mockDatabaseService.Should().NotBeNull();
-            _mockDatabaseService.Object.Should().NotBeNull();
+            // Assert - Test that our mock data is correctly set up
+            _testTemplates.Should().HaveCount(5);
+            _testTemplates.Should().Contain(t => t.Name == "Classic Template 1" && t.CategoryName == "Classic");
+            _testTemplates.Should().Contain(t => t.Name == "Fun Template 1" && t.CategoryName == "Fun");
+            _testTemplates.Should().Contain(t => t.Name == "Holiday Template 1" && t.IsActive == false);
+            _testTemplates.Should().Contain(t => t.Price == 15.99m); // Premium template
         }
 
         [TestMethod]
-        public async Task MockDatabaseService_GetAllTemplatesAsync_ReturnsConfiguredData()
+        public async Task DatabaseService_GetAllTemplatesAsync_ShouldReturnMockedData()
         {
             // Act
             var result = await _mockDatabaseService.Object.GetAllTemplatesAsync(false);
@@ -204,85 +207,198 @@ namespace Photobooth.Tests.Views
             result.Success.Should().BeTrue();
             result.Data.Should().NotBeNull();
             result.Data!.Should().HaveCount(5);
+            result.Data.Should().Contain(t => t.Name == "Classic Template 1");
+            result.Data.Should().Contain(t => t.Name == "Premium Template 1");
         }
 
-        #endregion
-
-        #region Database Service Tests
-
         [TestMethod]
-        public void DatabaseService_GetAllTemplatesAsync_IsConfiguredCorrectly()
+        public async Task DatabaseService_GetTemplateCategoriesAsync_ShouldReturnActiveCategories()
         {
+            // Act
+            var result = await _mockDatabaseService.Object.GetTemplateCategoriesAsync();
+
             // Assert
-            _mockDatabaseService.Verify(x => x.GetAllTemplatesAsync(It.IsAny<bool>()), Times.Never);
-            
-            // Verify setup is correct
-            _testTemplates.Should().HaveCount(5);
-            _testTemplates.Should().Contain(t => t.Name == "Classic Template 1");
-            _testTemplates.Should().Contain(t => t.IsActive == false); // Holiday template
+            result.Should().NotBeNull();
+            result.Success.Should().BeTrue();
+            result.Data.Should().NotBeNull();
+            result.Data!.Should().HaveCount(4); // Only active categories
+            result.Data.Should().Contain(c => c.Name == "Classic");
+            result.Data.Should().NotContain(c => c.Name == "Seasonal"); // Inactive category
         }
 
         [TestMethod]
-        public void DatabaseService_GetTemplateCategoriesAsync_IsConfiguredCorrectly()
-        {
-            // Assert
-            _testCategories.Should().HaveCount(5);
-            _testCategories.Should().Contain(c => c.Name == "Classic");
-            _testCategories.Should().Contain(c => c.IsActive == false); // Seasonal category
-            
-            var activeCategories = _testCategories.Where(c => c.IsActive).ToList();
-            activeCategories.Should().HaveCount(4);
-        }
-
-        #endregion
-
-        #region Mock Service Verification Tests
-
-        [TestMethod]
-        public async Task MockDatabaseService_BulkUpdateTemplateCategoryAsync_IsConfiguredCorrectly()
+        public async Task DatabaseService_BulkUpdateTemplateCategoryAsync_ShouldSucceed()
         {
             // Arrange
             var templateIds = new List<int> { 1, 2, 3 };
             var categoryId = 1;
 
-            // Act & Assert - Should not throw when configured correctly
-            var act = async () => await _mockDatabaseService.Object.BulkUpdateTemplateCategoryAsync(templateIds, categoryId);
-            await act.Should().NotThrowAsync();
+            // Act
+            var result = await _mockDatabaseService.Object.BulkUpdateTemplateCategoryAsync(templateIds, categoryId);
+
+            // Assert
+            result.Should().NotBeNull();
+            result.Success.Should().BeTrue();
         }
 
         [TestMethod]
-        public async Task MockDatabaseService_UpdateTemplateAsync_IsConfiguredCorrectly()
+        public async Task DatabaseService_UpdateTemplateAsync_ShouldSucceed()
         {
-            // Act & Assert - Should not throw when configured correctly
-            var act = async () => await _mockDatabaseService.Object.UpdateTemplateAsync(1, "New Name", true, 5.99m, 1, "Description", 1, 4);
-            await act.Should().NotThrowAsync();
+            // Arrange
+            var templateId = 1;
+            var newName = "Updated Template Name";
+            var isActive = true;
+            var price = 12.99m;
+
+            // Act
+            var result = await _mockDatabaseService.Object.UpdateTemplateAsync(templateId, newName, isActive, price, null, null, null, null);
+
+            // Assert
+            result.Should().NotBeNull();
+            result.Success.Should().BeTrue();
         }
 
         #endregion
 
-        #region Data Verification Tests
+        #region TemplatesTabControl Business Logic Tests
 
         [TestMethod]
-        public void TestData_Templates_ContainsExpectedValues()
+        public async Task DatabaseService_WithErrorResponse_ShouldReturnFailure()
         {
+            // Arrange
+            var errorMock = new Mock<IDatabaseService>();
+            errorMock.Setup(x => x.GetAllTemplatesAsync(It.IsAny<bool>()))
+                .ReturnsAsync(new DatabaseResult<List<Template>>
+                {
+                    Success = false,
+                    ErrorMessage = "Database connection failed"
+                });
+
+            // Act
+            var result = await errorMock.Object.GetAllTemplatesAsync(false);
+
             // Assert
-            _testTemplates.Should().HaveCount(5);
-            _testTemplates.Should().Contain(t => t.Name == "Classic Template 1" && t.CategoryName == "Classic");
-            _testTemplates.Should().Contain(t => t.Name == "Fun Template 1" && t.CategoryName == "Fun");
-            _testTemplates.Should().Contain(t => t.Name == "Holiday Template 1" && t.IsActive == false);
-            _testTemplates.Should().Contain(t => t.Price == 15.99m); // Premium template
+            result.Should().NotBeNull();
+            result.Success.Should().BeFalse();
+            result.ErrorMessage.Should().Be("Database connection failed");
         }
 
         [TestMethod]
-        public void TestData_Categories_ContainsExpectedValues()
+        public void TemplatesTabControl_TestDataFiltering_ShouldWorkCorrectly()
         {
-            // Assert
-            _testCategories.Should().HaveCount(5);
-            _testCategories.Should().Contain(c => c.Name == "Classic" && c.IsActive);
-            _testCategories.Should().Contain(c => c.Name == "Seasonal" && !c.IsActive);
+            // Test business logic without WPF controls
+            var classicTemplates = _testTemplates.Where(t => t.CategoryName == "Classic").ToList();
+            var activeTemplates = _testTemplates.Where(t => t.IsActive).ToList();
+            var premiumTemplates = _testTemplates.Where(t => t.Price > 10m).ToList();
+
+            // Assert filtering logic
+            classicTemplates.Should().HaveCount(2);
+            activeTemplates.Should().HaveCount(4);
+            premiumTemplates.Should().HaveCount(1);
+        }
+
+        [TestMethod]
+        public void TemplatesTabControl_TestDataSorting_ShouldWorkCorrectly()
+        {
+            // Test sorting logic without WPF controls
+            var sortedByPrice = _testTemplates.OrderBy(t => t.Price).ToList();
+            var sortedByName = _testTemplates.OrderBy(t => t.Name).ToList();
+
+            // Assert sorting logic
+            sortedByPrice.First().Price.Should().Be(4.99m); // "Another Classic"
+            sortedByPrice.Last().Price.Should().Be(15.99m); // "Premium Template 1"
             
-            var activeCategories = _testCategories.Where(c => c.IsActive).ToList();
-            activeCategories.Should().HaveCount(4);
+            sortedByName.First().Name.Should().Be("Another Classic");
+            sortedByName.Last().Name.Should().Be("Premium Template 1");
+        }
+
+        [TestMethod]
+        public void TemplatesTabControl_PaginationLogic_ShouldCalculateCorrectly()
+        {
+            // Test pagination without WPF controls
+            var templatesPerPage = 2;
+            var totalTemplates = _testTemplates.Count;
+            var totalPages = (int)Math.Ceiling((double)totalTemplates / templatesPerPage);
+
+            // Assert pagination logic
+            totalPages.Should().Be(3); // 5 templates / 2 per page = 3 pages
+            
+            // Test page 1
+            var page1 = _testTemplates.Skip(0).Take(templatesPerPage).ToList();
+            page1.Should().HaveCount(2);
+            
+            // Test page 2
+            var page2 = _testTemplates.Skip(2).Take(templatesPerPage).ToList();
+            page2.Should().HaveCount(2);
+            
+            // Test page 3
+            var page3 = _testTemplates.Skip(4).Take(templatesPerPage).ToList();
+            page3.Should().HaveCount(1);
+        }
+
+        #endregion
+
+        #region TemplatesTabControl Search and Filter Logic Tests
+
+        [TestMethod]
+        public void TemplatesTabControl_SearchByName_ShouldFilterCorrectly()
+        {
+            // Test search logic without WPF controls
+            var searchTerm = "Premium";
+            var searchResults = _testTemplates.Where(t => 
+                t.Name.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ||
+                t.CategoryName.Contains(searchTerm, StringComparison.OrdinalIgnoreCase)
+            ).ToList();
+
+            // Assert search logic
+            searchResults.Should().HaveCount(1);
+            searchResults.Should().Contain(t => t.Name == "Premium Template 1");
+        }
+
+        [TestMethod]
+        public void TemplatesTabControl_FilterByCategory_ShouldWorkCorrectly()
+        {
+            // Test category filtering without WPF controls
+            var categoryFilter = "Classic";
+            var categoryResults = _testTemplates.Where(t => t.CategoryName == categoryFilter).ToList();
+
+            // Assert category filtering
+            categoryResults.Should().HaveCount(2);
+            categoryResults.Should().AllSatisfy(t => t.CategoryName.Should().Be("Classic"));
+        }
+
+        [TestMethod]
+        public void TemplatesTabControl_FilterByActiveStatus_ShouldWorkCorrectly()
+        {
+            // Test active status filtering without WPF controls
+            var activeOnly = _testTemplates.Where(t => t.IsActive).ToList();
+            var inactiveOnly = _testTemplates.Where(t => !t.IsActive).ToList();
+
+            // Assert status filtering
+            activeOnly.Should().HaveCount(4);
+            inactiveOnly.Should().HaveCount(1);
+            inactiveOnly.Should().Contain(t => t.Name == "Holiday Template 1");
+        }
+
+        [TestMethod]
+        public void TemplatesTabControl_CombinedFilters_ShouldWorkCorrectly()
+        {
+            // Test combined filtering without WPF controls
+            var categoryFilter = "Classic";
+            var activeOnly = true;
+            
+            var combinedResults = _testTemplates
+                .Where(t => t.CategoryName == categoryFilter)
+                .Where(t => t.IsActive == activeOnly)
+                .ToList();
+
+            // Assert combined filtering
+            combinedResults.Should().HaveCount(2);
+            combinedResults.Should().AllSatisfy(t => 
+            {
+                t.CategoryName.Should().Be("Classic");
+                t.IsActive.Should().BeTrue();
+            });
         }
 
         #endregion

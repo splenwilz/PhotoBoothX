@@ -69,6 +69,28 @@ namespace Photobooth.Controls
                     // Remove overlay
                     parentPanel.Children.Remove(overlay);
                 }
+                else if (parentWindow.Content is Decorator decorator)
+                {
+                    // Save original content and replace
+                    var originalContent = decorator.Child;
+                    decorator.Child = new Grid
+                    {
+                        Children = { originalContent, overlay }
+                    };
+                    
+                    // Load data
+                    await dialog.LoadSystemDateDataAsync();
+                    
+                    // Wait for dialog to close
+                    await dialog.WaitForCloseAsync();
+                    
+                    // Restore original content
+                    decorator.Child = originalContent;
+                }
+                else
+                {
+                    throw new InvalidOperationException("Parent window content must be a Panel or Decorator");
+                }
             }
             catch (Exception ex)
             {
@@ -156,7 +178,26 @@ namespace Photobooth.Controls
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(80, GridUnitType.Pixel) });
 
-            // Category information
+            // Extract info panel creation logic here
+            var infoPanel = CreateSeasonInfoPanel(season);
+            Grid.SetColumn(infoPanel, 0);
+
+            // Extract status badge creation logic here
+            var statusBorder = CreateSeasonStatusBadge(season);
+            Grid.SetColumn(statusBorder, 1);
+
+            grid.Children.Add(infoPanel);
+            grid.Children.Add(statusBorder);
+            
+            card.Child = grid;
+            return card;
+        }
+
+        /// <summary>
+        /// Create the information panel for a seasonal category
+        /// </summary>
+        private StackPanel CreateSeasonInfoPanel(SeasonStatus season)
+        {
             var infoPanel = new StackPanel();
             
             var nameText = new TextBlock
@@ -213,9 +254,14 @@ namespace Photobooth.Controls
             infoPanel.Children.Add(dateText);
             infoPanel.Children.Add(detailsPanel);
             
-            Grid.SetColumn(infoPanel, 0);
+            return infoPanel;
+        }
 
-            // Status badge
+        /// <summary>
+        /// Create the status badge for a seasonal category
+        /// </summary>
+        private Border CreateSeasonStatusBadge(SeasonStatus season)
+        {
             var statusBorder = new Border
             {
                 Style = season.IsCurrentlyActive ? 
@@ -236,13 +282,7 @@ namespace Photobooth.Controls
             };
             
             statusBorder.Child = statusText;
-            Grid.SetColumn(statusBorder, 1);
-
-            grid.Children.Add(infoPanel);
-            grid.Children.Add(statusBorder);
-            
-            card.Child = grid;
-            return card;
+            return statusBorder;
         }
 
         /// <summary>

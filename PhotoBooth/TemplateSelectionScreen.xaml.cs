@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -333,7 +333,7 @@ namespace Photobooth
                     // Three-size system display properties
                     DisplayWidth = displayWidth,
                     DisplayHeight = displayHeight,
-                    DimensionText = $"{config.Dimensions.Width} × {config.Dimensions.Height}",
+                    DimensionText = $"{config.Dimensions.Width} � {config.Dimensions.Height}",
                     AspectRatio = aspectRatio,
                     AspectRatioText = GetAspectRatioText(aspectRatio),
                     TemplateSize = GetTemplateSizeCategory(aspectRatio)

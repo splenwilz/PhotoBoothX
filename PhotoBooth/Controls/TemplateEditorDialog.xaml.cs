@@ -111,11 +111,8 @@ namespace Photobooth.Controls
                 {
                     // Get the actual template folder path using layout-based system
                     var templateFolder = GetActualTemplateFolderPath();
-                    
-                    Console.WriteLine($"=== REPLACE PREVIEW DEBUG ===");
-                    Console.WriteLine($"Template folder: {templateFolder}");
-                    Console.WriteLine($"Template folder exists: {Directory.Exists(templateFolder)}");
-                    
+
+
                     // Find existing preview file to preserve extension
                     var previewExtensions = new[] { ".png", ".jpg", ".jpeg" };
                     var existingPreviewFile = previewExtensions
@@ -126,28 +123,24 @@ namespace Photobooth.Controls
                     var newFileExtension = Path.GetExtension(openFileDialog.FileName);
                     var previewPath = existingPreviewFile ?? Path.Combine(templateFolder, $"preview{newFileExtension}");
 
-                    Console.WriteLine($"Existing preview file: {existingPreviewFile ?? "None"}");
-                    Console.WriteLine($"New preview path: {previewPath}");
-                    
+
                     // Create backup of original if it exists
                     if (existingPreviewFile != null && File.Exists(existingPreviewFile))
                     {
                         var backupPath = Path.ChangeExtension(existingPreviewFile, $"_backup{Path.GetExtension(existingPreviewFile)}");
                         File.Copy(existingPreviewFile, backupPath, true);
-                        Console.WriteLine($"Created backup: {backupPath}");
-                        
+
                         // If changing extensions, remove the old file
                         if (Path.GetExtension(existingPreviewFile) != newFileExtension)
                         {
                             File.Delete(existingPreviewFile);
-                            Console.WriteLine($"Deleted old preview file with different extension");
+
                         }
                     }
 
                     // Copy new preview image
                     File.Copy(openFileDialog.FileName, previewPath, true);
-                    Console.WriteLine($"Copied new preview image to: {previewPath}");
-                    Console.WriteLine($"=== END REPLACE PREVIEW DEBUG ===");
+
 
                     _notificationService.ShowSuccess("Preview Updated", "Preview image has been replaced successfully!");
                     
@@ -160,7 +153,7 @@ namespace Photobooth.Controls
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error replacing preview image: {ex.Message}");
+
                 _notificationService.ShowError("Replace Preview Error", $"Failed to replace preview image: {ex.Message}");
             }
         }
@@ -182,23 +175,18 @@ namespace Photobooth.Controls
                     var templateFolder = GetActualTemplateFolderPath();
                     var templatePath = Path.Combine(templateFolder, "template.png");
 
-                    Console.WriteLine($"=== REPLACE TEMPLATE DEBUG ===");
-                    Console.WriteLine($"Template folder: {templateFolder}");
-                    Console.WriteLine($"Template path: {templatePath}");
-                    Console.WriteLine($"Template folder exists: {Directory.Exists(templateFolder)}");
 
                     // Create backup of original
                     if (File.Exists(templatePath))
                     {
                         var backupPath = Path.Combine(templateFolder, "template_backup.png");
                         File.Copy(templatePath, backupPath, true);
-                        Console.WriteLine($"Created backup: {backupPath}");
+
                     }
 
                     // Copy new template file
                     File.Copy(openFileDialog.FileName, templatePath, true);
-                    Console.WriteLine($"Copied new template file to: {templatePath}");
-                    Console.WriteLine($"=== END REPLACE TEMPLATE DEBUG ===");
+
 
                     _notificationService.ShowSuccess("Template Updated", "Template file has been replaced successfully!");
                     
@@ -208,7 +196,7 @@ namespace Photobooth.Controls
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error replacing template file: {ex.Message}");
+
                 _notificationService.ShowError("Replace Template Error", $"Failed to replace template file: {ex.Message}");
             }
         }
@@ -219,7 +207,7 @@ namespace Photobooth.Controls
             // This is where the application reads templates from during execution
             var currentDir = AppDomain.CurrentDomain.BaseDirectory;
             var runtimeTemplatesPath = Path.Combine(currentDir, "Templates");
-            Console.WriteLine($"Using runtime Templates folder: {runtimeTemplatesPath}");
+
             return runtimeTemplatesPath;
         }
 
@@ -262,13 +250,8 @@ namespace Photobooth.Controls
             {
                 // Get the actual template folder path using layout-based system
                 var templateFolder = GetActualTemplateFolderPath();
-                
-                Console.WriteLine($"=== UPDATE FILE INFO DEBUG ===");
-                Console.WriteLine($"Template Name: {_template.Name}");
-                Console.WriteLine($"Template FolderPath: {_template.FolderPath}");
-                Console.WriteLine($"Resolved template folder: {templateFolder}");
-                Console.WriteLine($"Template folder exists: {Directory.Exists(templateFolder)}");
-                
+
+
                 // Update preview file info - detect actual extension
                 var previewExtensions = new[] { ".png", ".jpg", ".jpeg" };
                 var actualPreviewFile = previewExtensions
@@ -280,12 +263,12 @@ namespace Photobooth.Controls
                     var previewInfo = new FileInfo(actualPreviewFile);
                     var fileName = Path.GetFileName(actualPreviewFile);
                     PreviewFileText.Text = $"{fileName} ({FormatFileSize(previewInfo.Length)})";
-                    Console.WriteLine($"Found preview file: {actualPreviewFile}");
+
                 }
                 else
                 {
                     PreviewFileText.Text = "preview file (not found)";
-                    Console.WriteLine("Preview file not found in any extension");
+
                 }
 
                 // Update template file info
@@ -294,20 +277,19 @@ namespace Photobooth.Controls
                 {
                     var templateInfo = new FileInfo(templatePath);
                     TemplateFileText.Text = $"template.png ({FormatFileSize(templateInfo.Length)})";
-                    Console.WriteLine($"Found template file: {templatePath}");
+
                 }
                 else
                 {
                     TemplateFileText.Text = "template.png (not found)";
-                    Console.WriteLine($"Template file not found: {templatePath}");
+
                 }
 
-                Console.WriteLine($"=== END FILE INFO DEBUG ===");
             }
-            catch (Exception ex)
+            catch
             {
                 // Silently handle file info update errors
-                Console.WriteLine($"Error updating file info: {ex.Message}");
+
             }
         }
 
@@ -327,17 +309,17 @@ namespace Photobooth.Controls
                     // Only filter by IsActive - show all active categories regardless of season
                     _categories = result.Data.Where(c => c.IsActive).OrderBy(c => c.SortOrder).ToList();
                     CategoryComboBox.ItemsSource = _categories;
-                    Console.WriteLine($"LoadCategoriesAsync: Loaded {_categories.Count} active categories for template editor");
+
                 }
                 else
                 {
-                    Console.WriteLine($"LoadCategoriesAsync: Failed to load categories - {result.ErrorMessage}");
+
                     _notificationService.ShowError("Failed to load categories", result.ErrorMessage ?? "Unknown error");
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"LoadCategoriesAsync: Exception - {ex.Message}");
+
                 _notificationService.ShowError("Error loading categories", ex.Message);
             }
         }
@@ -476,19 +458,14 @@ namespace Photobooth.Controls
                 {
                     try
                     {
-                        Console.WriteLine($"=== TEMPLATE RENAME DEBUG ===");
-                        Console.WriteLine($"Original name: '{_template.Name}'");
-                        Console.WriteLine($"New name: '{newTemplateName}'");
-                        Console.WriteLine($"Original folder path: '{_template.FolderPath}'");
-                        
+
+
                         var currentFolderPath = GetActualTemplateFolderPath();
                         var layoutFolder = Path.GetDirectoryName(currentFolderPath);
-                        Console.WriteLine($"Current folder path: '{currentFolderPath}'");
-                        Console.WriteLine($"Layout folder: '{layoutFolder}'");
-                        
+
+
                         var sanitizedName = SanitizeFileName(newTemplateName);
-                        Console.WriteLine($"Sanitized name: '{sanitizedName}'");
-                        
+
                         // Maintain layout-based structure: Templates/layout-folder/template-folder
                         if (layoutFolder != null)
                         {
@@ -500,7 +477,6 @@ namespace Photobooth.Controls
                             var templatesBaseFolder = GetTemplatesFolderPath();
                             newFolderPath = Path.Combine(templatesBaseFolder, sanitizedName);
                         }
-                        Console.WriteLine($"Initial new folder path: '{newFolderPath}'");
 
                         // Ensure unique folder name if it already exists
                         int suffix = 1;
@@ -517,36 +493,28 @@ namespace Photobooth.Controls
                                 newFolderPath = Path.Combine(templatesBaseFolder, newFolderName);
                             }
                             suffix++;
-                            Console.WriteLine($"Conflict detected, trying: '{newFolderPath}'");
+
                         }
 
-                        Console.WriteLine($"Final new folder path: '{newFolderPath}'");
-                        Console.WriteLine($"Paths are different: {newFolderPath != currentFolderPath}");
-                        Console.WriteLine($"Original folder exists: {Directory.Exists(currentFolderPath)}");
 
                         // Only rename if the path actually changed
                         if (newFolderPath != currentFolderPath)
                         {
                             if (Directory.Exists(currentFolderPath))
                             {
-                                Console.WriteLine($"Attempting to rename runtime folder...");
-                                Console.WriteLine($"Source exists: {Directory.Exists(currentFolderPath)}");
-                                Console.WriteLine($"Destination exists before move: {Directory.Exists(newFolderPath)}");
-                                
+
+
                                 // Rename in runtime folder (bin/Debug/Templates)
                                 Directory.Move(currentFolderPath, newFolderPath);
                                 
                                 // Verify the move was successful
                                 var sourceStillExists = Directory.Exists(currentFolderPath);
                                 var destinationExists = Directory.Exists(newFolderPath);
-                                
-                                Console.WriteLine($"After runtime move - Source still exists: {sourceStillExists}");
-                                Console.WriteLine($"After runtime move - Destination exists: {destinationExists}");
-                                
+
+
                                 if (!sourceStillExists && destinationExists)
                                 {
-                                    Console.WriteLine($"✓ Successfully renamed runtime folder from '{currentFolderPath}' to '{newFolderPath}'");
-                                    
+
                                     // Also rename in project source folder (PhotoBooth/Templates)
                                     try
                                     {
@@ -556,28 +524,36 @@ namespace Photobooth.Controls
                                         
                                         if (!string.IsNullOrEmpty(currentTemplateFolderName) && !string.IsNullOrEmpty(layoutFolderName) && !string.IsNullOrEmpty(newTemplateFolderName))
                                         {
-                                            // Get project root directory (go up from bin/Debug/net8.0-windows to project root)
+                                            // Get project root directory using robust method
                                             var currentDir = AppDomain.CurrentDomain.BaseDirectory;
-                                            var projectRoot = Path.GetFullPath(Path.Combine(currentDir, "..", "..", ".."));
+                                            var projectRoot = FindProjectRoot(currentDir);
                                             
-                                            var currentSourcePath = Path.Combine(projectRoot, "Templates", layoutFolderName, currentTemplateFolderName);
-                                            var newSourcePath = Path.Combine(projectRoot, "Templates", layoutFolderName, newTemplateFolderName);
+                                            if (projectRoot != null)
+                                            {
+                                                var currentSourcePath = Path.Combine(projectRoot, "Templates", layoutFolderName, currentTemplateFolderName);
+                                                var newSourcePath = Path.Combine(projectRoot, "Templates", layoutFolderName, newTemplateFolderName);
                                             
                                             if (Directory.Exists(currentSourcePath))
                                             {
-                                                Console.WriteLine($"Renaming source folder from {currentSourcePath} to {newSourcePath}");
+
                                                 Directory.Move(currentSourcePath, newSourcePath);
-                                                Console.WriteLine("✓ Source template folder renamed successfully");
+
                                             }
                                             else
                                             {
-                                                Console.WriteLine($"⚠ Source template folder not found: {currentSourcePath}");
+
+                                            }
+                                            }
+                                            else
+                                            {
+                                                // Project root not found, skip source folder renaming
+                                                Console.WriteLine("Warning: Could not find project root directory - skipping source template folder rename");
                                             }
                                         }
                                     }
-                                    catch (Exception sourceEx)
+                                    catch
                                     {
-                                        Console.WriteLine($"⚠ Failed to rename source template folder: {sourceEx.Message}");
+
                                         // Continue anyway since runtime folder was successfully renamed
                                     }
 
@@ -593,41 +569,39 @@ namespace Photobooth.Controls
                                     if (actualPreviewFile != null)
                                     {
                                         newPreviewPath = actualPreviewFile;
-                                        Console.WriteLine($"✓ Found actual preview file: {Path.GetFileName(actualPreviewFile)}");
+
                                     }
                                     else
                                     {
                                         // Fallback to .png if no preview file found
                                         newPreviewPath = Path.Combine(newFolderPath, "preview.png");
-                                        Console.WriteLine($"⚠ No preview file found, using default: preview.png");
+
                                     }
-                                    
-                                    Console.WriteLine($"Updated template path: '{newTemplatePath}'");
-                                    Console.WriteLine($"Updated preview path: '{newPreviewPath}'");
+
+
                                 }
                                 else
                                 {
-                                    Console.WriteLine($"❌ Folder move verification failed!");
-                                    Console.WriteLine($"   Source still exists: {sourceStillExists}");
-                                    Console.WriteLine($"   Destination exists: {destinationExists}");
+
+
                                     throw new InvalidOperationException("Folder rename operation did not complete successfully");
                                 }
                             }
                             else
                             {
-                                Console.WriteLine($"⚠ Original folder does not exist: '{currentFolderPath}'");
+
                             }
                         }
                         else
                         {
-                            Console.WriteLine($"No folder rename needed - paths are the same");
+
                         }
-                        Console.WriteLine($"=== END RENAME DEBUG ===");
+
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"❌ FOLDER RENAME ERROR: {ex.Message}");
-                        Console.WriteLine($"Stack trace: {ex.StackTrace}");
+
+
                         _notificationService.ShowError("Folder Rename Error", $"Failed to rename template folder: {ex.Message}");
                         // Continue with the update but keep old paths
                     }
@@ -660,11 +634,8 @@ namespace Photobooth.Controls
                 };
 
                 // Save to database
-                Console.WriteLine($"=== DATABASE UPDATE DEBUG ===");
-                Console.WriteLine($"Updating template ID: {_template.Id}");
-                Console.WriteLine($"New name: '{updatedTemplate.Name}'");
-                Console.WriteLine($"New folder path: '{updatedTemplate.FolderPath}'");
-                
+
+
                 var result = await _databaseService.UpdateTemplateAsync(
                     _template.Id,
                     name: updatedTemplate.Name,
@@ -676,10 +647,9 @@ namespace Photobooth.Controls
                     photoCount: updatedTemplate.PhotoCount
                 );
 
-                Console.WriteLine($"Database update result: {result.Success}");
                 if (!result.Success)
                 {
-                    Console.WriteLine($"Database update error: {result.ErrorMessage}");
+
                 }
 
                 if (result.Success)
@@ -687,55 +657,49 @@ namespace Photobooth.Controls
                     // Update database paths if they changed
                     if (nameChanged && newFolderPath != _template.FolderPath)
                     {
-                        Console.WriteLine($"Updating database paths...");
-                        Console.WriteLine($"Template ID: {_template.Id}");
-                        Console.WriteLine($"New folder path: '{newFolderPath}'");
-                        Console.WriteLine($"New template path: '{newTemplatePath}'");
+
+
                         // Config path removed in layout-based system
-                        Console.WriteLine($"New preview path: '{newPreviewPath}'");
-                        
+
                         var pathUpdateResult = await _databaseService.UpdateTemplatePathsAsync(
                             _template.Id,
                             newFolderPath,
                             newTemplatePath,
                             newPreviewPath
                         );
-                        
-                        Console.WriteLine($"Path update result: {pathUpdateResult.Success}");
+
                         if (!pathUpdateResult.Success)
                         {
-                            Console.WriteLine($"Path update error: {pathUpdateResult.ErrorMessage}");
+
                         }
                         else
                         {
                             // Update the updatedTemplate object with the new paths
-                            Console.WriteLine($"Updating updatedTemplate object with new paths...");
+
                             updatedTemplate.FolderPath = newFolderPath;
                             updatedTemplate.TemplatePath = newTemplatePath;
                             updatedTemplate.PreviewPath = newPreviewPath;
                             // ConfigPath removed in layout-based system
-                            Console.WriteLine($"✓ UpdatedTemplate paths updated");
+
                         }
                     }
                     else
                     {
-                        Console.WriteLine($"No path update needed - name unchanged or paths same");
+
                     }
 
                     // Note: Config files no longer used in layout-based system
 
                     UpdatedTemplate = updatedTemplate;
                     DialogResult = true;
-                    
-                    Console.WriteLine($"✓ Template update completed successfully");
-                    Console.WriteLine($"=== END DATABASE UPDATE DEBUG ===");
-                    
+
+
                     _notificationService.ShowSuccess("Template Updated", $"'{updatedTemplate.Name}' has been updated successfully.");
                     Close();
                 }
                 else
                 {
-                    Console.WriteLine($"=== END DATABASE UPDATE DEBUG ===");
+
                     _notificationService.ShowError("Update Failed", result.ErrorMessage ?? "Unknown error");
                 }
             }
@@ -751,39 +715,7 @@ namespace Photobooth.Controls
             }
         }
 
-        private async Task UpdateConfigFileAsync(Template template)
-        {
-            try
-            {
-                if (!string.IsNullOrEmpty(template.ConfigPath) && System.IO.File.Exists(template.ConfigPath))
-                {
-                    var configJson = await System.IO.File.ReadAllTextAsync(template.ConfigPath);
-                    var config = System.Text.Json.JsonSerializer.Deserialize<TemplateConfig>(configJson, new System.Text.Json.JsonSerializerOptions
-                    {
-                        PropertyNameCaseInsensitive = true
-                    });
 
-                    if (config != null)
-                    {
-                        // PhotoCount is now computed from layout
-                        config.Description = template.Description;
-
-                        var updatedJson = System.Text.Json.JsonSerializer.Serialize(config, new System.Text.Json.JsonSerializerOptions
-                        {
-                            WriteIndented = true,
-                            PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase
-                        });
-
-                        await System.IO.File.WriteAllTextAsync(template.ConfigPath, updatedJson);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                // Log but don't fail the entire operation
-                Console.WriteLine($"Failed to update config file: {ex.Message}");
-            }
-        }
 
         private static string FormatFileSize(long bytes)
         {
@@ -825,6 +757,19 @@ namespace Photobooth.Controls
             }
             
             return sanitized;
+        }
+
+        /// <summary>
+        /// Find project root directory using robust method instead of fragile ".." navigation
+        /// </summary>
+        private static string? FindProjectRoot(string startPath)
+        {
+            var directory = new DirectoryInfo(startPath);
+            while (directory != null && !File.Exists(Path.Combine(directory.FullName, "PhotoBooth.csproj")))
+            {
+                directory = directory.Parent;
+            }
+            return directory?.FullName;
         }
 
         #endregion

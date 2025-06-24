@@ -294,13 +294,11 @@ namespace Photobooth.Services
             
             try
             {
-                Console.WriteLine("=== TEMPLATE MANAGER SYNCHRONIZE START ===");
-                Console.WriteLine($"Templates directory: {_templatesDirectory}");
-                Console.WriteLine($"Directory exists: {Directory.Exists(_templatesDirectory)}");
-                
+
+
                 if (!Directory.Exists(_templatesDirectory))
                 {
-                    Console.WriteLine("Templates directory doesn't exist, creating it...");
+
                     Directory.CreateDirectory(_templatesDirectory);
                     result.Message = "Templates directory created - no templates found";
                     result.Success = true;
@@ -317,18 +315,15 @@ namespace Photobooth.Services
                 var templateFolders = FindTemplateFolders(_templatesDirectory);
                 var folderNames = templateFolders.Select(Path.GetFileName).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-                Console.WriteLine($"=== FILE SYSTEM SCAN RESULTS ===");
-                Console.WriteLine($"Templates directory: {_templatesDirectory}");
-                Console.WriteLine($"Found {templateFolders.Count} template folders on disk:");
+
                 foreach (var folder in templateFolders)
                 {
-                    Console.WriteLine($"  • {Path.GetFileName(folder)} -> {folder}");
+
                 }
-                
-                Console.WriteLine($"Found {existingTemplates.Count} templates in database:");
+
                 foreach (var template in existingTemplates)
                 {
-                    Console.WriteLine($"  • {template.Name} (ID: {template.Id}) -> {template.FolderPath}");
+
                 }
 
                 // Step 3: AGGRESSIVE ORPHAN DETECTION
@@ -356,37 +351,34 @@ namespace Photobooth.Services
                     if (!shouldKeep)
                     {
                         orphanedTemplates.Add(template);
-                        Console.WriteLine($"ORPHAN DETECTED: {template.Name} (ID: {template.Id})");
-                        Console.WriteLine($"  - FolderPath: '{template.FolderPath}'");
-                        Console.WriteLine($"  - FolderName: '{folderName}'");
-                        Console.WriteLine($"  - Directory exists: {Directory.Exists(template.FolderPath ?? "")}");
-                        Console.WriteLine($"  - In current folder set: {(!string.IsNullOrEmpty(folderName) ? folderNames.Contains(folderName) : false)}");
+
+
                     }
                 }
 
                 // Step 4: AGGRESSIVELY REMOVE ALL ORPHANED TEMPLATES
-                Console.WriteLine($"=== REMOVING {orphanedTemplates.Count} ORPHANED TEMPLATES ===");
+
                 var removedCount = 0;
                 
                 foreach (var orphanedTemplate in orphanedTemplates)
                 {
-                    Console.WriteLine($"Removing orphaned template: {orphanedTemplate.Name} (ID: {orphanedTemplate.Id})");
+
                     var deleteResult = await _databaseService.DeleteTemplateAsync(orphanedTemplate.Id);
                     
                     if (deleteResult.Success)
                     {
-                        Console.WriteLine($"✓ Successfully deleted: {orphanedTemplate.Name}");
+
                         removedCount++;
                     }
                     else
                     {
-                        Console.WriteLine($"✗ Failed to delete: {orphanedTemplate.Name} - {deleteResult.ErrorMessage}");
+
                         result.FailureCount++;
                     }
                 }
 
                 // Step 5: ADD NEW TEMPLATES FOUND ON DISK
-                Console.WriteLine($"=== PROCESSING {templateFolders.Count} FOLDERS ON DISK ===");
+
                 var addedCount = 0;
                 var updatedCount = 0;
                 
@@ -401,18 +393,17 @@ namespace Photobooth.Services
                     try
                     {
                         var folderName = Path.GetFileName(templateFolder);
-                        Console.WriteLine($"Processing folder: {folderName}");
-                        
-                        // Check if template exists in database (case-insensitive)
+
+                        // Check if template exists in database by exact folder path first, then by folder name
                         var existingTemplate = currentTemplates.FirstOrDefault(t => 
                             !string.IsNullOrEmpty(t.FolderPath) &&
-                            string.Equals(Path.GetFileName(t.FolderPath), folderName, StringComparison.OrdinalIgnoreCase));
+                            (string.Equals(t.FolderPath, templateFolder, StringComparison.OrdinalIgnoreCase) ||
+                             string.Equals(Path.GetFileName(t.FolderPath), folderName, StringComparison.OrdinalIgnoreCase)));
 
                         if (existingTemplate == null)
                         {
                             // New template - validate and add
-                            Console.WriteLine($"  → NEW TEMPLATE: {folderName}");
-                            
+
                             var validationResult = await ValidateTemplateFolder(templateFolder, isRefresh: true);
                             result.Results.Add(validationResult);
                             
@@ -424,26 +415,25 @@ namespace Photobooth.Services
                                 await ProcessValidTemplate(validationResult.Template, templateFolder, copyFiles: false);
                                 result.SuccessCount++;
                                 addedCount++;
-                                Console.WriteLine($"  ✓ Successfully added: {folderName}");
+
                             }
                             else
                             {
                                 result.FailureCount++;
-                                Console.WriteLine($"  ✗ Invalid template: {folderName}");
+
                             }
                         }
                         else
                         {
                             // Existing template - verify paths and update if needed
-                            Console.WriteLine($"  → EXISTING TEMPLATE: {folderName}");
-                            
+
                             var needsUpdate = false;
                             var expectedFolderPath = templateFolder;
                             
                             // Check if path needs updating (different case or location)
                             if (!string.Equals(existingTemplate.FolderPath, expectedFolderPath, StringComparison.Ordinal))
                             {
-                                Console.WriteLine($"    - Updating path: '{existingTemplate.FolderPath}' → '{expectedFolderPath}'");
+
                                 needsUpdate = true;
                             }
                             
@@ -456,7 +446,7 @@ namespace Photobooth.Services
                                 !string.Equals(existingTemplate.TemplatePath, expectedTemplatePath, StringComparison.Ordinal) ||
                                 !string.Equals(existingTemplate.ConfigPath, expectedConfigPath, StringComparison.Ordinal))
                             {
-                                Console.WriteLine($"    - Updating file paths");
+
                                 needsUpdate = true;
                             }
                             
@@ -477,24 +467,24 @@ namespace Photobooth.Services
                                     if (updateResult.Success)
                                     {
                                         updatedCount++;
-                                        Console.WriteLine($"  ✓ Updated paths for: {folderName}");
+
                                     }
                                     else
                                     {
-                                        Console.WriteLine($"  ✗ Failed to update: {folderName} - {updateResult.ErrorMessage}");
+
                                     }
                                 }
                             }
                             else
                             {
-                                Console.WriteLine($"  ✓ No updates needed: {folderName}");
+
                             }
                         }
                     }
-                    catch (Exception ex)
+                    catch
                     {
                         result.FailureCount++;
-                        Console.WriteLine($"  ✗ Error processing {Path.GetFileName(templateFolder)}: {ex.Message}");
+
                     }
                 }
 
@@ -523,17 +513,15 @@ namespace Photobooth.Services
                 }
 
                 result.Success = true;
-                Console.WriteLine($"=== SYNCHRONIZATION COMPLETED ===");
-                Console.WriteLine($"Final result: {result.Message}");
-                Console.WriteLine($"Templates in file system: {templateFolders.Count}");
-                Console.WriteLine($"Actions taken: +{addedCount} ~{updatedCount} -{removedCount} !{result.FailureCount}");
+
+
             }
             catch (Exception ex)
             {
                 result.Message = $"Error during synchronization: {ex.Message}";
                 result.FailureCount++;
-                Console.WriteLine($"SYNCHRONIZATION ERROR: {ex.Message}");
-                Console.WriteLine($"Stack trace: {ex.StackTrace}");
+
+
             }
             
             return result;
@@ -873,31 +861,6 @@ namespace Photobooth.Services
                 // Copy entire folder to runtime Templates directory
                 CopyDirectory(sourceFolderPath, targetFolderPath);
                 
-                // Also copy to project source Templates directory
-                try
-                {
-                    // Get project root directory (go up from bin/Debug/net8.0-windows to project root)
-                    var currentDir = AppDomain.CurrentDomain.BaseDirectory;
-                    var projectRoot = Path.GetFullPath(Path.Combine(currentDir, "..", "..", ".."));
-                    
-                    var projectLayoutFolderPath = Path.Combine(projectRoot, "Templates", layout.LayoutKey);
-                    var projectTargetFolderPath = Path.Combine(projectLayoutFolderPath, Path.GetFileName(targetFolderPath));
-                    
-                    // Ensure project layout folder exists
-                    Directory.CreateDirectory(projectLayoutFolderPath);
-                    
-                    // Copy to project source folder
-                    CopyDirectory(sourceFolderPath, projectTargetFolderPath);
-                    
-                    Console.WriteLine($"✓ Template copied to runtime folder: {targetFolderPath}");
-                    Console.WriteLine($"✓ Template copied to project source folder: {projectTargetFolderPath}");
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"⚠ Warning: Could not copy to project source folder: {ex.Message}");
-                    // Don't fail the operation if project copy fails
-                }
-                
                 // Update template paths using relative paths from Templates directory
                 var relativeFolderPath = Path.Combine("Templates", layout.LayoutKey, Path.GetFileName(targetFolderPath));
                 template.FolderPath = relativeFolderPath;
@@ -921,11 +884,21 @@ namespace Photobooth.Services
                 template.HasPreview = template.PreviewPath != template.TemplatePath;
             }
             
-            // Save to database
+            // Save to database with improved error handling
             var createResult = await _databaseService.CreateTemplateAsync(template);
             if (!createResult.Success)
             {
-                throw new Exception($"Failed to save template to database: {createResult.ErrorMessage}");
+                // Check if this is a UNIQUE constraint violation
+                if (createResult.ErrorMessage?.Contains("UNIQUE constraint failed") == true)
+                {
+                    // Template already exists - this shouldn't happen with our improved detection
+                    // but provide a better error message
+                    throw new Exception($"Template with folder path '{template.FolderPath}' already exists in database");
+                }
+                else
+                {
+                    throw new Exception($"Failed to create template: {createResult.ErrorMessage}");
+                }
             }
         }
 
@@ -1132,9 +1105,9 @@ namespace Photobooth.Services
         }
 
         /// <summary>
-        /// Rename a template (both in database and file system)
+        /// Rename a template in database only (does not affect folder on disk)
         /// </summary>
-        public async Task<DatabaseResult<Template>> RenameTemplateAsync(int templateId, string newName)
+        public async Task<DatabaseResult<Template>> RenameTemplateInDatabaseAsync(int templateId, string newName)
         {
             try
             {
@@ -1163,6 +1136,153 @@ namespace Photobooth.Services
             {
                 return DatabaseResult<Template>.ErrorResult($"Error renaming template {templateId}: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Rename a template completely (both database and folder on disk)
+        /// </summary>
+        public async Task<DatabaseResult<Template>> RenameTemplateCompletelyAsync(int templateId, string newName)
+        {
+            try
+            {
+                // Get template details first
+                var templateResult = await _databaseService.GetByIdAsync<Template>(templateId);
+                if (!templateResult.Success || templateResult.Data == null)
+                {
+                    return DatabaseResult<Template>.ErrorResult("Template not found");
+                }
+                
+                var template = templateResult.Data;
+                var oldName = template.Name;
+                
+                // Sanitize the new name for folder usage
+                var sanitizedName = SanitizeFileName(newName);
+                
+                // Rename folder on disk if it exists
+                string newFolderPath = template.FolderPath;
+                string newTemplatePath = template.TemplatePath;
+                string newPreviewPath = template.PreviewPath;
+                
+                if (!string.IsNullOrEmpty(template.FolderPath) && Directory.Exists(template.FolderPath))
+                {
+                    try
+                    {
+                        var currentFolderPath = template.FolderPath;
+                        var parentDirectory = Path.GetDirectoryName(currentFolderPath);
+                        
+                        if (parentDirectory != null)
+                        {
+                            newFolderPath = Path.Combine(parentDirectory, sanitizedName);
+                            
+                            // Ensure unique folder name if it already exists
+                            int suffix = 1;
+                            while (Directory.Exists(newFolderPath) && newFolderPath != currentFolderPath)
+                            {
+                                newFolderPath = Path.Combine(parentDirectory, $"{sanitizedName}_{suffix}");
+                                suffix++;
+                            }
+                            
+                            // Only rename if the path actually changed
+                            if (newFolderPath != currentFolderPath)
+                            {
+                                Directory.Move(currentFolderPath, newFolderPath);
+                                
+                                // Update file paths
+                                newTemplatePath = Path.Combine(newFolderPath, "template.png");
+                                
+                                // Detect actual preview file extension
+                                var previewExtensions = new[] { ".png", ".jpg", ".jpeg" };
+                                var actualPreviewFile = previewExtensions
+                                    .Select(ext => Path.Combine(newFolderPath, $"preview{ext}"))
+                                    .FirstOrDefault(File.Exists);
+                                
+                                newPreviewPath = actualPreviewFile ?? Path.Combine(newFolderPath, "preview.png");
+                                
+                                Console.WriteLine($"Template folder renamed from '{currentFolderPath}' to '{newFolderPath}'");
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Warning: Failed to rename template folder: {ex.Message}");
+                        // Continue with database update only
+                    }
+                }
+                
+                // Update template name in database
+                var updateResult = await _databaseService.UpdateTemplateAsync(templateId, name: newName);
+                
+                if (updateResult.Success)
+                {
+                    // Update database paths if they changed
+                    if (newFolderPath != template.FolderPath)
+                    {
+                        var pathUpdateResult = await _databaseService.UpdateTemplatePathsAsync(
+                            templateId,
+                            newFolderPath,
+                            newTemplatePath,
+                            newPreviewPath
+                        );
+                        
+                        if (!pathUpdateResult.Success)
+                        {
+                            Console.WriteLine($"Warning: Failed to update template paths in database: {pathUpdateResult.ErrorMessage}");
+                        }
+                    }
+                    
+                    Console.WriteLine($"Template completely renamed from '{oldName}' to '{newName}'");
+                    
+                    // Return updated template data
+                    var updatedTemplateResult = await _databaseService.GetByIdAsync<Template>(templateId);
+                    return updatedTemplateResult.Success && updatedTemplateResult.Data != null
+                        ? DatabaseResult<Template>.SuccessResult(updatedTemplateResult.Data)
+                        : DatabaseResult<Template>.SuccessResult(new Template { Id = templateId, Name = newName });
+                }
+                
+                return DatabaseResult<Template>.ErrorResult(updateResult.ErrorMessage ?? "Failed to update template");
+            }
+            catch (Exception ex)
+            {
+                return DatabaseResult<Template>.ErrorResult($"Error renaming template {templateId}: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Legacy method - renamed for clarity. Use RenameTemplateCompletelyAsync or RenameTemplateInDatabaseAsync instead.
+        /// </summary>
+        [Obsolete("Use RenameTemplateCompletelyAsync for complete rename or RenameTemplateInDatabaseAsync for database-only rename")]
+        public async Task<DatabaseResult<Template>> RenameTemplateAsync(int templateId, string newName)
+        {
+            // Default to complete rename for backward compatibility
+            return await RenameTemplateCompletelyAsync(templateId, newName);
+        }
+
+        /// <summary>
+        /// Sanitize file name for folder usage
+        /// </summary>
+        private static string SanitizeFileName(string fileName)
+        {
+            // Remove invalid characters for folder names
+            var invalidChars = Path.GetInvalidFileNameChars();
+            var sanitized = fileName;
+            
+            foreach (var invalidChar in invalidChars)
+            {
+                sanitized = sanitized.Replace(invalidChar, '_');
+            }
+            
+            // Also replace some additional problematic characters
+            sanitized = sanitized.Replace(' ', '-')  // Replace spaces with hyphens
+                                .Replace("--", "-")   // Replace double hyphens with single
+                                .Trim('-', '_');      // Remove leading/trailing hyphens and underscores
+            
+            // Ensure it's not empty
+            if (string.IsNullOrWhiteSpace(sanitized))
+            {
+                sanitized = "template";
+            }
+            
+            return sanitized;
         }
 
         /// <summary>
