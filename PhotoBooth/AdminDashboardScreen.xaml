@@ -1354,7 +1354,7 @@
 
                     <!-- Templates Tab Content -->
                     <Grid Name="TemplatesTabContent" Visibility="Visible">
-                        <local:TemplatesTabControl x:Name="TemplatesTabControlInstance"/>
+                        <!-- TemplatesTabControl will be added programmatically -->
                     </Grid>
 
                     <!-- Diagnostics Tab Content -->

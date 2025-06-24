@@ -176,6 +176,9 @@ namespace Photobooth
         // Product ViewModels for new templated approach
         public ObservableCollection<ProductViewModel> ProductViewModels { get; set; } = new();
 
+        // Templates tab control instance
+        private Views.TemplatesTabControl? TemplatesTabControlInstance;
+
         #endregion
 
         #region Initialization
@@ -228,57 +231,22 @@ namespace Photobooth
         {
             try
             {
-
-
-                // Replace the XAML-created instance with a properly initialized one
-
-                if (TemplatesTabControlInstance != null)
-                {
-
-                    var parent = TemplatesTabControlInstance.Parent as Panel;
-
-                    if (parent != null)
-                    {
-
-
-                        var index = parent.Children.IndexOf(TemplatesTabControlInstance);
-
-                        if (index >= 0)
-                        {
-
-                            parent.Children.RemoveAt(index);
-
-
-                            var newTemplatesControl = new Views.TemplatesTabControl(_databaseService);
-
-
-                            parent.Children.Insert(index, newTemplatesControl);
-
-                        }
-                        else
-                        {
-
-                        }
-                    }
-                    else
-                    {
-
-                    }
-                }
-                else
-                {
-
-                }
-
-
+                // Create the TemplatesTabControl programmatically with proper dependency injection
+                var templatesControl = new Views.TemplatesTabControl(_databaseService);
+                
+                // Add it to the TemplatesTabContent grid
+                TemplatesTabContent.Children.Clear(); // Clear any existing content
+                TemplatesTabContent.Children.Add(templatesControl);
+                
+                // Store reference for later access if needed
+                TemplatesTabControlInstance = templatesControl;
             }
             catch (Exception ex)
             {
-
-
+                System.Diagnostics.Debug.WriteLine($"Error initializing Templates tab: {ex.Message}");
                 if (ex.InnerException != null)
                 {
-
+                    System.Diagnostics.Debug.WriteLine($"Inner exception: {ex.InnerException.Message}");
                 }
                 // Don't throw here - let the admin screen continue without templates tab if needed
             }
