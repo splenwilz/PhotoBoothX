@@ -3,6 +3,8 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:local="clr-namespace:Photobooth.Views"
+             xmlns:behaviors="clr-namespace:Photobooth.Behaviors"
              mc:Ignorable="d"
              d:DesignHeight="5080" d:DesignWidth="1920">
 
@@ -456,7 +458,7 @@
             <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="24,0,24,24">
                 <Grid>
                     <!-- Sales Tab Content -->
-                    <Grid Name="SalesTabContent"  Visibility="Visible">
+                    <Grid Name="SalesTabContent"  Visibility="Collapsed">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
@@ -762,10 +764,12 @@
                                             <!-- Business Details -->
                                             <StackPanel>
                                                 <TextBlock Text="Business Name" FontSize="14" FontWeight="Medium" Foreground="#374151" Margin="0,0,0,8"/>
-                                                <TextBox Name="BusinessNameTextBox" Text="Downtown Event Center" Style="{StaticResource RoundedTextBoxStyle}" Padding="10" Height="44" Margin="0,0,0,16" BorderBrush="#D1D5DB" Background="White" />
+                                                <TextBox Name="BusinessNameTextBox" Text="Downtown Event Center" Style="{StaticResource RoundedTextBoxStyle}" Padding="10" Height="44" Margin="0,0,0,16" BorderBrush="#D1D5DB" Background="White"
+                                 behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True" />
                                                 
                                                 <TextBlock Text="Location" FontSize="14" FontWeight="Medium" Foreground="#374151" Margin="0,0,0,8"/>
-                                                <TextBox Name="LocationTextBox" Text="Main Street, Downtown" Style="{StaticResource RoundedTextBoxStyle}" Padding="10" Height="44" Margin="0,0,0,24" BorderBrush="#D1D5DB" Background="White" />
+                                                <TextBox Name="LocationTextBox" Text="Main Street, Downtown" Style="{StaticResource RoundedTextBoxStyle}" Padding="10" Height="44" Margin="0,0,0,24" BorderBrush="#D1D5DB" Background="White"
+                                 behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True" />
                                                 
                                                 <!-- Show Logo Option -->
                                                 <Border Background="#F8FAFC" Padding="16" CornerRadius="8" BorderBrush="#E5E7EB" BorderThickness="1">
@@ -878,7 +882,6 @@
                                             </Grid>
                                         </StackPanel>
                                     </Border>
-
 
                                 </StackPanel>
 
@@ -1020,19 +1023,22 @@
                                                         <!-- Current Password -->
                                                         <StackPanel Grid.Row="0" Margin="0,0,0,12">
                                                             <TextBlock Text="Current Password" FontSize="12" FontWeight="Medium" Foreground="#374151" Margin="0,0,0,4"/>
-                                                            <PasswordBox Name="CurrentPasswordBox" Height="36" FontSize="12" Padding="8,0" BorderBrush="#CBD5E1" BorderThickness="1" Background="White"/>
+                                                            <PasswordBox Name="CurrentPasswordBox" Height="36" FontSize="12" Padding="8,0" BorderBrush="#CBD5E1" BorderThickness="1" Background="White"
+                                             behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True"/>
                                     </StackPanel>
                                                         
                                                         <!-- New Password -->
                                                         <StackPanel Grid.Row="1" Margin="0,0,0,12">
                                                             <TextBlock Text="New Password" FontSize="12" FontWeight="Medium" Foreground="#374151" Margin="0,0,0,4"/>
-                                                            <PasswordBox Name="NewPasswordBox" Height="36" FontSize="12" Padding="8,0" BorderBrush="#CBD5E1" BorderThickness="1" Background="White"/>
+                                                            <PasswordBox Name="NewPasswordBox" Height="36" FontSize="12" Padding="8,0" BorderBrush="#CBD5E1" BorderThickness="1" Background="White"
+                                             behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True"/>
                                                         </StackPanel>
                                                         
                                                         <!-- Confirm Password -->
                                                         <StackPanel Grid.Row="2" Margin="0,0,0,12">
                                                             <TextBlock Text="Confirm New Password" FontSize="12" FontWeight="Medium" Foreground="#374151" Margin="0,0,0,4"/>
-                                                            <PasswordBox Name="ConfirmPasswordBox" Height="36" FontSize="12" Padding="8,0" BorderBrush="#CBD5E1" BorderThickness="1" Background="White"/>
+                                                            <PasswordBox Name="ConfirmPasswordBox" Height="36" FontSize="12" Padding="8,0" BorderBrush="#CBD5E1" BorderThickness="1" Background="White"
+                                             behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True"/>
                                                         </StackPanel>
                                                         
                                                         <!-- Error Message -->
@@ -1091,19 +1097,22 @@
                                                                 <!-- Username -->
                                                                 <StackPanel Grid.Row="1" Margin="0,0,0,12">
                                                                     <TextBlock Text="Username" FontSize="12" FontWeight="Medium" Foreground="#374151" Margin="0,0,0,4"/>
-                                                                    <TextBox Name="NewUsernameBox" Height="36" FontSize="12" Padding="8,8" BorderBrush="#CBD5E1" BorderThickness="1" Background="White"/>
+                                                                    <TextBox Name="NewUsernameBox" Height="36" FontSize="12" Padding="8,8" BorderBrush="#CBD5E1" BorderThickness="1" Background="White"
+                                         behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True"/>
                                     </StackPanel>
                                                                 
                                                                 <!-- Display Name -->
                                                                 <StackPanel Grid.Row="2" Margin="0,0,0,12">
                                                                     <TextBlock Text="Full Name" FontSize="12" FontWeight="Medium" Foreground="#374151" Margin="0,0,0,4"/>
-                                                                    <TextBox Name="NewDisplayNameBox" Height="36" FontSize="12" Padding="8,8" BorderBrush="#CBD5E1" BorderThickness="1" Background="White"/>
+                                                                    <TextBox Name="NewDisplayNameBox" Height="36" FontSize="12" Padding="8,8" BorderBrush="#CBD5E1" BorderThickness="1" Background="White"
+                                         behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True"/>
                                 </StackPanel>
                                                                 
                                                                 <!-- Password -->
                                                                 <StackPanel Grid.Row="3" Margin="0,0,0,12">
                                                                     <TextBlock Text="Password" FontSize="12" FontWeight="Medium" Foreground="#374151" Margin="0,0,0,4"/>
-                                                                    <PasswordBox Name="NewUserPasswordBox" Height="36" FontSize="12" Padding="8,8" BorderBrush="#CBD5E1" BorderThickness="1" Background="White"/>
+                                                                    <PasswordBox Name="NewUserPasswordBox" Height="36" FontSize="12" Padding="8,8" BorderBrush="#CBD5E1" BorderThickness="1" Background="White"
+                                             behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True"/>
                                                                 </StackPanel>
                                                                 
                                                                 <!-- Access Level -->
@@ -1344,12 +1353,8 @@
                     </Grid>
 
                     <!-- Templates Tab Content -->
-                    <Grid Name="TemplatesTabContent" Visibility="Collapsed" Margin="24">
-                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                            <TextBlock Text="📅" FontSize="48" HorizontalAlignment="Center" Margin="0,0,0,16"/>
-                            <TextBlock Text="Templates" FontSize="32" FontWeight="Bold" HorizontalAlignment="Center" Foreground="#1E293B" Margin="0,0,0,8"/>
-                            <TextBlock Text="Template management coming soon..." FontSize="16" HorizontalAlignment="Center" Foreground="#64748B"/>
-                        </StackPanel>
+                    <Grid Name="TemplatesTabContent" Visibility="Visible">
+                        <local:TemplatesTabControl x:Name="TemplatesTabControlInstance"/>
                     </Grid>
 
                     <!-- Diagnostics Tab Content -->

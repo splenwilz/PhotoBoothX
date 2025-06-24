@@ -115,10 +115,10 @@ PhotoBoothX uses a comprehensive dual-logging approach for maximum reliability:
   - `performance-YYYY-MM-DD.log` - Timing and resource usage (14 days)
 - **Debug Files**: Separate debug logs with shorter retention (7 days)
 
-**🗄️ Database Audit Logs** (Secondary)
-- **Storage**: `SystemLogs` table in `%APPDATA%\PhotoboothX\photobooth.db`
-- **Purpose**: Admin actions, business events, compliance tracking
-- **Access**: Admin Panel → System → View Logs
+**🗄️ Database Transaction Records** (Secondary)
+- **Storage**: Transaction and error tables in `%APPDATA%\PhotoboothX\photobooth.db`
+- **Purpose**: Sales transactions, customer data, persistent error tracking
+- **Access**: Admin Panel → Reports → Sales Data
 - **Retention**: Permanent (included in database backups)
 
 **📊 Log Structure**
@@ -214,7 +214,7 @@ PhotoBoothX uses a comprehensive dual-logging approach for maximum reliability:
 | Full Screen Toggle | `F11` |
 | Emergency Exit | `Ctrl + Alt + X` |
 | Restart Application | `Ctrl + Shift + R` |
-| View Database Logs | Admin Panel → System → View Logs (audit trail) |
+| View Sales Data | Admin Panel → Reports → Sales Data |
 | View File Logs | Open `%APPDATA%\PhotoboothX\Logs\` folder |
 | Backup Data | Admin Panel → Backup → Export All |
 | Test Hardware | Admin Panel → Diagnostics → Hardware Test |

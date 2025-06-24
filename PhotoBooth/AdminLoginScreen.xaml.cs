@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -54,6 +54,8 @@ namespace Photobooth
         /// </summary>
         private void CloseButton_Click(object sender, RoutedEventArgs e)
         {
+            // Hide virtual keyboard when cancelling login
+            VirtualKeyboardService.Instance.HideKeyboard();
             LoginCancelled?.Invoke(this, EventArgs.Empty);
         }
 
@@ -164,6 +166,10 @@ namespace Photobooth
 
                     // Trigger login successful event immediately - we already know authResult.Data is not null from the check above
                     var userData = authResult.Data!; // Use null-forgiving operator since we know it's not null
+                    
+                    // Hide virtual keyboard on successful login
+                    VirtualKeyboardService.Instance.HideKeyboard();
+                    
                     LoginSuccessful?.Invoke(this, new AdminLoginEventArgs(accessLevel, userData.UserId, userData.Username, userData.DisplayName, isSetupCredentials));
                 }
                 else
@@ -206,6 +212,9 @@ namespace Photobooth
         /// </summary>
         public void Reset()
         {
+            // Hide virtual keyboard when resetting login screen
+            VirtualKeyboardService.Instance.HideKeyboard();
+            
             UsernameInput.Text = "";
             PasswordInput.Password = "";
             ErrorMessage.Visibility = Visibility.Collapsed;

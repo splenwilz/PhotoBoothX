@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -66,6 +66,8 @@ namespace Photobooth
             // Initialize notification service with the notification container
             NotificationService.Instance.Initialize(NotificationContainer);
             
+            // Initialize modal service with the modal overlay containers
+            ModalService.Instance.Initialize(ModalOverlayContainer, ModalContentContainer, ModalBackdrop);
 
             InitializeDatabaseAsync();
             InitializeApplication();
@@ -121,8 +123,15 @@ namespace Photobooth
         {
             try
             {
+                System.Diagnostics.Debug.WriteLine("=== NAVIGATING TO WELCOME ===");
                 LoggingService.Application.Information("Navigating to welcome screen");
                 
+                // Hide virtual keyboard when navigating away from admin screens
+                VirtualKeyboardService.Instance.HideKeyboard();
+
+                // Clear any admin state
+                currentAdminAccess = AdminAccessLevel.None;
+
                 if (welcomeScreen == null)
                 {
                     welcomeScreen = new WelcomeScreen();
@@ -137,7 +146,6 @@ namespace Photobooth
                 // Reset state when returning to welcome
                 currentProduct = null;
                 currentTemplate = null;
-                currentAdminAccess = AdminAccessLevel.None;
                 
                 LoggingService.Application.Information("Welcome screen loaded successfully");
             }
@@ -305,23 +313,56 @@ namespace Photobooth
         {
             try
             {
+                System.Diagnostics.Debug.WriteLine($"NavigateToAdminDashboard called: AccessLevel={accessLevel}, UserId={userId}");
+                
                 if (adminDashboardScreen == null)
                 {
+                    System.Diagnostics.Debug.WriteLine("Creating new AdminDashboardScreen instance...");
                     adminDashboardScreen = new AdminDashboardScreen(_databaseService);
+                    System.Diagnostics.Debug.WriteLine("AdminDashboardScreen created successfully");
+                    
                     // Subscribe to admin dashboard events
                     adminDashboardScreen.ExitAdminRequested += AdminDashboardScreen_ExitAdminRequested;
+                    System.Diagnostics.Debug.WriteLine("Event handlers attached");
                 }
 
                 // Set access level and configure UI accordingly
                 currentAdminAccess = accessLevel;
+                System.Diagnostics.Debug.WriteLine("Setting access level...");
                 await adminDashboardScreen.SetAccessLevel(accessLevel, userId);
+                System.Diagnostics.Debug.WriteLine("Access level set successfully");
+                
+                System.Diagnostics.Debug.WriteLine("Refreshing sales data...");
                 adminDashboardScreen.RefreshSalesData();
+                System.Diagnostics.Debug.WriteLine("Sales data refreshed");
 
+                System.Diagnostics.Debug.WriteLine("Setting screen content...");
                 CurrentScreenContainer.Content = adminDashboardScreen;
+                System.Diagnostics.Debug.WriteLine("Admin dashboard navigation completed successfully");
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Navigation to admin dashboard failed: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"CRITICAL ERROR - Navigation to admin dashboard failed:");
+                System.Diagnostics.Debug.WriteLine($"Exception Type: {ex.GetType().Name}");
+                System.Diagnostics.Debug.WriteLine($"Message: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"Stack Trace: {ex.StackTrace}");
+                if (ex.InnerException != null)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Inner Exception: {ex.InnerException.Message}");
+                    System.Diagnostics.Debug.WriteLine($"Inner Stack Trace: {ex.InnerException.StackTrace}");
+                }
+                
+                // Show error message instead of silently falling back
+                try
+                {
+                    MessageBox.Show($"Failed to load admin dashboard: {ex.Message}\n\nPlease check the debug output for details.", 
+                                  "Admin Dashboard Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+                catch
+                {
+                    // If MessageBox fails, at least we have debug output
+                }
+                
                 // Fallback to welcome screen
                 NavigateToWelcome();
             }
@@ -475,7 +516,7 @@ namespace Photobooth
                 else
                 {
                     // Normal login - go to dashboard
-                    await NavigateToAdminDashboard(e.AccessLevel, e.UserId);
+                await NavigateToAdminDashboard(e.AccessLevel, e.UserId);
                 }
             }
             catch (Exception ex)
@@ -608,6 +649,9 @@ namespace Photobooth
             try
             {
                 LoggingService.Application.Information("PhotoBoothX shutting down");
+                
+                // Hide virtual keyboard on application close
+                VirtualKeyboardService.Instance.HideKeyboard();
                 
                 // Cleanup screens that have Cleanup methods
                 welcomeScreen?.Cleanup();

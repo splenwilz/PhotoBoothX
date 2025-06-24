@@ -185,8 +185,6 @@ namespace Photobooth
             await PerformPasswordChange();
         }
 
-
-
         #endregion
 
         #region Password Change Logic
@@ -225,6 +223,9 @@ namespace Photobooth
                         ("Username", _currentUser.Username),
                         ("AccessLevel", _accessLevel.ToString()),
                         ("SetupCredentialsRemoved", true));
+
+                    // Hide virtual keyboard on successful password change
+                    VirtualKeyboardService.Instance.HideKeyboard();
 
                     // Trigger successful password change event
                     PasswordChangeCompleted?.Invoke(this, new PasswordChangeCompletedEventArgs(_currentUser, _accessLevel));
