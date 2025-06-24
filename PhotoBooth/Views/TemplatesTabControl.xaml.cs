@@ -75,24 +75,7 @@ namespace Photobooth.Views
 
         public TemplatesTabControl()
         {
-            try
-            {
-                InitializeComponent();
-                
-                _allTemplates = new ObservableCollection<Template>();
-                _filteredTemplates = new ObservableCollection<Template>();
-                _selectedTemplateIds = new HashSet<int>();
-                
-                // Initialize database service - will be set properly when the control is used
-                _databaseService = new DatabaseService();
-                _templateManager = new TemplateManager(_databaseService);
-                
-                // Don't load data in parameterless constructor - wait for proper initialization
-            }
-            catch
-            {
-                throw; // Re-throw to prevent silent failures
-            }
+            throw new NotSupportedException("Use the constructor with IDatabaseService parameter for proper dependency injection");
         }
 
         public TemplatesTabControl(IDatabaseService databaseService)
@@ -892,6 +875,9 @@ namespace Photobooth.Views
             {
                 LoadingPanel.Visibility = Visibility.Visible;
                 
+                // Store the count before clearing
+                var updatedCount = _selectedTemplateIds.Count;
+                
                 foreach (var templateId in _selectedTemplateIds)
                 {
                     var template = _allTemplates.FirstOrDefault(t => t.Id == templateId);
@@ -906,7 +892,7 @@ namespace Photobooth.Views
                 RefreshTemplateDisplay();
                 UpdateBulkActionsVisibility();
                 
-                MessageBox.Show($"Successfully updated {_selectedTemplateIds.Count} templates.", 
+                MessageBox.Show($"Successfully updated {updatedCount} templates.", 
                               "Bulk Update Complete", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             catch (Exception ex)

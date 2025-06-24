@@ -40,6 +40,23 @@ namespace Photobooth.Controls
             "{", "}", ":", "\"", "<", ">", "?" 
         };
 
+        private static readonly Dictionary<string, string> ShiftMappings = new Dictionary<string, string>
+        {
+            // Numbers to symbols
+            {"1", "!"}, {"2", "@"}, {"3", "#"}, {"4", "$"}, {"5", "%"},
+            {"6", "^"}, {"7", "&"}, {"8", "*"}, {"9", "("}, {"0", ")"},
+            
+            // Punctuation marks
+            {"-", "_"}, {"=", "+"}, {"[", "{"}, {"]", "}"},
+            {";", ":"}, {"'", "\""}, {",", "<"}, {".", ">"}, {"/", "?"},
+            
+            // Reverse mappings for when shift is released
+            {"!", "1"}, {"@", "2"}, {"#", "3"}, {"$", "4"}, {"%", "5"},
+            {"^", "6"}, {"&", "7"}, {"*", "8"}, {"(", "9"}, {")", "0"},
+            {"_", "-"}, {"+", "="}, {"{", "["}, {"}", "]"},
+            {":", ";"}, {"\"", "'"}, {"<", ","}, {">", "."}, {"?", "/"}
+        };
+
         #endregion
 
         #region Constructor
@@ -140,28 +157,10 @@ namespace Photobooth.Controls
         /// </summary>
         private void UpdateNumberAndPunctuationKeys()
         {
-            // Create shift mappings for numbers and common punctuation
-            var shiftMappings = new Dictionary<string, string>
-            {
-                // Numbers to symbols
-                {"1", "!"}, {"2", "@"}, {"3", "#"}, {"4", "$"}, {"5", "%"},
-                {"6", "^"}, {"7", "&"}, {"8", "*"}, {"9", "("}, {"0", ")"},
-                
-                // Punctuation marks
-                {"-", "_"}, {"=", "+"}, {"[", "{"}, {"]", "}"},
-                {";", ":"}, {"'", "\""}, {",", "<"}, {".", ">"}, {"/", "?"},
-                
-                // Reverse mappings for when shift is released
-                {"!", "1"}, {"@", "2"}, {"#", "3"}, {"$", "4"}, {"%", "5"},
-                {"^", "6"}, {"&", "7"}, {"*", "8"}, {"(", "9"}, {")", "0"},
-                {"_", "-"}, {"+", "="}, {"{", "["}, {"}", "]"},
-                {":", ";"}, {"\"", "'"}, {"<", ","}, {">", "."}, {"?", "/"}
-            };
-
             // Find all buttons in the text mode layout and update their content
             if (TextModeLayout != null)
             {
-                UpdateButtonsInContainer(TextModeLayout, shiftMappings);
+                UpdateButtonsInContainer(TextModeLayout, ShiftMappings);
             }
         }
 

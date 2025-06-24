@@ -138,9 +138,9 @@ namespace Photobooth.Services
                 // Pass the original parentWindow for login detection, but use mainWindow for positioning
                 CheckLoginScreenWithDelayAndCreate(parentWindow, keyboardMode);
             }
-            catch
+            catch (Exception ex)
             {
-
+                LoggingService.Application.Error("Failed to show keyboard", ex);
             }
         }
 
@@ -247,16 +247,16 @@ namespace Photobooth.Services
                             }
                         }
                     }
-                    catch
+                    catch (Exception ex)
                     {
-
+                        LoggingService.Application.Error("Failed to set input focus in dispatcher", ex);
                     }
                 }), System.Windows.Threading.DispatcherPriority.Input);
 
             }
-            catch
+            catch (Exception ex)
             {
-
+                LoggingService.Application.Error("Failed to ensure input focus", ex);
             }
         }
 
@@ -265,6 +265,22 @@ namespace Photobooth.Services
         /// </summary>
         private Window GetMainApplicationWindow(Window currentWindow)
         {
+            return GetMainApplicationWindow(currentWindow, 0);
+        }
+
+        /// <summary>
+        /// Get the main application window with recursion depth limiting to prevent stack overflow
+        /// </summary>
+        private Window GetMainApplicationWindow(Window currentWindow, int depth)
+        {
+            const int MaxDepth = 10;
+            if (depth > MaxDepth)
+            {
+                LoggingService.Application.Warning("Maximum recursion depth reached in GetMainApplicationWindow",
+                    ("Depth", depth), ("CurrentWindowType", currentWindow?.GetType().Name ?? "null"));
+                return currentWindow ?? Application.Current.MainWindow ?? throw new InvalidOperationException("No main window available");
+            }
+
             try
             {
                 // If this is the main window, use it
@@ -281,7 +297,7 @@ namespace Photobooth.Services
                         return currentWindow.Owner;
                     }
                     // Recursively check if the owner's owner is the main window (nested modals)
-                    return GetMainApplicationWindow(currentWindow.Owner);
+                    return GetMainApplicationWindow(currentWindow.Owner, depth + 1);
                 }
                 
                 // Fallback to Application.Current.MainWindow if available
@@ -293,9 +309,9 @@ namespace Photobooth.Services
                 // Last resort - use the current window
                 return currentWindow;
             }
-            catch
+            catch (Exception ex)
             {
-
+                LoggingService.Application.Error("Failed to get main application window", ex);
                 return currentWindow; // Fallback
             }
         }
@@ -322,9 +338,9 @@ namespace Photobooth.Services
                 // Create keyboard with appropriate transparency
                 CreateAndShowKeyboard(keyboardMode, isLoginScreen);
             }
-            catch
+            catch (Exception ex)
             {
-
+                LoggingService.Application.Error("Failed to check login screen with delay", ex);
                 // Fallback - create keyboard without transparency
                 CreateAndShowKeyboard(keyboardMode, false);
             }
@@ -396,9 +412,9 @@ namespace Photobooth.Services
 
                 }
             }
-            catch
+            catch (Exception ex)
             {
-
+                LoggingService.Application.Error("Failed to create and show keyboard", ex);
             }
         }
 
@@ -445,9 +461,9 @@ namespace Photobooth.Services
                 _keyboardContainer = null;
                 _parentWindow = null;
             }
-            catch
+            catch (Exception ex)
             {
-
+                LoggingService.Application.Error("Failed to hide keyboard", ex);
             }
         }
 
@@ -513,9 +529,9 @@ namespace Photobooth.Services
 
                 return false;
             }
-            catch
+            catch (Exception ex)
             {
-
+                LoggingService.Application.Error("Failed to check if window is login screen", ex);
                 return false;
             }
         }
@@ -550,9 +566,9 @@ namespace Photobooth.Services
                 
                 return false;
             }
-            catch
+            catch (Exception ex)
             {
-
+                LoggingService.Application.Error("Failed to check for AdminLoginScreen UserControl", ex);
                 return false;
             }
         }
@@ -575,9 +591,9 @@ namespace Photobooth.Services
 
                 return hasUsername && hasPassword && hasLoginButton;
             }
-            catch
+            catch (Exception ex)
             {
-
+                LoggingService.Application.Error("Failed to check for specific login controls", ex);
                 return false;
             }
         }
@@ -612,9 +628,9 @@ namespace Photobooth.Services
                     }
                 }
             }
-            catch
+            catch (Exception ex)
             {
-
+                LoggingService.Application.Error("Failed to check for specific login controls", ex);
             }
         }
 
@@ -667,9 +683,9 @@ namespace Photobooth.Services
 
 
                         }
-                        catch
+                        catch (Exception ex)
                         {
-
+                            LoggingService.Application.Error("Failed to handle key press for TextBox", ex);
                         }
                     }), System.Windows.Threading.DispatcherPriority.Input);
                 }
@@ -690,18 +706,18 @@ namespace Photobooth.Services
                             var selectMethod = passwordBox.GetType().GetMethod("Select", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
                             selectMethod?.Invoke(passwordBox, new object[] { passwordLength, 0 });
                         }
-                        catch
+                        catch (Exception ex)
                         {
-
+                            LoggingService.Application.Error("Failed to set password box cursor position in HandleKeyPressed", ex);
                             passwordBox.Focus(); // Fallback
                         }
                     }), System.Windows.Threading.DispatcherPriority.Input);
 
                 }
             }
-            catch
+            catch (Exception ex)
             {
-
+                LoggingService.Application.Error("Failed to handle key press", ex);
             }
 
         }
@@ -740,9 +756,9 @@ namespace Photobooth.Services
                         break;
                 }
             }
-            catch
+            catch (Exception ex)
             {
-
+                LoggingService.Application.Error("Failed to handle special key press", ex);
             }
         }
 
@@ -774,9 +790,9 @@ namespace Photobooth.Services
                             textBox.Focus();
                         }
                     }
-                    catch
+                    catch (Exception ex)
                     {
-
+                        LoggingService.Application.Error("Failed to handle backspace for TextBox", ex);
                     }
                 }), System.Windows.Threading.DispatcherPriority.Input);
             }
@@ -799,9 +815,9 @@ namespace Photobooth.Services
                             var selectMethod = passwordBox.GetType().GetMethod("Select", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
                             selectMethod?.Invoke(passwordBox, new object[] { passwordLength, 0 });
                         }
-                        catch
+                        catch (Exception ex)
                         {
-
+                            LoggingService.Application.Error("Failed to set password box cursor position in HandleBackspace", ex);
                             passwordBox.Focus(); // Fallback
                         }
                     }), System.Windows.Threading.DispatcherPriority.Input);

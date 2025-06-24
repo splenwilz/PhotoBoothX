@@ -336,7 +336,7 @@ namespace Photobooth
             {
                 Name = "Photo Strips",
                 Description = "Classic 4-photo strips with templates",
-                Icon = "??",
+                Icon = "📷",
                 IconBackground = "#DBEAFE",
                 PriceLabel = "Price per Strip",
                 ProductKey = "PhotoStrips",
@@ -349,7 +349,7 @@ namespace Photobooth
             {
                 Name = "4x6 Photos",
                 Description = "Single high-quality 4x6 prints",
-                Icon = "???",
+                Icon = "🖼️",
                 IconBackground = "#FEF3C7",
                 PriceLabel = "Price per Photo",
                 ProductKey = "Photo4x6",
@@ -362,7 +362,7 @@ namespace Photobooth
             {
                 Name = "Smartphone Print",
                 Description = "Print photos from customer phones",
-                Icon = "??",
+                Icon = "📱",
                 IconBackground = "#ECFDF5",
                 PriceLabel = "Price per Print",
                 ProductKey = "SmartphonePrint",

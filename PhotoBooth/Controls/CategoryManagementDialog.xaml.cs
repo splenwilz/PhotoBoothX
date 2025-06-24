@@ -396,41 +396,30 @@ namespace Photobooth.Controls
             UpdateSeasonPreview();
         }
 
-        public static bool ShowCategoryDialog(Window? owner = null)
+        public static void ShowCategoryDialog(Window? owner = null, Action<bool>? onCategoriesChanged = null)
         {
             try
             {
-
-
                 var dialog = new CategoryManagementDialog();
 
                 if (owner != null)
                 {
-
                     dialog.Owner = owner;
-
                 }
                 else
                 {
-
                     dialog.Owner = Application.Current.MainWindow;
-
                 }
 
-                // Use Show() instead of ShowDialog() to allow interaction with parent window (keyboard)
-                // This allows the virtual keyboard in the main window to remain accessible
+                // Subscribe to dialog closed event to check if categories changed
+                dialog.Closed += (s, e) => {
+                    onCategoriesChanged?.Invoke(dialog.CategoriesChanged);
+                };
+
                 dialog.Show();
-
-                // Since this is now non-modal, we'll track changes differently
-                // For now, always return true to refresh when dialog is closed
-                // TODO: Consider using events to notify when categories change
-
-                return dialog.CategoriesChanged;
             }
             catch
             {
-
-
                 throw;
             }
         }

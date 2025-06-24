@@ -151,11 +151,10 @@ namespace Photobooth.Controls
         private int GetDaysInMonth(int monthIndex)
         {
             // monthIndex is 0-based (0 = January, 11 = December)
-            int[] daysInMonth = { 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 }; // Using 29 for February to handle leap years
-            
-            if (monthIndex >= 0 && monthIndex < daysInMonth.Length)
+            if (monthIndex >= 0 && monthIndex < 12)
             {
-                return daysInMonth[monthIndex];
+                // Use current year or a leap year for maximum days
+                return DateTime.DaysInMonth(DateTime.Now.Year, monthIndex + 1);
             }
             
             return 31; // Default fallback

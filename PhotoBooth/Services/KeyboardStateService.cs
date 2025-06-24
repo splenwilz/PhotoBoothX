@@ -6,6 +6,24 @@ namespace Photobooth.Services
 {
     public class KeyboardStateService : IKeyboardStateService
     {
+        // Static readonly dictionary for better performance
+        private static readonly Dictionary<string, string> ShiftMappings = new Dictionary<string, string>
+        {
+            // Numbers to symbols
+            {"1", "!"}, {"2", "@"}, {"3", "#"}, {"4", "$"}, {"5", "%"},
+            {"6", "^"}, {"7", "&"}, {"8", "*"}, {"9", "("}, {"0", ")"},
+            
+            // Punctuation marks
+            {"-", "_"}, {"=", "+"}, {"[", "{"}, {"]", "}"},
+            {";", ":"}, {"'", "\""}, {",", "<"}, {".", ">"}, {"/", "?"},
+            
+            // Reverse mappings for when shift is released
+            {"!", "1"}, {"@", "2"}, {"#", "3"}, {"$", "4"}, {"%", "5"},
+            {"^", "6"}, {"&", "7"}, {"*", "8"}, {"(", "9"}, {")", "0"},
+            {"_", "-"}, {"+", "="}, {"{", "["}, {"}", "]"},
+            {":", ";"}, {"\"", "'"}, {"<", ","}, {">", "."}, {"?", "/"}
+        };
+
         public bool IsShiftPressed { get; private set; } = false;
         public bool IsCapsLockOn { get; private set; } = false;
 
@@ -86,25 +104,7 @@ namespace Photobooth.Services
 
         private void UpdateNumberAndPunctuationKeys(FrameworkElement textModeLayout)
         {
-            // Create shift mappings for numbers and common punctuation
-            var shiftMappings = new Dictionary<string, string>
-            {
-                // Numbers to symbols
-                {"1", "!"}, {"2", "@"}, {"3", "#"}, {"4", "$"}, {"5", "%"},
-                {"6", "^"}, {"7", "&"}, {"8", "*"}, {"9", "("}, {"0", ")"},
-                
-                // Punctuation marks
-                {"-", "_"}, {"=", "+"}, {"[", "{"}, {"]", "}"},
-                {";", ":"}, {"'", "\""}, {",", "<"}, {".", ">"}, {"/", "?"},
-                
-                // Reverse mappings for when shift is released
-                {"!", "1"}, {"@", "2"}, {"#", "3"}, {"$", "4"}, {"%", "5"},
-                {"^", "6"}, {"&", "7"}, {"*", "8"}, {"(", "9"}, {")", "0"},
-                {"_", "-"}, {"+", "="}, {"{", "["}, {"}", "]"},
-                {":", ";"}, {"\"", "'"}, {"<", ","}, {">", "."}, {"?", "/"}
-            };
-
-            UpdateButtonsInContainer(textModeLayout, shiftMappings);
+            UpdateButtonsInContainer(textModeLayout, ShiftMappings);
         }
 
         private void UpdateButtonsInContainer(DependencyObject container, Dictionary<string, string> mappings)

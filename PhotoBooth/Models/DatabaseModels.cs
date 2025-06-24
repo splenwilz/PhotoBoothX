@@ -235,7 +235,7 @@ namespace Photobooth.Models
         public int PhotoCount => Layout?.PhotoCount ?? 1;
         public List<PhotoArea> PhotoAreas 
         { 
-            get => Layout?.PhotoAreas?.Select(pa => new PhotoArea
+            get => Layout?.PhotoAreas?.Where(pa => pa != null).Select(pa => new PhotoArea
             {
                 Id = pa.PhotoIndex.ToString(),
                 X = pa.X,
