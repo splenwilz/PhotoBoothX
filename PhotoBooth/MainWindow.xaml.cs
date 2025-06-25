@@ -19,13 +19,16 @@ namespace Photobooth
         // Screen instances - created once and reused for performance
         private WelcomeScreen? welcomeScreen;
         private ProductSelectionScreen? productSelectionScreen;
+        private CategorySelectionScreen? categorySelectionScreen;
         private TemplateSelectionScreen? templateSelectionScreen;
+        private TemplateCustomizationScreen? templateCustomizationScreen;
         private AdminLoginScreen? adminLoginScreen;
         private AdminDashboardScreen? adminDashboardScreen;
         private ForcedPasswordChangeScreen? forcedPasswordChangeScreen;
 
         // Current state tracking
         private ProductInfo? currentProduct;
+        private TemplateCategory? currentCategory;
         private TemplateInfo? currentTemplate;
         private AdminAccessLevel currentAdminAccess = AdminAccessLevel.None;
 
@@ -145,6 +148,7 @@ namespace Photobooth
 
                 // Reset state when returning to welcome
                 currentProduct = null;
+                currentCategory = null;
                 currentTemplate = null;
                 
                 LoggingService.Application.Information("Welcome screen loaded successfully");
@@ -181,32 +185,249 @@ namespace Photobooth
         }
 
         /// <summary>
-        /// Navigates to the template selection screen
+        /// Navigates to the category selection screen
         /// Called when user selects a product type
         /// </summary>
-        public void NavigateToTemplateSelection(ProductInfo product)
+        public void NavigateToCategorySelection(ProductInfo product)
         {
             try
             {
+                LoggingService.Application.Information("Navigating to category selection",
+                    ("ProductType", product.Type),
+                    ("ProductName", product.Name));
+
+                if (categorySelectionScreen == null)
+                {
+                    categorySelectionScreen = new CategorySelectionScreen();
+                    // Subscribe to category selection events
+                    categorySelectionScreen.BackButtonClicked += CategorySelectionScreen_BackButtonClicked;
+                    categorySelectionScreen.CategorySelected += CategorySelectionScreen_CategorySelected;
+                }
+
+                // Set the product type for category filtering
+                categorySelectionScreen.SetProductType(product);
+                currentProduct = product;
+
+                CurrentScreenContainer.Content = categorySelectionScreen;
+                
+                LoggingService.Application.Information("Category selection screen loaded successfully");
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Navigation to category selection failed", ex);
+                System.Diagnostics.Debug.WriteLine($"Navigation to category selection failed: {ex.Message}");
+                // Fallback to product selection if category navigation fails
+                NavigateToProductSelection();
+            }
+        }
+
+        /// <summary>
+        /// Navigates to the template selection screen with a pre-selected category
+        /// Called when user selects a category
+        /// </summary>
+        public void NavigateToTemplateSelection(ProductInfo product, TemplateCategory category)
+        {
+            try
+            {
+                LoggingService.Application.Information("Navigating to template selection with category",
+                    ("ProductType", product.Type),
+                    ("CategoryId", category.Id),
+                    ("CategoryName", category.Name));
+
                 if (templateSelectionScreen == null)
                 {
-                    templateSelectionScreen = new TemplateSelectionScreen();
+                    templateSelectionScreen = new TemplateSelectionScreen(_databaseService);
                     // Subscribe to template selection events
                     templateSelectionScreen.BackButtonClicked += TemplateSelectionScreen_BackButtonClicked;
                     templateSelectionScreen.TemplateSelected += TemplateSelectionScreen_TemplateSelected;
                 }
 
-                // Set the product type for template filtering
+                // Set the product type and category for template filtering
                 templateSelectionScreen.SetProductType(product);
+                templateSelectionScreen.SetSelectedCategory(category);
                 currentProduct = product;
+                currentCategory = category;
 
                 CurrentScreenContainer.Content = templateSelectionScreen;
+                
+                LoggingService.Application.Information("Template selection screen loaded successfully");
             }
             catch (Exception ex)
             {
+                LoggingService.Application.Error("Navigation to template selection failed", ex);
                 System.Diagnostics.Debug.WriteLine($"Navigation to template selection failed: {ex.Message}");
+                // Fallback to category selection if template navigation fails
+                NavigateToCategorySelection(product);
+            }
+        }
+
+        /// <summary>
+        /// Navigate to template selection screen with categorized view
+        /// </summary>
+        public void NavigateToTemplateSelectionWithCategories(ProductInfo product)
+        {
+            try
+            {
+                currentProduct = product;
+
+                LoggingService.Application.Information("Navigating to template selection with categorized view",
+                    ("ProductType", product.Type));
+
+                if (templateSelectionScreen == null)
+                {
+                    Console.WriteLine("Creating new TemplateSelectionScreen...");
+                    templateSelectionScreen = new TemplateSelectionScreen(_databaseService);
+                    
+                    // Subscribe to events
+                    Console.WriteLine("Subscribing to TemplateSelectionScreen events...");
+                    templateSelectionScreen.BackButtonClicked += TemplateSelectionScreen_BackButtonClicked;
+                    templateSelectionScreen.TemplateSelected += TemplateSelectionScreen_TemplateSelected;
+                    Console.WriteLine("TemplateSelectionScreen events subscribed successfully");
+                }
+                else
+                {
+                    Console.WriteLine("Using existing TemplateSelectionScreen");
+                }
+
+                // Set the product type for template filtering
+                templateSelectionScreen.SetProductType(product);
+
+                // Update UI
+                CurrentScreenContainer.Content = templateSelectionScreen;
+                
+                LoggingService.Application.Information("Template selection screen with categories loaded successfully");
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Template selection navigation failed", ex,
+                    ("ProductType", product.Type ?? "Unknown"));
+                System.Diagnostics.Debug.WriteLine($"Template selection navigation failed: {ex.Message}");
                 // Fallback to product selection if template navigation fails
                 NavigateToProductSelection();
+            }
+        }
+
+        /// <summary>
+        /// Navigate to template customization with a specific template selected
+        /// </summary>
+        public void NavigateToTemplateCustomizationWithTemplate(TemplateInfo? template)
+        {
+            try
+            {
+                Console.WriteLine("=== NAVIGATE TO TEMPLATE CUSTOMIZATION ===");
+                Console.WriteLine($"Template: {template?.TemplateName ?? "NULL"}");
+                Console.WriteLine($"Current Product: {currentProduct?.Name ?? "NULL"}");
+                
+                if (template == null)
+                {
+                    Console.WriteLine("ERROR: Template is null, cannot navigate to customization");
+                    // Fallback to template selection if template is null
+                    if (currentProduct != null)
+                    {
+                        NavigateToTemplateSelectionWithCategories(currentProduct);
+                    }
+                    else
+                    {
+                        NavigateToProductSelection();
+                    }
+                    return;
+                }
+                
+                LoggingService.Application.Information("Navigating to template customization with template",
+                    ("TemplateName", template.TemplateName ?? "Unknown"),
+                    ("Category", template.Category ?? "Unknown"));
+
+                if (templateCustomizationScreen == null)
+                {
+                    Console.WriteLine("Creating new TemplateCustomizationScreen...");
+                    templateCustomizationScreen = new TemplateCustomizationScreen();
+                    
+                    // Subscribe to events
+                    templateCustomizationScreen.BackButtonClicked += TemplateCustomizationScreen_BackButtonClicked;
+                    templateCustomizationScreen.TemplateSelected += TemplateCustomizationScreen_TemplateSelected;
+                    templateCustomizationScreen.PhotoSessionStartRequested += TemplateCustomizationScreen_PhotoSessionStartRequested;
+                    Console.WriteLine("TemplateCustomizationScreen created and events subscribed");
+                }
+                else
+                {
+                    Console.WriteLine("Using existing TemplateCustomizationScreen");
+                }
+
+                // Convert TemplateInfo to Template for customization screen
+                Console.WriteLine("Converting TemplateInfo to Template...");
+                var dbTemplate = ConvertTemplateInfoToTemplate(template);
+                Console.WriteLine($"Converted template: Name={dbTemplate.Name}, ID={dbTemplate.Id}");
+                
+                Console.WriteLine("Setting template on customization screen...");
+                templateCustomizationScreen.SetTemplate(dbTemplate, currentProduct);
+
+                // Update UI
+                Console.WriteLine("Updating CurrentScreenContainer.Content...");
+                CurrentScreenContainer.Content = templateCustomizationScreen;
+                Console.WriteLine("UI updated successfully");
+                
+                LoggingService.Application.Information("Template customization screen with template loaded successfully");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"EXCEPTION in NavigateToTemplateCustomizationWithTemplate: {ex.Message}");
+                Console.WriteLine($"Stack trace: {ex.StackTrace}");
+                LoggingService.Application.Error("Template customization navigation failed", ex,
+                    ("TemplateName", template?.TemplateName ?? "Unknown"));
+                System.Diagnostics.Debug.WriteLine($"Template customization navigation failed: {ex.Message}");
+                // Fallback to template selection if customization navigation fails
+                if (currentProduct != null)
+                {
+                    NavigateToTemplateSelectionWithCategories(currentProduct);
+                }
+                else
+                {
+                    NavigateToProductSelection();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Navigate to template customization screen
+        /// </summary>
+        public async void NavigateToTemplateCustomization(ProductInfo product, TemplateCategory category)
+        {
+            try
+            {
+                currentProduct = product;
+                currentCategory = category;
+
+                LoggingService.Application.Information("Navigating to template customization",
+                    ("ProductType", product.Type),
+                    ("CategoryId", category.Id),
+                    ("CategoryName", category.Name));
+
+                if (templateCustomizationScreen == null)
+                {
+                    templateCustomizationScreen = new TemplateCustomizationScreen();
+                    
+                    // Subscribe to events
+                    templateCustomizationScreen.BackButtonClicked += TemplateCustomizationScreen_BackButtonClicked;
+                    templateCustomizationScreen.TemplateSelected += TemplateCustomizationScreen_TemplateSelected;
+                    templateCustomizationScreen.PhotoSessionStartRequested += TemplateCustomizationScreen_PhotoSessionStartRequested;
+                }
+
+                // Set the category to load the first template and show customization options
+                await templateCustomizationScreen.SetCategoryAsync(category, product);
+
+                // Update UI
+                CurrentScreenContainer.Content = templateCustomizationScreen;
+                
+                LoggingService.Application.Information("Template customization screen loaded successfully");
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Template customization navigation failed", ex,
+                    ("ProductType", product.Type ?? "Unknown"),
+                    ("CategoryId", category.Id.ToString()));
+                System.Diagnostics.Debug.WriteLine($"Template customization navigation failed: {ex.Message}");
+                // Fallback to category selection if customization navigation fails
+                NavigateToCategorySelection(product);
             }
         }
 
@@ -445,11 +666,49 @@ namespace Photobooth
         {
             try
             {
-                NavigateToTemplateSelection(e.ProductInfo);
+                // Skip category selection and go directly to template selection with categorized view
+                NavigateToTemplateSelectionWithCategories(e.ProductInfo);
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Product selection navigation failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Handles category selection back button click
+        /// </summary>
+        private void CategorySelectionScreen_BackButtonClicked(object? sender, EventArgs e)
+        {
+            try
+            {
+                NavigateToProductSelection();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Category selection back navigation failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Handles category selection
+        /// </summary>
+        private void CategorySelectionScreen_CategorySelected(object? sender, CategorySelectedEventArgs e)
+        {
+            try
+            {
+                if (e.Product != null)
+                {
+                    NavigateToTemplateCustomization(e.Product, e.Category);
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine("Category selected but no product information available");
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Category selection navigation failed: {ex.Message}");
             }
         }
 
@@ -460,6 +719,7 @@ namespace Photobooth
         {
             try
             {
+                // Navigate back to product selection since category selection is skipped
                 NavigateToProductSelection();
             }
             catch (Exception ex)
@@ -475,11 +735,131 @@ namespace Photobooth
         {
             try
             {
-                NavigateToPaymentOrCamera(e.Template);
+                Console.WriteLine("=== MAINWINDOW TEMPLATE SELECTED EVENT ===");
+                Console.WriteLine($"Sender: {sender?.GetType().Name}");
+                Console.WriteLine($"Template: {e.Template?.TemplateName ?? "NULL"}");
+                Console.WriteLine($"Template Category: {e.Template?.Category ?? "NULL"}");
+                Console.WriteLine("Calling NavigateToTemplateCustomizationWithTemplate...");
+                
+                // Navigate to customization screen with the selected template
+                if (e.Template != null)
+                {
+                    NavigateToTemplateCustomizationWithTemplate(e.Template);
+                }
+                else
+                {
+                    Console.WriteLine("ERROR: Template is null, cannot navigate to customization");
+                    // Fallback to template selection if template is null
+                    if (currentProduct != null)
+                    {
+                        NavigateToTemplateSelectionWithCategories(currentProduct);
+                    }
+                    else
+                    {
+                        NavigateToProductSelection();
+                    }
+                }
+                
+                Console.WriteLine("NavigateToTemplateCustomizationWithTemplate completed");
             }
             catch (Exception ex)
             {
+                Console.WriteLine($"EXCEPTION in TemplateSelectionScreen_TemplateSelected: {ex.Message}");
+                Console.WriteLine($"Stack trace: {ex.StackTrace}");
                 System.Diagnostics.Debug.WriteLine($"Template selection navigation failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Converts TemplateInfo to Template for compatibility
+        /// </summary>
+        private Template ConvertTemplateInfoToTemplate(TemplateInfo templateInfo)
+        {
+            return new Template
+            {
+                Id = Random.Shared.Next(10000, 99999), // Generate a temporary ID
+                Name = templateInfo.TemplateName ?? "Unknown Template",
+                Description = templateInfo.Description ?? "",
+                FilePath = templateInfo.TemplateImagePath ?? "",
+                PreviewPath = templateInfo.PreviewImagePath ?? "",
+                IsActive = true
+            };
+        }
+
+        /// <summary>
+        /// Handles template customization back button click
+        /// </summary>
+        private void TemplateCustomizationScreen_BackButtonClicked(object? sender, EventArgs e)
+        {
+            try
+            {
+                // Navigate back to template selection if we have current product
+                if (currentProduct != null)
+                {
+                    NavigateToTemplateSelectionWithCategories(currentProduct);
+                }
+                else
+                {
+                    // Fallback to product selection if no current product
+                    NavigateToProductSelection();
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Template customization back navigation failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Handles template customization completion
+        /// </summary>
+        private void TemplateCustomizationScreen_TemplateSelected(object? sender, Photobooth.TemplateCustomizedEventArgs e)
+        {
+            try
+            {
+                // Create a TemplateInfo from the selected Template for compatibility with existing flow
+                var templateInfo = new TemplateInfo
+                {
+                    TemplateName = e.Template.Name ?? "Custom Template",
+                    TemplateImagePath = e.Template.FilePath ?? "",
+                    PreviewImagePath = e.Template.PreviewPath ?? "",
+                    Category = currentCategory?.Name ?? "Unknown",
+                    // Store customizations in a way that can be used later
+                    Description = string.Join(", ", e.Customizations)
+                };
+
+                NavigateToPaymentOrCamera(templateInfo);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Template customization completion failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Handles photo session start request from template customization screen
+        /// </summary>
+        private void TemplateCustomizationScreen_PhotoSessionStartRequested(object? sender, PhotoSessionStartEventArgs e)
+        {
+            try
+            {
+                // For now, create a simple capture screen or show a message
+                // TODO: Implement actual photo capture screen
+                var message = $"Starting Photo Session!\n\n" +
+                             $"Template: {e.Template.Name}\n" +
+                             $"Photo Count: {e.PhotoCount}\n" +
+                             $"Timer: {e.TimerSeconds} seconds\n" +
+                             $"Flash: {(e.FlashEnabled ? "Enabled" : "Disabled")}\n\n" +
+                             $"Photo capture functionality will be implemented here.";
+
+                NotificationService.Instance.ShowInfo("Photo Session Starting", message, 10);
+
+                // Return to welcome for now until capture screen is implemented
+                NavigateToWelcome();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Photo session start failed: {ex.Message}");
             }
         }
 

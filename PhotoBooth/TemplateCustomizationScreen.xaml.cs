@@ -1,0 +1,442 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
+using System.Windows.Media.Imaging;
+using System.Windows.Shapes;
+using System.Windows.Threading;
+using Photobooth.Models;
+using Photobooth.Services;
+
+namespace Photobooth
+{
+    /// <summary>
+    /// Template customization screen - allows users to customize templates with icons, filters, and text overlays
+    /// </summary>
+    public partial class TemplateCustomizationScreen : UserControl, IDisposable
+    {
+        #region Private Fields
+
+        private readonly IDatabaseService _databaseService;
+        private Template? _currentTemplate;
+        private TemplateCategory? _currentCategory;
+        private ProductInfo? _currentProduct;
+        private readonly List<string> _selectedCustomizations;
+        private bool _disposed = false;
+        
+        // Animation fields
+        private DispatcherTimer? animationTimer;
+        private Random random = new Random();
+
+        #endregion
+
+        #region Events
+
+        /// <summary>
+        /// Event fired when the back button is clicked
+        /// </summary>
+        public event EventHandler? BackButtonClicked;
+
+        /// <summary>
+        /// Event fired when the user is ready to continue to photo capture
+        /// </summary>
+        #pragma warning disable CS0067 // The event is never used but is part of the interface contract
+        public event EventHandler<TemplateCustomizedEventArgs>? TemplateSelected;
+        #pragma warning restore CS0067
+
+        /// <summary>
+        /// Event fired when the user wants to start the photo capture session
+        /// </summary>
+        public event EventHandler<PhotoSessionStartEventArgs>? PhotoSessionStartRequested;
+
+        #endregion
+
+        #region Constructor
+
+        public TemplateCustomizationScreen()
+        {
+            _databaseService = new DatabaseService();
+            _selectedCustomizations = new List<string>();
+            
+            InitializeComponent();
+            InitializeAnimations();
+        }
+
+        #endregion
+
+        #region Animation Methods
+
+        /// <summary>
+        /// Sets up all visual animations to match the original design
+        /// </summary>
+        private void InitializeAnimations()
+        {
+            CreateFloatingParticles();
+            StartFloatingOrbAnimations();
+            StartParticleAnimations();
+        }
+
+        /// <summary>
+        /// Creates floating animations for the background orbs
+        /// animate-float-slow, animate-float-medium, animate-float-fast
+        /// </summary>
+        private void StartFloatingOrbAnimations()
+        {
+            foreach (Ellipse orb in FloatingOrbsCanvas.Children)
+            {
+                var translateTransform = new TranslateTransform();
+                orb.RenderTransform = translateTransform;
+
+                var storyboard = new Storyboard();
+
+                // Vertical floating
+                var yAnimation = new DoubleAnimation
+                {
+                    From = 0,
+                    To = random.Next(-20, -5),
+                    Duration = TimeSpan.FromSeconds(3 + random.NextDouble() * 2),
+                    AutoReverse = true,
+                    RepeatBehavior = RepeatBehavior.Forever,
+                    EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
+                };
+
+                // Horizontal floating
+                var xAnimation = new DoubleAnimation
+                {
+                    From = 0,
+                    To = random.Next(-10, 10),
+                    Duration = TimeSpan.FromSeconds(4 + random.NextDouble() * 2),
+                    AutoReverse = true,
+                    RepeatBehavior = RepeatBehavior.Forever,
+                    EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
+                };
+
+                Storyboard.SetTarget(yAnimation, translateTransform);
+                Storyboard.SetTargetProperty(yAnimation, new PropertyPath("Y"));
+                Storyboard.SetTarget(xAnimation, translateTransform);
+                Storyboard.SetTargetProperty(xAnimation, new PropertyPath("X"));
+
+                storyboard.Children.Add(yAnimation);
+                storyboard.Children.Add(xAnimation);
+                storyboard.Begin();
+            }
+        }
+
+        /// <summary>
+        /// Creates floating particles as in the original design
+        /// Array.from({ length: 20 }) floating particles
+        /// </summary>
+        private void CreateFloatingParticles()
+        {
+            for (int i = 0; i < 20; i++)
+            {
+                var particle = new Ellipse
+                {
+                    Width = 8,
+                    Height = 8,
+                    Fill = new SolidColorBrush(Colors.White) { Opacity = 0.3 },
+                };
+
+                Canvas.SetLeft(particle, random.Next(0, 1920));
+                Canvas.SetTop(particle, random.Next(0, 1080));
+
+                ParticlesCanvas.Children.Add(particle);
+            }
+        }
+
+        /// <summary>
+        /// Animates floating particles with continuous movement
+        /// animate-float-particle
+        /// </summary>
+        private void StartParticleAnimations()
+        {
+            animationTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(50)
+            };
+
+            animationTimer.Tick += (s, e) =>
+            {
+                foreach (Ellipse particle in ParticlesCanvas.Children)
+                {
+                    var left = Canvas.GetLeft(particle);
+                    var top = Canvas.GetTop(particle);
+
+                    // Move particle slowly upward and slightly to the right
+                    Canvas.SetTop(particle, top - 0.5);
+                    Canvas.SetLeft(particle, left + 0.2);
+
+                    // Reset particle position when it goes off screen
+                    if (top < -10 || left > ActualWidth + 10)
+                    {
+                        Canvas.SetTop(particle, ActualHeight + 10);
+                        Canvas.SetLeft(particle, random.Next(-10, (int)ActualWidth));
+                    }
+                }
+            };
+
+            animationTimer.Start();
+        }
+
+        #endregion
+
+        #region Public Methods
+
+        /// <summary>
+        /// Set the category and automatically load the first template
+        /// </summary>
+        public async Task SetCategoryAsync(TemplateCategory category, ProductInfo? product = null)
+        {
+            _currentCategory = category;
+            _currentProduct = product;
+            
+            // Load the first template from this category
+            await LoadFirstTemplateFromCategoryAsync();
+        }
+
+        /// <summary>
+        /// Set a specific template to customize
+        /// </summary>
+        public void SetTemplate(Template template, ProductInfo? product = null)
+        {
+            _currentTemplate = template;
+            _currentProduct = product;
+            
+            LoadTemplatePreview();
+        }
+
+        #endregion
+
+        #region Private Methods
+
+        /// <summary>
+        /// Load the first template from the current category
+        /// </summary>
+        private async Task LoadFirstTemplateFromCategoryAsync()
+        {
+            if (_currentCategory == null) return;
+
+            try
+            {
+                if (LoadingPanel != null)
+                    LoadingPanel.Visibility = Visibility.Visible;
+
+                var templatesResult = await _databaseService.GetTemplatesByCategoryAsync(_currentCategory.Id);
+                
+                if (templatesResult.Success && templatesResult.Data != null && templatesResult.Data.Any())
+                {
+                    // Filter templates that match the current product
+                    var matchingTemplates = templatesResult.Data
+                        .Where(t => DoesTemplateMatchProduct(t, _currentProduct))
+                        .ToList();
+
+                    if (matchingTemplates.Any())
+                    {
+                        _currentTemplate = matchingTemplates.First();
+                        LoadTemplatePreview();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error loading template from category: {ex.Message}");
+            }
+            finally
+            {
+                if (LoadingPanel != null)
+                    LoadingPanel.Visibility = Visibility.Collapsed;
+            }
+        }
+
+        /// <summary>
+        /// Load the template preview image and information
+        /// </summary>
+        private void LoadTemplatePreview()
+        {
+            if (_currentTemplate == null) return;
+
+            // Load template image
+            if (TemplatePreviewImage != null)
+            {
+                if (!string.IsNullOrEmpty(_currentTemplate.PreviewPath) && 
+                    System.IO.File.Exists(_currentTemplate.PreviewPath))
+                {
+                    var bitmap = new BitmapImage();
+                    bitmap.BeginInit();
+                    bitmap.UriSource = new Uri(_currentTemplate.PreviewPath, UriKind.Absolute);
+                    bitmap.EndInit();
+                    TemplatePreviewImage.Source = bitmap;
+
+                    // Scale up templates with width below 2000 pixels
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        var viewbox = this.FindName("TemplatePreviewContainer") as Viewbox;
+                        if (viewbox != null && bitmap.PixelWidth > 0 && bitmap.PixelHeight > 0)
+                        {
+                            Console.WriteLine($"Original template dimensions: {bitmap.PixelWidth}x{bitmap.PixelHeight}");
+                            
+                            if (bitmap.PixelWidth < 3000)
+                            {
+                                // Calculate scale factor to bring width to at least 3000 pixels
+                                var scaleFactor = 3000.0 / bitmap.PixelWidth;
+                                var newWidth = 3000;
+                                var newHeight = (int)(bitmap.PixelHeight * scaleFactor);
+                                
+                                Console.WriteLine($"Scaling UP template by {scaleFactor:F2}x to {newWidth}x{newHeight}");
+                                
+                                // Apply the scaled dimensions to the viewbox with larger display scale
+                                viewbox.Width = Math.Min(newWidth * 0.3, 900); // Increased max size and reduced scale for bigger display
+                                viewbox.Height = Math.Min(newHeight * 0.3, 900);
+                                viewbox.MaxWidth = double.PositiveInfinity;
+                                viewbox.MaxHeight = double.PositiveInfinity;
+                            }
+                            else
+                            {
+                                Console.WriteLine("Template width >= 3000, using standard sizing");
+                                // Use standard sizing for large templates
+                                viewbox.MaxHeight = 700;
+                                viewbox.MaxWidth = 500;
+                                viewbox.Width = double.NaN;
+                                viewbox.Height = double.NaN;
+                            }
+                        }
+                    }));
+
+                    // Update template dimensions display
+                    if (TemplateDimensionsText != null)
+                        TemplateDimensionsText.Text = $"Dimensions: {bitmap.PixelWidth}x{bitmap.PixelHeight}";
+                }
+                else
+                {
+                    // Show placeholder if no preview available
+                    TemplatePreviewImage.Source = null;
+                }
+            }
+
+            // Update template information
+            if (TemplateNameText != null)
+                TemplateNameText.Text = _currentTemplate.Name ?? "Unnamed Template";
+            
+            if (TemplateDescriptionText != null)
+                TemplateDescriptionText.Text = _currentTemplate.Description ?? "Customize this template with icons, filters, and text overlays.";
+        }
+
+        /// <summary>
+        /// Check if a template matches the current product type
+        /// </summary>
+        private bool DoesTemplateMatchProduct(Template template, ProductInfo? product)
+        {
+            if (product == null || template.Layout == null) return true;
+
+            var productType = product.Type?.ToLowerInvariant();
+            var templateCategory = template.Layout.ProductCategory?.Name?.ToLowerInvariant();
+
+            return productType switch
+            {
+                "strips" or "photostrips" => templateCategory == "strips" || templateCategory == "photo strips",
+                "4x6" or "photo4x6" => templateCategory == "4x6" || templateCategory == "photos",
+                "phone" or "smartphoneprint" => templateCategory == "4x6" || templateCategory == "photos",
+                _ => true
+            };
+        }
+
+        /// <summary>
+        /// Handle continue button click - proceed to photo capture
+        /// </summary>
+        private void ContinueButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_currentTemplate == null) return;
+
+            // Create simplified session args
+            var sessionArgs = new PhotoSessionStartEventArgs(
+                _currentTemplate, 
+                _currentProduct, 
+                new List<string>(),  // No customizations in simplified version
+                1,     // Default 1 photo
+                5,     // Default 5 second timer
+                true   // Flash enabled by default
+            );
+
+            PhotoSessionStartRequested?.Invoke(this, sessionArgs);
+        }
+
+        /// <summary>
+        /// Handle back button click
+        /// </summary>
+        private void BackButton_Click(object sender, RoutedEventArgs e)
+        {
+            BackButtonClicked?.Invoke(this, EventArgs.Empty);
+        }
+
+        #endregion
+
+        #region IDisposable Implementation
+
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!_disposed && disposing)
+            {
+                // Clean up animations
+                animationTimer?.Stop();
+                animationTimer = null;
+                
+                // Clean up managed resources if needed
+                _disposed = true;
+            }
+        }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Event arguments for template customization completion
+    /// </summary>
+    public class TemplateCustomizedEventArgs : EventArgs
+    {
+        public Template Template { get; }
+        public ProductInfo? Product { get; }
+        public List<string> Customizations { get; }
+
+        public TemplateCustomizedEventArgs(Template template, ProductInfo? product, List<string> customizations)
+        {
+            Template = template;
+            Product = product;
+            Customizations = customizations;
+        }
+    }
+
+    /// <summary>
+    /// Event arguments for photo session start request
+    /// </summary>
+    public class PhotoSessionStartEventArgs : EventArgs
+    {
+        public Template Template { get; }
+        public ProductInfo? Product { get; }
+        public List<string> Customizations { get; }
+        public int PhotoCount { get; }
+        public int TimerSeconds { get; }
+        public bool FlashEnabled { get; }
+
+        public PhotoSessionStartEventArgs(Template template, ProductInfo? product, List<string> customizations, 
+                                         int photoCount, int timerSeconds, bool flashEnabled)
+        {
+            Template = template;
+            Product = product;
+            Customizations = customizations;
+            PhotoCount = photoCount;
+            TimerSeconds = timerSeconds;
+            FlashEnabled = flashEnabled;
+        }
+    }
+} 
