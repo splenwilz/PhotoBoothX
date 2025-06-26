@@ -120,6 +120,7 @@ CREATE TABLE Templates (
     SortOrder INTEGER NOT NULL DEFAULT 0,
     FileSize INTEGER DEFAULT 0, -- In bytes
     Description TEXT DEFAULT '', -- Template description
+    TemplateType INTEGER NOT NULL DEFAULT 0 CHECK (TemplateType IN (0, 1)), -- 0 = Strip, 1 = Photo4x6
     UploadedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UploadedBy TEXT,
     FOREIGN KEY (CategoryId) REFERENCES TemplateCategories(Id),

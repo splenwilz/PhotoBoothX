@@ -36,6 +36,7 @@ namespace Photobooth.Views
         private bool _isGridView = true;
         private string _searchTerm = "";
         private string _selectedCategory = "All";
+        private string _selectedTemplateType = "All";
         private string _sortBy = "database"; // Default to database order (includes seasonal prioritization)
         private string _sortOrder = "asc";
         private bool _showAllSeasons = false; // New field to track seasonal filter bypass
@@ -405,6 +406,7 @@ namespace Photobooth.Views
             // Reset all filters to default
             SearchTextBox.Text = "";
             if (CategoryFilterComboBox.Items.Count > 0) CategoryFilterComboBox.SelectedIndex = 0; // Select "All"
+            if (TemplateTypeFilterComboBox.Items.Count > 0) TemplateTypeFilterComboBox.SelectedIndex = 0; // Select "All Types"
             if (SortComboBox.Items.Count > 0) SortComboBox.SelectedIndex = 0; // Select "Smart Order"
             ShowAllSeasonsToggle.IsChecked = false;
             
@@ -435,6 +437,29 @@ namespace Photobooth.Views
             else
             {
                 System.Diagnostics.Debug.WriteLine("CategoryFilterComboBox: No valid item selected");
+            }
+        }
+
+        private void TemplateTypeFilterComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            System.Diagnostics.Debug.WriteLine("=== TemplateTypeFilterComboBox_SelectionChanged triggered ===");
+            
+            // Ignore events during initialization
+            if (_allTemplates == null || _filteredTemplates == null)
+                return;
+                
+            if (TemplateTypeFilterComboBox.SelectedItem is ComboBoxItem item && item.Tag != null)
+            {
+                var newTemplateType = item.Tag.ToString() ?? "All";
+                System.Diagnostics.Debug.WriteLine($"Template type changed from '{_selectedTemplateType}' to '{newTemplateType}'");
+                
+                _selectedTemplateType = newTemplateType;
+                FilterAndSortTemplates();
+                UpdateActiveFiltersDisplay();
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine("TemplateTypeFilterComboBox: No valid item selected");
             }
         }
 
@@ -1015,6 +1040,16 @@ namespace Photobooth.Views
                 System.Diagnostics.Debug.WriteLine($"Templates before filter: {beforeCount}, after filter: {afterCount}");
             }
 
+            // Apply template type filter
+            if (_selectedTemplateType != "All")
+            {
+                System.Diagnostics.Debug.WriteLine($"Filtering by template type: '{_selectedTemplateType}'");
+                var beforeCount = filtered.Count();
+                filtered = filtered.Where(t => t.TemplateType.ToString() == _selectedTemplateType);
+                var afterCount = filtered.Count();
+                System.Diagnostics.Debug.WriteLine($"Templates before type filter: {beforeCount}, after type filter: {afterCount}");
+            }
+
             // Apply sorting - PRESERVE DATABASE ORDER when no specific sort is applied
             // Database order includes seasonal prioritization, so only override when user explicitly sorts
             if (!string.IsNullOrEmpty(_sortBy) && _sortBy != "database")
@@ -1201,6 +1236,7 @@ namespace Photobooth.Views
             var headerGrid = new Grid();
             headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
             var nameText = new TextBlock
             {
@@ -1219,6 +1255,7 @@ namespace Photobooth.Views
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(4),
                 Padding = new Thickness(8, 4, 8, 4),
+                Margin = new Thickness(0, 0, 6, 0),
                 Child = new TextBlock
                 {
                     Text = template.CategoryName ?? "Classic",
@@ -1228,8 +1265,33 @@ namespace Photobooth.Views
             };
             Grid.SetColumn(categoryBadge, 1);
 
+            // Template Type Badge
+            var templateTypeBadge = new Border
+            {
+                Background = template.TemplateType == TemplateType.Photo4x6 ? 
+                    new SolidColorBrush(Color.FromRgb(219, 234, 254)) : // Blue for 4x6
+                    new SolidColorBrush(Color.FromRgb(254, 243, 199)), // Yellow for Strip
+                BorderBrush = template.TemplateType == TemplateType.Photo4x6 ? 
+                    new SolidColorBrush(Color.FromRgb(59, 130, 246)) : // Blue border for 4x6
+                    new SolidColorBrush(Color.FromRgb(245, 158, 11)), // Yellow border for Strip
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(8, 4, 8, 4),
+                Child = new TextBlock
+                {
+                    Text = template.TemplateType == TemplateType.Photo4x6 ? "4x6" : "Strip",
+                    FontSize = 12,
+                    FontWeight = FontWeights.Medium,
+                    Foreground = template.TemplateType == TemplateType.Photo4x6 ? 
+                        new SolidColorBrush(Color.FromRgb(30, 58, 138)) : // Blue text for 4x6
+                        new SolidColorBrush(Color.FromRgb(146, 64, 14)) // Yellow text for Strip
+                }
+            };
+            Grid.SetColumn(templateTypeBadge, 2);
+
             headerGrid.Children.Add(nameText);
             headerGrid.Children.Add(categoryBadge);
+            headerGrid.Children.Add(templateTypeBadge);
 
             var detailsGrid = new Grid { Margin = new Thickness(0, 8, 0, 12) };
             detailsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -1972,6 +2034,12 @@ namespace Photobooth.Views
                     foreach (var category in activeCategories)
                     {
                         System.Diagnostics.Debug.WriteLine($"  - Category: {category.Name} (ID: {category.Id})");
+                    }
+
+                    // Initialize template type filter (set default selection)
+                    if (TemplateTypeFilterComboBox.SelectedIndex == -1 && TemplateTypeFilterComboBox.Items.Count > 0)
+                    {
+                        TemplateTypeFilterComboBox.SelectedIndex = 0; // Select "All Types"
                     }
                 }
                 else

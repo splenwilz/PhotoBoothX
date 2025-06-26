@@ -14,14 +14,7 @@
             <!-- indigo-900 -->
         </LinearGradientBrush>
 
-        <!-- Floating Orb Style -->
-        <Style x:Key="FloatingOrbStyle" TargetType="Ellipse">
-            <Setter Property="Effect">
-                <Setter.Value>
-                    <BlurEffect Radius="15"/>
-                </Setter.Value>
-            </Setter>
-        </Style>
+
 
         <!-- Category Button Style -->
         <Style x:Key="CategoryButtonStyle" TargetType="Button">
@@ -191,30 +184,7 @@
             <!-- Bottom Spacing -->
         </Grid.RowDefinitions>
 
-        <!-- Floating Orbs Layer -->
-        <Canvas Name="FloatingOrbsCanvas">
-            <Ellipse Width="96" Height="96" 
-                     Fill="#A855F7" Opacity="0.2" 
-                     Style="{StaticResource FloatingOrbStyle}"
-                     Canvas.Left="128" Canvas.Top="128"/>
-            <Ellipse Width="80" Height="80" 
-                     Fill="#3B82F6" Opacity="0.25" 
-                     Style="{StaticResource FloatingOrbStyle}"
-                     Canvas.Right="160" Canvas.Top="80"/>
-            <Ellipse Width="128" Height="128" 
-                     Fill="#EC4899" Opacity="0.15" 
-                     Style="{StaticResource FloatingOrbStyle}"
-                     Canvas.Left="480" Canvas.Bottom="160"/>
-            <Ellipse Width="80" Height="80" 
-                     Fill="#06B6D4" Opacity="0.2" 
-                     Style="{StaticResource FloatingOrbStyle}"
-                     Canvas.Right="128" Canvas.Bottom="128"/>
-        </Canvas>
 
-        <!-- Floating Particles Canvas -->
-        <Canvas Name="ParticlesCanvas" ClipToBounds="True">
-            <!-- Particles will be added programmatically -->
-        </Canvas>
 
 
 
@@ -248,6 +218,7 @@
                                       Color="Black"/>
                 </TextBlock.Effect>
             </TextBlock>
+
         </Grid>
 
         <!-- Template Display Area - Scrollable with Category Headers -->

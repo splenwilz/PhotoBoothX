@@ -174,7 +174,7 @@ namespace Photobooth.Tests.Views
                 });
 
             // Setup template operations - correct parameter order
-            _mockDatabaseService.Setup(x => x.UpdateTemplateAsync(It.IsAny<int>(), It.IsAny<string?>(), It.IsAny<bool?>(), It.IsAny<decimal?>(), It.IsAny<int?>(), It.IsAny<string?>(), It.IsAny<int?>(), It.IsAny<int?>()))
+            _mockDatabaseService.Setup(x => x.UpdateTemplateAsync(It.IsAny<int>(), It.IsAny<string?>(), It.IsAny<bool?>(), It.IsAny<decimal?>(), It.IsAny<int?>(), It.IsAny<string?>(), It.IsAny<int?>(), It.IsAny<int?>(), It.IsAny<TemplateType?>()))
                 .ReturnsAsync(new DatabaseResult<Template> { Success = true });
 
             _mockDatabaseService.Setup(x => x.BulkUpdateTemplateCategoryAsync(It.IsAny<List<int>>(), It.IsAny<int>()))
@@ -251,7 +251,7 @@ namespace Photobooth.Tests.Views
             var price = 12.99m;
 
             // Act
-            var result = await _mockDatabaseService.Object.UpdateTemplateAsync(templateId, newName, isActive, price, null, null, null, null);
+            var result = await _mockDatabaseService.Object.UpdateTemplateAsync(templateId, newName, isActive, price, null, null, null, null, null);
 
             // Assert
             result.Should().NotBeNull();

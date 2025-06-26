@@ -1,4 +1,7 @@
 using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -21,6 +24,7 @@ namespace Photobooth
         private ProductSelectionScreen? productSelectionScreen;
         private CategorySelectionScreen? categorySelectionScreen;
         private TemplateSelectionScreen? templateSelectionScreen;
+
         private TemplateCustomizationScreen? templateCustomizationScreen;
         private AdminLoginScreen? adminLoginScreen;
         private AdminDashboardScreen? adminDashboardScreen;
@@ -242,9 +246,8 @@ namespace Photobooth
                     templateSelectionScreen.TemplateSelected += TemplateSelectionScreen_TemplateSelected;
                 }
 
-                // Set the product type and category for template filtering
+                // Set the product type for template filtering
                 templateSelectionScreen.SetProductType(product);
-                templateSelectionScreen.SetSelectedCategory(category);
                 currentProduct = product;
                 currentCategory = category;
 
@@ -282,6 +285,7 @@ namespace Photobooth
                     Console.WriteLine("Subscribing to TemplateSelectionScreen events...");
                     templateSelectionScreen.BackButtonClicked += TemplateSelectionScreen_BackButtonClicked;
                     templateSelectionScreen.TemplateSelected += TemplateSelectionScreen_TemplateSelected;
+
                     Console.WriteLine("TemplateSelectionScreen events subscribed successfully");
                 }
                 else
@@ -306,6 +310,8 @@ namespace Photobooth
                 NavigateToProductSelection();
             }
         }
+
+
 
         /// <summary>
         /// Navigate to template customization with a specific template selected
@@ -770,6 +776,8 @@ namespace Photobooth
             }
         }
 
+
+
         /// <summary>
         /// Converts TemplateInfo to Template for compatibility
         /// </summary>
@@ -835,6 +843,8 @@ namespace Photobooth
                 System.Diagnostics.Debug.WriteLine($"Template customization completion failed: {ex.Message}");
             }
         }
+
+
 
         /// <summary>
         /// Handles photo session start request from template customization screen
@@ -1073,6 +1083,159 @@ namespace Photobooth
                 System.Diagnostics.Debug.WriteLine($"Window cleanup failed: {ex.Message}");
                 base.OnClosed(e);
             }
+        }
+
+        #endregion
+
+        #region Helper Methods
+
+        /// <summary>
+        /// Converts a database Template object to a TemplateInfo object for UI display
+        /// </summary>
+        private TemplateInfo? ConvertDatabaseTemplateToTemplateInfo(Template dbTemplate)
+        {
+            try
+            {
+                // Check if required files exist
+                if (!File.Exists(dbTemplate.PreviewPath))
+                {
+                    return null;
+                }
+
+                if (!File.Exists(dbTemplate.TemplatePath))
+                {
+                    return null;
+                }
+
+                // Get dimensions from layout
+                var width = dbTemplate.Layout?.Width ?? 0;
+                var height = dbTemplate.Layout?.Height ?? 0;
+                var photoCount = dbTemplate.Layout?.PhotoCount ?? 1;
+
+                if (width == 0 || height == 0)
+                {
+                    return null;
+                }
+
+                // Calculate display dimensions
+                var aspectRatio = (double)width / height;
+                var (displayWidth, displayHeight) = GetStandardDisplaySize(width, height);
+
+                // Create TemplateConfig for compatibility
+                var config = new TemplateConfig
+                {
+                    TemplateName = dbTemplate.Name,
+                    TemplateId = dbTemplate.Id.ToString(),
+                    Category = dbTemplate.CategoryName,
+                    Description = dbTemplate.Description,
+                    PhotoCount = photoCount,
+                    Dimensions = new TemplateDimensions
+                    {
+                        Width = width,
+                        Height = height
+                    },
+                    PhotoAreas = dbTemplate.PhotoAreas.Select(pa => new PhotoArea
+                    {
+                        Id = pa.Id,
+                        X = pa.X,
+                        Y = pa.Y,
+                        Width = pa.Width,
+                        Height = pa.Height
+                    }).ToList()
+                };
+
+                var templateInfo = new TemplateInfo
+                {
+                    Config = config,
+                    PreviewImagePath = dbTemplate.PreviewPath,
+                    TemplateImagePath = dbTemplate.TemplatePath,
+                    FolderPath = dbTemplate.FolderPath,
+                    TemplateName = dbTemplate.Name,
+                    Category = dbTemplate.CategoryName.ToLowerInvariant(),
+                    Description = dbTemplate.Description,
+                    IsSeasonalTemplate = dbTemplate.Category?.IsSeasonalCategory ?? false,
+                    SeasonPriority = dbTemplate.Category?.SeasonalPriority ?? 0,
+
+                    // Display properties
+                    DisplayWidth = displayWidth,
+                    DisplayHeight = displayHeight,
+                    DimensionText = $"{width} × {height}",
+                    AspectRatio = aspectRatio,
+                    AspectRatioText = GetAspectRatioText(aspectRatio),
+                    TemplateSize = GetTemplateSizeCategory(aspectRatio)
+                };
+
+                return templateInfo;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error converting template {dbTemplate.Name}: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Gets standard display size based on aspect ratio
+        /// </summary>
+        private (double width, double height) GetStandardDisplaySize(int actualWidth, int actualHeight)
+        {
+            const double WideWidth = 300.0;
+            const double WideHeight = 210.0;
+            const double TallWidth = 280.0;
+            const double TallHeight = 210.0;
+            const double SquareWidth = 290.0;
+            const double SquareHeight = 210.0;
+
+            if (actualWidth <= 0 || actualHeight <= 0)
+            {
+                return (SquareWidth, SquareHeight);
+            }
+
+            double aspectRatio = (double)actualWidth / actualHeight;
+
+            if (aspectRatio < 0.6) // Tall templates (strips, tall)
+            {
+                return (TallWidth, TallHeight);
+            }
+            else if (aspectRatio > 1.8) // Wide templates 
+            {
+                return (WideWidth, WideHeight);
+            }
+            else // Square-ish templates (4x6, square)
+            {
+                return (SquareWidth, SquareHeight);
+            }
+        }
+
+        /// <summary>
+        /// Gets aspect ratio text for display
+        /// </summary>
+        private string GetAspectRatioText(double aspectRatio)
+        {
+            if (aspectRatio < 0.6) return "Tall";
+            if (aspectRatio > 1.8) return "Wide";
+            return "Square";
+        }
+
+        /// <summary>
+        /// Gets template size category
+        /// </summary>
+        private string GetTemplateSizeCategory(double aspectRatio)
+        {
+            if (aspectRatio < 0.6) return "tall";
+            if (aspectRatio > 1.8) return "wide";
+            return "square";
+        }
+
+        /// <summary>
+        /// Validates if template is valid for the selected product
+        /// </summary>
+        private bool IsTemplateValidForProduct(TemplateInfo template, ProductInfo product)
+        {
+            // For now, allow all templates regardless of product type
+            // The database design assumes templates are categorized differently (Classic, Fun, Holiday, etc.)
+            // rather than by product type (strips, 4x6, phone)
+            return true;
         }
 
         #endregion

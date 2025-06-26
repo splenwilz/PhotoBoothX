@@ -237,8 +237,8 @@
                                         BlurRadius="15"/>
                     </Border.Effect>
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock Name="TemplateDimensionsText" 
-                                   Text="Dimensions: 591x1772" 
+                        <TextBlock Name="TemplateDimensionsTextBlock" 
+                                   Text="{Binding TemplateDimensionsText, FallbackValue='Dimensions: Loading...'}" 
                                    FontSize="16" 
                                    Foreground="White"
                                    FontWeight="Bold"

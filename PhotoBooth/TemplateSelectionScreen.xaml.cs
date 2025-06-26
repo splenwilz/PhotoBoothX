@@ -8,10 +8,8 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
-using System.Windows.Shapes;
 using System.Windows.Threading;
 using Photobooth.Models;
 using Photobooth.Services;
@@ -58,22 +56,18 @@ namespace Photobooth
 
 
 
+
+
         #endregion
 
         #region Private Fields
 
         private List<TemplateInfo> allTemplates = new List<TemplateInfo>();
         private List<TemplateInfo> filteredTemplates = new List<TemplateInfo>();
-        private string currentCategory = "All";
-        private int currentPage = 0;
-        private int totalPages = 0;
         private ProductInfo? selectedProduct;
         private readonly IDatabaseService _databaseService;
 
-        // Animation resources
-        private readonly List<Storyboard> activeStoryboards = new List<Storyboard>();
-        private DispatcherTimer? animationTimer;
-        private Random animationRandom = new Random();
+
 
         // File system watcher for automatic template refresh
         private FileSystemWatcher? templateWatcher;
@@ -112,7 +106,6 @@ namespace Photobooth
             {
                 Console.WriteLine("=== TEMPLATE SELECTION SCREEN LOADED ===");
                 Console.WriteLine($"Selected product: {selectedProduct?.Type ?? "NULL"}");
-                InitializeAnimations();
                 LoadTemplates();
             }
             catch (Exception ex)
@@ -139,30 +132,7 @@ namespace Photobooth
             }
         }
 
-        /// <summary>
-        /// Sets the selected category to filter templates
-        /// </summary>
-        public void SetSelectedCategory(TemplateCategory category)
-        {
-            try
-            {
-                if (category != null)
-                {
-                    currentCategory = category.Name;
-                    System.Diagnostics.Debug.WriteLine($"Selected category: {currentCategory}");
-                    
-                    // Apply the filter with the selected category
-                    ApplyFilter(currentCategory);
-                    
-                    // Update category buttons to reflect selection
-                    UpdateCategoryButtons();
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Failed to set selected category: {ex.Message}");
-            }
-        }
+
 
         /// <summary>
         /// Sets up file system watcher to detect template changes
@@ -258,101 +228,61 @@ namespace Photobooth
         }
 
         /// <summary>
-        /// Loads all templates from the database
+        /// Loads templates from database without categorization
         /// </summary>
         private async void LoadTemplates()
         {
             try
             {
-                Console.WriteLine("=== STARTING TEMPLATE LOADING FROM DATABASE ===");
+                Console.WriteLine("=== LOADING TEMPLATES BY TYPE ===");
+                Console.WriteLine($"Selected product: {selectedProduct?.Type ?? "NULL"}");
+
                 allTemplates.Clear();
 
-                // Set to show all templates since category filtering UI is removed
-                currentCategory = "All";
+                // Map product type to template type
+                TemplateType templateType = GetTemplateTypeFromProduct(selectedProduct);
+                Console.WriteLine($"Template type: {templateType}");
 
-                // Load templates from database
-                var result = await _databaseService.GetAllTemplatesAsync(showAllSeasons: false);
-                Console.WriteLine($"Database query result: Success={result.Success}");
+                // Load templates from database filtered by type
+                var dbTemplates = await _databaseService.GetTemplatesByTypeAsync(templateType);
+                Console.WriteLine($"Database returned: {dbTemplates.Success}, Templates: {dbTemplates.Data?.Count() ?? 0}");
 
-                if (!result.Success)
+                if (dbTemplates.Success && dbTemplates.Data != null)
                 {
-                    Console.WriteLine($"Failed to load templates from database: {result.ErrorMessage}");
-                    ShowErrorMessage($"Failed to load templates: {result.ErrorMessage}");
-                    ApplyFilter(currentCategory);
-                    return;
-                }
-
-                if (result.Data == null || !result.Data.Any())
-                {
-                    Console.WriteLine("No templates found in database");
-                    ShowErrorMessage("No templates found. Please add templates through the admin panel.");
-                    ApplyFilter(currentCategory);
-                    return;
-                }
-
-                Console.WriteLine($"Loaded {result.Data.Count} templates from database");
-
-                // Convert database templates to TemplateInfo objects
-                var loadedTemplates = new List<TemplateInfo>();
-                foreach (var dbTemplate in result.Data)
-                {
-                    try
+                    foreach (var dbTemplate in dbTemplates.Data)
                     {
-                        Console.WriteLine($"Processing template: {dbTemplate.Name} (Category: {dbTemplate.CategoryName})");
-                        
                         var templateInfo = ConvertDatabaseTemplateToTemplateInfo(dbTemplate);
-                        
                         if (templateInfo != null)
                         {
                             var isValid = IsTemplateValidForProduct(templateInfo);
-                            Console.WriteLine($"Template '{templateInfo.TemplateName}' is valid for current product: {isValid}");
-                            Console.WriteLine($"  - Template category: {templateInfo.Category}");
-                            Console.WriteLine($"  - Selected product: {selectedProduct?.Type ?? "NULL"}");
+                            Console.WriteLine($"Template: {templateInfo.TemplateName}, Valid: {isValid}");
                             
                             if (isValid)
                             {
-                                loadedTemplates.Add(templateInfo);
-                                Console.WriteLine($"✓ Added template: {templateInfo.TemplateName}");
-                            }
-                            else
-                            {
-                                Console.WriteLine($"✗ Skipped template: {templateInfo.TemplateName} (not valid for product)");
+                                allTemplates.Add(templateInfo);
                             }
                         }
-                        else
-                        {
-                            Console.WriteLine($"✗ Failed to convert template: {dbTemplate.Name}");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"ERROR processing template {dbTemplate.Name}: {ex.Message}");
-                        System.Diagnostics.Debug.WriteLine($"Failed to process template {dbTemplate.Name}: {ex.Message}");
                     }
                 }
 
-                Console.WriteLine($"Loaded {loadedTemplates.Count} valid templates before seasonal prioritization");
+                Console.WriteLine($"Total valid templates loaded: {allTemplates.Count}");
 
                 // Apply seasonal prioritization
-                allTemplates = ApplySeasonalPrioritization(loadedTemplates);
-                Console.WriteLine($"After seasonal prioritization: {allTemplates.Count} templates");
+                allTemplates = ApplySeasonalPrioritization(allTemplates);
 
-                foreach (var template in allTemplates)
-                {
-                    Console.WriteLine($"  - {template.TemplateName} (Category: {template.Category})");
-                }
+                // Show all templates without filtering
+                filteredTemplates = new List<TemplateInfo>(allTemplates);
+                
+                // Update display
+                UpdateTemplateDisplay();
 
-                // Apply current filter and update display
-                Console.WriteLine($"Applying filter for category: '{currentCategory}'");
-                ApplyFilter(currentCategory);
-                Console.WriteLine("=== TEMPLATE LOADING COMPLETE ===");
+                Console.WriteLine("=== TEMPLATE LOADING COMPLETED ===");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"CRITICAL ERROR in template loading: {ex.Message}");
-                Console.WriteLine($"Stack trace: {ex.StackTrace}");
+                Console.WriteLine($"ERROR loading templates: {ex.Message}");
                 System.Diagnostics.Debug.WriteLine($"Template loading failed: {ex.Message}");
-                ShowErrorMessage("Failed to load templates.");
+                ShowErrorMessage($"Failed to load templates: {ex.Message}");
             }
         }
 
@@ -544,6 +474,22 @@ namespace Photobooth
         }
 
         /// <summary>
+        /// Maps product type to template type for filtering
+        /// </summary>
+        private TemplateType GetTemplateTypeFromProduct(ProductInfo? product)
+        {
+            if (product == null) return TemplateType.Strip; // Default to strips
+
+            return product.Type?.ToLowerInvariant() switch
+            {
+                "strips" or "photostrips" => TemplateType.Strip,
+                "4x6" or "photo4x6" => TemplateType.Photo4x6,
+                "phone" or "smartphoneprint" => TemplateType.Photo4x6, // Phone prints use 4x6 templates
+                _ => TemplateType.Strip // Default to strips
+            };
+        }
+
+        /// <summary>
         /// Gets standard display size based on aspect ratio - THREE SIZES ONLY
         /// </summary>
         private (double width, double height) GetStandardDisplaySize(int actualWidth, int actualHeight)
@@ -680,68 +626,10 @@ namespace Photobooth
 
         #region Filtering and Pagination
 
-        /// <summary>
-        /// Applies category filter and updates display
-        /// </summary>
-        private void ApplyFilter(string category)
-        {
-            try
-            {
-                Console.WriteLine($"=== APPLYING FILTER ===");
-                Console.WriteLine($"Filter category: '{category}'");
-                Console.WriteLine($"All templates count: {allTemplates.Count}");
 
-                currentCategory = category;
-
-                if (category.ToLowerInvariant() == "all")
-                {
-                    filteredTemplates = new List<TemplateInfo>(allTemplates);
-                    Console.WriteLine($"Showing all templates: {filteredTemplates.Count}");
-                }
-                else
-                {
-                    filteredTemplates = allTemplates
-                        .Where(t => string.Equals(t.Category, category, StringComparison.OrdinalIgnoreCase))
-                        .ToList();
-                    Console.WriteLine($"Filtered templates for '{category}': {filteredTemplates.Count}");
-                    
-                    // Debug: show which templates matched
-                    foreach (var template in filteredTemplates)
-                    {
-                        Console.WriteLine($"  - Matched: {template.TemplateName} (Category: '{template.Category}')");
-                    }
-                    
-                    // Debug: show which templates didn't match
-                    var nonMatching = allTemplates.Where(t => 
-                        !string.Equals(t.Category, category, StringComparison.OrdinalIgnoreCase)).ToList();
-                    Console.WriteLine($"Non-matching templates: {nonMatching.Count}");
-                    foreach (var template in nonMatching)
-                    {
-                        Console.WriteLine($"  - No match: {template.TemplateName} (Category: '{template.Category}')");
-                    }
-                }
-
-                // Reset to first page
-                currentPage = 0;
-                totalPages = Math.Max(1, (int)Math.Ceiling((double)filteredTemplates.Count / Constants.TemplatesPerPage));
-                Console.WriteLine($"Total pages calculated: {totalPages}");
-
-                Console.WriteLine($"Updating UI components...");
-                UpdateCategoryButtons();
-                UpdateTemplateDisplay();
-                UpdatePagination();
-                Console.WriteLine("=== FILTER APPLIED ===");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"ERROR in ApplyFilter: {ex.Message}");
-                Console.WriteLine($"Stack trace: {ex.StackTrace}");
-                System.Diagnostics.Debug.WriteLine($"Filter application failed: {ex.Message}");
-            }
-        }
 
         /// <summary>
-        /// Updates the template display for current page
+        /// Updates the template display for current page - unified view without categories
         /// </summary>
         private void UpdateTemplateDisplay()
         {
@@ -752,13 +640,7 @@ namespace Photobooth
                 // Clear existing content
                 CategorizedTemplatesContainer.Children.Clear();
 
-                // Group templates by category
-                var groupedTemplates = filteredTemplates
-                    .GroupBy(t => t.Category)
-                    .OrderBy(g => g.Key)
-                    .ToList();
-
-                if (!groupedTemplates.Any())
+                if (!filteredTemplates.Any())
                 {
                     // Show empty state
                     var emptyMessage = new TextBlock
@@ -777,85 +659,21 @@ namespace Photobooth
                     return;
                 }
 
-                int totalTemplateCount = 0;
-
-                // Create sections for each category
-                foreach (var categoryGroup in groupedTemplates)
-                {
-                    var categoryName = categoryGroup.Key;
-                    var categoryTemplates = categoryGroup.ToList();
-                    totalTemplateCount += categoryTemplates.Count;
-
-                    // Create category header
-                    var categoryHeader = new TextBlock
-                    {
-                        Text = categoryName,
-                        FontSize = 28, // Smaller header
-                        FontWeight = FontWeights.Bold,
-                        Foreground = Brushes.White,
-                        Margin = new Thickness(15, 25, 15, 15), // Add left/right margin to align with templates
-                        HorizontalAlignment = HorizontalAlignment.Left
-                    };
-                    
-                    // Add gradient underline effect
-                    var headerContainer = new StackPanel();
-                    headerContainer.Children.Add(categoryHeader);
-                    
-                    var underline = new Border
-                    {
-                        Height = 3,
-                        Width = 150, // Smaller underline
-                        HorizontalAlignment = HorizontalAlignment.Left,
-                        CornerRadius = new CornerRadius(2),
-                        Background = new LinearGradientBrush(
-                            Color.FromRgb(168, 85, 247), // Purple
-                            Color.FromRgb(59, 130, 246), // Blue
-                            new Point(0, 0), new Point(1, 0)),
-                        Margin = new Thickness(15, -8, 15, 15) // Add left/right margin to align with templates
-                    };
-                    headerContainer.Children.Add(underline);
-                    
-                    CategorizedTemplatesContainer.Children.Add(headerContainer);
-
-                    // Create template grid for this category
-                    var templateGrid = CreateTemplateGrid(categoryTemplates);
-                    CategorizedTemplatesContainer.Children.Add(templateGrid);
-                }
+                // Create a single unified grid for all templates
+                var templateGrid = CreateTemplateGrid(filteredTemplates);
+                CategorizedTemplatesContainer.Children.Add(templateGrid);
 
                 // Update template count info
                 if (TemplateCountInfo != null)
-                {
-                    var categoryCount = groupedTemplates.Count;
-                    TemplateCountInfo.Text = $"{totalTemplateCount} templates in {categoryCount} categories";
-                }
-
-                Console.WriteLine($"=== CATEGORIZED TEMPLATE DISPLAY UPDATED ===");
-                Console.WriteLine($"Categories: {groupedTemplates.Count}, Total templates: {totalTemplateCount}");
+                    TemplateCountInfo.Text = $"{filteredTemplates.Count} templates available";
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR in UpdateTemplateDisplay: {ex.Message}");
-                Console.WriteLine($"Stack trace: {ex.StackTrace}");
                 System.Diagnostics.Debug.WriteLine($"Template display update failed: {ex.Message}");
             }
         }
 
-        /// <summary>
-        /// Updates category button visual states
-        /// </summary>
-        private void UpdateCategoryButtons()
-        {
-            try
-            {
-                // Category buttons have been removed from UI - no longer need to update them
-                // This method is kept for compatibility but does nothing
-                System.Diagnostics.Debug.WriteLine($"Current category: {currentCategory} (UI buttons removed)");
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Category button update failed: {ex.Message}");
-            }
-        }
+
 
         /// <summary>
         /// Creates a template grid for a category's templates
@@ -954,21 +772,7 @@ namespace Photobooth
             return container;
         }
 
-        /// <summary>
-        /// Updates pagination display (deprecated for categorized view)
-        /// </summary>
-        private void UpdatePagination()
-        {
-            try
-            {
-                // Pagination is no longer used in categorized view
-                // This method is kept for compatibility
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Pagination update failed: {ex.Message}");
-            }
-        }
+
 
         #endregion
 
@@ -989,21 +793,9 @@ namespace Photobooth
             }
         }
 
-        /// <summary>
-        /// Handles category button clicks (DEPRECATED - category buttons removed from UI)
-        /// </summary>
-        private void CategoryButton_Click(object sender, RoutedEventArgs e)
-        {
-            try
-            {
-                // Category buttons have been removed from UI - this method is kept for compatibility
-                System.Diagnostics.Debug.WriteLine("CategoryButton_Click called but category buttons have been removed");
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Category button error: {ex.Message}");
-            }
-        }
+
+
+
 
         /// <summary>
         /// Handles template card selection
@@ -1051,45 +843,7 @@ namespace Photobooth
             }
         }
 
-        /// <summary>
-        /// Handles previous page navigation
-        /// </summary>
-        private void PreviousPage_Click(object sender, RoutedEventArgs e)
-        {
-            try
-            {
-                if (currentPage > 0)
-                {
-                    currentPage--;
-                    UpdateTemplateDisplay();
-                    UpdatePagination();
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Previous page error: {ex.Message}");
-            }
-        }
 
-        /// <summary>
-        /// Handles next page navigation
-        /// </summary>
-        private void NextPage_Click(object sender, RoutedEventArgs e)
-        {
-            try
-            {
-                if (currentPage < totalPages - 1)
-                {
-                    currentPage++;
-                    UpdateTemplateDisplay();
-                    UpdatePagination();
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Next page error: {ex.Message}");
-            }
-        }
 
 
 
@@ -1141,116 +895,7 @@ namespace Photobooth
             }
         }
 
-        /// <summary>
-        /// Initializes floating orb animations
-        /// </summary>
-        private void InitializeAnimations()
-        {
-            try
-            {
-                // Initialize floating orbs
-                var random = new Random();
-                foreach (Ellipse orb in FloatingOrbsCanvas.Children)
-                {
-                    var translateTransform = new TranslateTransform();
-                    orb.RenderTransform = translateTransform;
 
-                    var storyboard = new Storyboard();
-
-                    var yAnimation = new DoubleAnimation
-                    {
-                        From = 0,
-                        To = random.Next(-20, -5),
-                        Duration = TimeSpan.FromSeconds(3 + random.NextDouble() * 2),
-                        AutoReverse = true,
-                        RepeatBehavior = RepeatBehavior.Forever,
-                        EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
-                    };
-
-                    var xAnimation = new DoubleAnimation
-                    {
-                        From = 0,
-                        To = random.Next(-10, 10),
-                        Duration = TimeSpan.FromSeconds(4 + random.NextDouble() * 2),
-                        AutoReverse = true,
-                        RepeatBehavior = RepeatBehavior.Forever,
-                        EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
-                    };
-
-                    Storyboard.SetTarget(yAnimation, translateTransform);
-                    Storyboard.SetTargetProperty(yAnimation, new PropertyPath("Y"));
-                    Storyboard.SetTarget(xAnimation, translateTransform);
-                    Storyboard.SetTargetProperty(xAnimation, new PropertyPath("X"));
-
-                    storyboard.Children.Add(yAnimation);
-                    storyboard.Children.Add(xAnimation);
-                    activeStoryboards.Add(storyboard);
-                    storyboard.Begin();
-                }
-
-                // Create and animate floating particles
-                CreateFloatingParticles();
-                StartParticleAnimations();
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Animation initialization failed: {ex.Message}");
-            }
-        }
-
-        /// <summary>
-        /// Creates floating particles as in the original design
-        /// </summary>
-        private void CreateFloatingParticles()
-        {
-            for (int i = 0; i < 20; i++)
-            {
-                var particle = new Ellipse
-                {
-                    Width = 8,
-                    Height = 8,
-                    Fill = new SolidColorBrush(Colors.White) { Opacity = 0.3 },
-                };
-
-                Canvas.SetLeft(particle, animationRandom.Next(0, 1920));
-                Canvas.SetTop(particle, animationRandom.Next(0, 1080));
-
-                ParticlesCanvas.Children.Add(particle);
-            }
-        }
-
-        /// <summary>
-        /// Animates floating particles with continuous movement
-        /// </summary>
-        private void StartParticleAnimations()
-        {
-            animationTimer = new DispatcherTimer
-            {
-                Interval = TimeSpan.FromMilliseconds(50)
-            };
-
-            animationTimer.Tick += (s, e) =>
-            {
-                foreach (Ellipse particle in ParticlesCanvas.Children)
-                {
-                    var left = Canvas.GetLeft(particle);
-                    var top = Canvas.GetTop(particle);
-
-                    // Move particle slowly upward and slightly to the right
-                    Canvas.SetTop(particle, top - 0.5);
-                    Canvas.SetLeft(particle, left + 0.2);
-
-                    // Reset particle position when it goes off screen
-                    if (top < -10 || left > ActualWidth + 10)
-                    {
-                        Canvas.SetTop(particle, ActualHeight + 10);
-                        Canvas.SetLeft(particle, animationRandom.Next(-10, (int)ActualWidth));
-                    }
-                }
-            };
-
-            animationTimer.Start();
-        }
 
         #endregion
 
@@ -1291,17 +936,6 @@ namespace Photobooth
                 // Stop refresh delay timer
                 refreshDelayTimer?.Stop();
                 refreshDelayTimer = null;
-
-                // Stop particle animations
-                animationTimer?.Stop();
-                animationTimer = null;
-
-                // Stop animations
-                foreach (var storyboard in activeStoryboards)
-                {
-                    storyboard.Stop();
-                }
-                activeStoryboards.Clear();
             }
             catch (Exception ex)
             {

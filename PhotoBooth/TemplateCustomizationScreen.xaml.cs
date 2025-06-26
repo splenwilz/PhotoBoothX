@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
@@ -18,7 +19,7 @@ namespace Photobooth
     /// <summary>
     /// Template customization screen - allows users to customize templates with icons, filters, and text overlays
     /// </summary>
-    public partial class TemplateCustomizationScreen : UserControl, IDisposable
+    public partial class TemplateCustomizationScreen : UserControl, IDisposable, INotifyPropertyChanged
     {
         #region Private Fields
 
@@ -32,6 +33,29 @@ namespace Photobooth
         // Animation fields
         private DispatcherTimer? animationTimer;
         private Random random = new Random();
+
+        // Data binding properties
+        private string _templateDimensionsText = "Dimensions: Loading...";
+
+        #endregion
+
+        #region Public Properties
+
+        /// <summary>
+        /// Template dimensions text for data binding
+        /// </summary>
+        public string TemplateDimensionsText
+        {
+            get => _templateDimensionsText;
+            set
+            {
+                if (_templateDimensionsText != value)
+                {
+                    _templateDimensionsText = value;
+                    OnPropertyChanged(nameof(TemplateDimensionsText));
+                }
+            }
+        }
 
         #endregion
 
@@ -54,6 +78,11 @@ namespace Photobooth
         /// </summary>
         public event EventHandler<PhotoSessionStartEventArgs>? PhotoSessionStartRequested;
 
+        /// <summary>
+        /// Property changed event for data binding
+        /// </summary>
+        public event PropertyChangedEventHandler? PropertyChanged;
+
         #endregion
 
         #region Constructor
@@ -65,6 +94,9 @@ namespace Photobooth
             
             InitializeComponent();
             InitializeAnimations();
+            
+            // Set the data context for binding
+            DataContext = this;
         }
 
         #endregion
@@ -207,6 +239,9 @@ namespace Photobooth
             _currentTemplate = template;
             _currentProduct = product;
             
+            // Reset dimensions text while loading
+            TemplateDimensionsText = "Dimensions: Loading...";
+            
             LoadTemplatePreview();
         }
 
@@ -307,14 +342,14 @@ namespace Photobooth
                         }
                     }));
 
-                    // Update template dimensions display
-                    if (TemplateDimensionsText != null)
-                        TemplateDimensionsText.Text = $"Dimensions: {bitmap.PixelWidth}x{bitmap.PixelHeight}";
+                    // Update template dimensions display via data binding
+                    TemplateDimensionsText = $"Dimensions: {bitmap.PixelWidth}x{bitmap.PixelHeight}";
                 }
                 else
                 {
                     // Show placeholder if no preview available
                     TemplatePreviewImage.Source = null;
+                    TemplateDimensionsText = "Dimensions: Unknown";
                 }
             }
 
@@ -394,6 +429,15 @@ namespace Photobooth
                 // Clean up managed resources if needed
                 _disposed = true;
             }
+        }
+
+        #endregion
+
+        #region INotifyPropertyChanged Implementation
+
+        protected virtual void OnPropertyChanged(string propertyName)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
 
         #endregion

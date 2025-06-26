@@ -584,16 +584,17 @@
                             
                             <!-- Filter Controls Section -->
                             <StackPanel Grid.Column="2" Margin="16,0,0,0">
-                                <!-- Category and Sort Row -->
+                                <!-- Category, Template Type and Sort Row -->
                                 <Grid Margin="0,0,0,12">
                                     <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="*"/>
                                     </Grid.ColumnDefinitions>
                                     
                                     <!-- Category Filter -->
                                     <Border Grid.Column="0" Background="White" BorderBrush="#E5E7EB" 
-                                            BorderThickness="1" CornerRadius="8" Margin="0,0,8,0">
+                                            BorderThickness="1" CornerRadius="8" Margin="0,0,4,0">
                                         <Grid>
                                             <ComboBox Name="CategoryFilterComboBox" 
                                                      Background="Transparent" BorderThickness="0"
@@ -607,9 +608,27 @@
                                         </Grid>
                                     </Border>
                                     
-                                    <!-- Sort Options -->
+                                    <!-- Template Type Filter -->
                                     <Border Grid.Column="1" Background="White" BorderBrush="#E5E7EB" 
-                                            BorderThickness="1" CornerRadius="8" Margin="8,0,0,0">
+                                            BorderThickness="1" CornerRadius="8" Margin="4,0,4,0">
+                                        <Grid>
+                                            <ComboBox Name="TemplateTypeFilterComboBox" 
+                                                     Background="Transparent" BorderThickness="0"
+                                                     Padding="12,8" FontSize="13"
+                                                     SelectionChanged="TemplateTypeFilterComboBox_SelectionChanged">
+                                                <ComboBoxItem Content="All Types" Tag="All"/>
+                                                <ComboBoxItem Content="Strip" Tag="Strip"/>
+                                                <ComboBoxItem Content="4x6" Tag="Photo4x6"/>
+                                            </ComboBox>
+                                            <TextBlock Text="🎛" FontSize="12" Foreground="#9CA3AF" 
+                                                      IsHitTestVisible="False" HorizontalAlignment="Left" 
+                                                      VerticalAlignment="Center" Margin="12,0,0,0"/>
+                                        </Grid>
+                                    </Border>
+                                    
+                                    <!-- Sort Options -->
+                                    <Border Grid.Column="2" Background="White" BorderBrush="#E5E7EB" 
+                                            BorderThickness="1" CornerRadius="8" Margin="4,0,0,0">
                                         <Grid>
                                             <ComboBox Name="SortComboBox" 
                                                      Background="Transparent" BorderThickness="0"

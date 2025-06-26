@@ -4,7 +4,8 @@ on:
   push:
     branches:
       - production
-      - main  # Also trigger on main for testing
+      - main
+      - master  # Also trigger on main for testing
   pull_request:
     branches:
       - production
