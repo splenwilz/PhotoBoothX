@@ -87,9 +87,12 @@ namespace Photobooth
 
         #region Constructor
 
-        public TemplateCustomizationScreen()
+        /// <summary>
+        /// Constructor for dependency injection
+        /// </summary>
+        public TemplateCustomizationScreen(IDatabaseService databaseService)
         {
-            _databaseService = new DatabaseService();
+            _databaseService = databaseService ?? throw new ArgumentNullException(nameof(databaseService));
             _selectedCustomizations = new List<string>();
             
             InitializeComponent();
@@ -97,6 +100,13 @@ namespace Photobooth
             
             // Set the data context for binding
             DataContext = this;
+        }
+
+        /// <summary>
+        /// Constructor for design-time support
+        /// </summary>
+        public TemplateCustomizationScreen() : this(new DatabaseService())
+        {
         }
 
         #endregion

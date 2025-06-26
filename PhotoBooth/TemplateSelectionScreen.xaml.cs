@@ -66,6 +66,7 @@ namespace Photobooth
         private List<TemplateInfo> filteredTemplates = new List<TemplateInfo>();
         private ProductInfo? selectedProduct;
         private readonly IDatabaseService _databaseService;
+        private readonly ITemplateConversionService _templateConversionService;
 
 
 
@@ -82,9 +83,10 @@ namespace Photobooth
         /// <summary>
         /// Constructor - initializes the template selection screen
         /// </summary>
-        public TemplateSelectionScreen(IDatabaseService databaseService)
+        public TemplateSelectionScreen(IDatabaseService databaseService, ITemplateConversionService templateConversionService)
         {
             _databaseService = databaseService ?? throw new ArgumentNullException(nameof(databaseService));
+            _templateConversionService = templateConversionService ?? throw new ArgumentNullException(nameof(templateConversionService));
             InitializeComponent();
             this.Loaded += OnLoaded;
             InitializeTemplateWatcher();
@@ -93,7 +95,7 @@ namespace Photobooth
         /// <summary>
         /// Constructor for design-time support
         /// </summary>
-        public TemplateSelectionScreen() : this(new DatabaseService())
+        public TemplateSelectionScreen() : this(new DatabaseService(), new TemplateConversionService())
         {
         }
 
@@ -288,97 +290,11 @@ namespace Photobooth
 
         /// <summary>
         /// Converts a database Template object to a TemplateInfo object for UI display
+        /// Delegates to TemplateConversionService for consistency
         /// </summary>
         private TemplateInfo? ConvertDatabaseTemplateToTemplateInfo(Template dbTemplate)
         {
-            try
-            {
-                Console.WriteLine($"Converting template: {dbTemplate.Name}");
-                Console.WriteLine($"  - Preview path: {dbTemplate.PreviewPath}");
-                Console.WriteLine($"  - Template path: {dbTemplate.TemplatePath}");
-                Console.WriteLine($"  - Layout: {dbTemplate.Layout?.Name ?? "NULL"}");
-
-                // Check if required files exist
-                if (!File.Exists(dbTemplate.PreviewPath))
-                {
-                    Console.WriteLine($"Preview image missing: {dbTemplate.PreviewPath}");
-                    return null;
-                }
-
-                if (!File.Exists(dbTemplate.TemplatePath))
-                {
-                    Console.WriteLine($"Template image missing: {dbTemplate.TemplatePath}");
-                    return null;
-                }
-
-                // Get dimensions from layout
-                var width = dbTemplate.Layout?.Width ?? 0;
-                var height = dbTemplate.Layout?.Height ?? 0;
-                var photoCount = dbTemplate.Layout?.PhotoCount ?? 1;
-
-                if (width == 0 || height == 0)
-                {
-                    Console.WriteLine($"Invalid template dimensions: {width}x{height}");
-                    return null;
-                }
-
-                // Calculate display dimensions
-                var aspectRatio = (double)width / height;
-                var (displayWidth, displayHeight) = GetStandardDisplaySize(width, height);
-
-                // Create TemplateConfig for compatibility
-                var config = new TemplateConfig
-                {
-                    TemplateName = dbTemplate.Name,
-                    TemplateId = dbTemplate.Id.ToString(),
-                    Category = dbTemplate.CategoryName,
-                    Description = dbTemplate.Description,
-                    PhotoCount = photoCount,
-                    Dimensions = new TemplateDimensions
-                    {
-                        Width = width,
-                        Height = height
-                    },
-                    PhotoAreas = dbTemplate.PhotoAreas.Select(pa => new PhotoArea
-                    {
-                        Id = pa.Id,
-                        X = pa.X,
-                        Y = pa.Y,
-                        Width = pa.Width,
-                        Height = pa.Height
-                    }).ToList()
-                };
-
-                var templateInfo = new TemplateInfo
-                {
-                    Config = config,
-                    PreviewImagePath = dbTemplate.PreviewPath,
-                    TemplateImagePath = dbTemplate.TemplatePath,
-                    FolderPath = dbTemplate.FolderPath,
-                    TemplateName = dbTemplate.Name,
-                    Category = dbTemplate.CategoryName.ToLowerInvariant(),
-                    Description = dbTemplate.Description,
-                    IsSeasonalTemplate = dbTemplate.Category?.IsSeasonalCategory ?? false,
-                    SeasonPriority = dbTemplate.Category?.SeasonalPriority ?? 0,
-
-                    // Display properties
-                    DisplayWidth = displayWidth,
-                    DisplayHeight = displayHeight,
-                    DimensionText = $"{width} × {height}",
-                    AspectRatio = aspectRatio,
-                    AspectRatioText = GetAspectRatioText(aspectRatio),
-                    TemplateSize = GetTemplateSizeCategory(aspectRatio)
-                };
-
-                Console.WriteLine($"Successfully converted template: {templateInfo.TemplateName}");
-                return templateInfo;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error converting template {dbTemplate.Name}: {ex.Message}");
-                System.Diagnostics.Debug.WriteLine($"Error converting template {dbTemplate.Name}: {ex.Message}");
-                return null;
-            }
+            return _templateConversionService.ConvertDatabaseTemplateToTemplateInfo(dbTemplate);
         }
 
         /// <summary>
@@ -491,56 +407,29 @@ namespace Photobooth
 
         /// <summary>
         /// Gets standard display size based on aspect ratio - THREE SIZES ONLY
+        /// Delegates to TemplateConversionService for consistency
         /// </summary>
         private (double width, double height) GetStandardDisplaySize(int actualWidth, int actualHeight)
         {
-            try
-            {
-                if (actualWidth <= 0 || actualHeight <= 0)
-                {
-                    return (Constants.SquareWidth, Constants.SquareHeight);
-                }
-
-                double aspectRatio = (double)actualWidth / actualHeight;
-
-                if (aspectRatio > 1.3) // Wide format (4x6, landscape)
-                {
-                    return (Constants.WideWidth, Constants.WideHeight);
-                }
-                else if (aspectRatio < 0.8) // Tall format (strips)
-                {
-                    return (Constants.TallWidth, Constants.TallHeight);
-                }
-                else // Square-ish format
-                {
-                    return (Constants.SquareWidth, Constants.SquareHeight);
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error getting standard display size: {ex.Message}");
-                return (Constants.SquareWidth, Constants.SquareHeight);
-            }
+            return _templateConversionService.GetStandardDisplaySize(actualWidth, actualHeight);
         }
 
         /// <summary>
         /// Gets human-readable aspect ratio description
+        /// Delegates to TemplateConversionService for consistency
         /// </summary>
         private string GetAspectRatioText(double aspectRatio)
         {
-            if (aspectRatio > 1.3) return "Wide";
-            if (aspectRatio < 0.8) return "Tall";
-            return "Square";
+            return _templateConversionService.GetAspectRatioText(aspectRatio);
         }
 
         /// <summary>
         /// Gets template size category for CSS-like styling
+        /// Delegates to TemplateConversionService for consistency
         /// </summary>
         private string GetTemplateSizeCategory(double aspectRatio)
         {
-            if (aspectRatio > 1.3) return "wide";
-            if (aspectRatio < 0.8) return "tall";
-            return "square";
+            return _templateConversionService.GetTemplateSizeCategory(aspectRatio);
         }
 
         /// <summary>
@@ -564,27 +453,11 @@ namespace Photobooth
 
         /// <summary>
         /// Checks if template is valid for the selected product type
+        /// Delegates to TemplateConversionService for consistency
         /// </summary>
         private bool IsTemplateValidForProduct(TemplateInfo template)
         {
-            Console.WriteLine($"--- Validating template for product ---");
-            Console.WriteLine($"Template: {template.TemplateName}");
-            Console.WriteLine($"Template category: '{template.Category}'");
-            Console.WriteLine($"Selected product: {selectedProduct?.Type ?? "NULL"}");
-
-            if (selectedProduct == null) 
-            {
-                Console.WriteLine("No selected product - returning true");
-                return true;
-            }
-
-            // For now, allow all templates regardless of product type
-            // The database design assumes templates are categorized differently (Classic, Fun, Holiday, etc.)
-            // rather than by product type (strips, 4x6, phone)
-            // Template layouts determine the product compatibility
-            
-            Console.WriteLine("Template valid for product: true (allowing all templates for now)");
-            return true;
+            return _templateConversionService.IsTemplateValidForProduct(template, selectedProduct);
         }
 
         /// <summary>
