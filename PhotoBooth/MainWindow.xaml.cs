@@ -284,19 +284,19 @@ namespace Photobooth
 
                 if (templateSelectionScreen == null)
                 {
-                    Console.WriteLine("Creating new TemplateSelectionScreen...");
+                    LoggingService.Application.Debug("Creating new TemplateSelectionScreen");
                     templateSelectionScreen = new TemplateSelectionScreen(_databaseService, _templateConversionService);
                     
                     // Subscribe to events
-                    Console.WriteLine("Subscribing to TemplateSelectionScreen events...");
+                    LoggingService.Application.Debug("Subscribing to TemplateSelectionScreen events");
                     templateSelectionScreen.BackButtonClicked += TemplateSelectionScreen_BackButtonClicked;
                     templateSelectionScreen.TemplateSelected += TemplateSelectionScreen_TemplateSelected;
 
-                    Console.WriteLine("TemplateSelectionScreen events subscribed successfully");
+                    LoggingService.Application.Debug("TemplateSelectionScreen events subscribed successfully");
                 }
                 else
                 {
-                    Console.WriteLine("Using existing TemplateSelectionScreen");
+                    LoggingService.Application.Debug("Using existing TemplateSelectionScreen");
                 }
 
                 // Set the product type for template filtering
@@ -326,13 +326,13 @@ namespace Photobooth
         {
             try
             {
-                Console.WriteLine("=== NAVIGATE TO TEMPLATE CUSTOMIZATION ===");
-                Console.WriteLine($"Template: {template?.TemplateName ?? "NULL"}");
-                Console.WriteLine($"Current Product: {currentProduct?.Name ?? "NULL"}");
+                LoggingService.Application.Debug("Navigating to template customization",
+                    ("TemplateName", template?.TemplateName ?? "NULL"),
+                    ("CurrentProduct", currentProduct?.Name ?? "NULL"));
                 
                 if (template == null)
                 {
-                    Console.WriteLine("ERROR: Template is null, cannot navigate to customization");
+                    LoggingService.Application.Warning("Template is null, cannot navigate to customization - falling back");
                     // Fallback to template selection if template is null
                     if (currentProduct != null)
                     {
@@ -351,42 +351,41 @@ namespace Photobooth
 
                 if (templateCustomizationScreen == null)
                 {
-                    Console.WriteLine("Creating new TemplateCustomizationScreen...");
+                    LoggingService.Application.Debug("Creating new TemplateCustomizationScreen");
                     templateCustomizationScreen = new TemplateCustomizationScreen(_databaseService);
                     
                     // Subscribe to events
                     templateCustomizationScreen.BackButtonClicked += TemplateCustomizationScreen_BackButtonClicked;
                     templateCustomizationScreen.TemplateSelected += TemplateCustomizationScreen_TemplateSelected;
                     templateCustomizationScreen.PhotoSessionStartRequested += TemplateCustomizationScreen_PhotoSessionStartRequested;
-                    Console.WriteLine("TemplateCustomizationScreen created and events subscribed");
+                    LoggingService.Application.Debug("TemplateCustomizationScreen created and events subscribed");
                 }
                 else
                 {
-                    Console.WriteLine("Using existing TemplateCustomizationScreen");
+                    LoggingService.Application.Debug("Using existing TemplateCustomizationScreen");
                 }
 
                 // Convert TemplateInfo to Template for customization screen
-                Console.WriteLine("Converting TemplateInfo to Template...");
+                LoggingService.Application.Debug("Converting TemplateInfo to Template");
                 var dbTemplate = ConvertTemplateInfoToTemplate(template);
-                Console.WriteLine($"Converted template: Name={dbTemplate.Name}, ID={dbTemplate.Id}");
+                LoggingService.Application.Debug("Template converted successfully",
+                    ("ConvertedName", dbTemplate.Name),
+                    ("ConvertedId", dbTemplate.Id));
                 
-                Console.WriteLine("Setting template on customization screen...");
+                LoggingService.Application.Debug("Setting template on customization screen");
                 templateCustomizationScreen.SetTemplate(dbTemplate, currentProduct);
 
                 // Update UI
-                Console.WriteLine("Updating CurrentScreenContainer.Content...");
+                LoggingService.Application.Debug("Updating UI container");
                 CurrentScreenContainer.Content = templateCustomizationScreen;
-                Console.WriteLine("UI updated successfully");
+                LoggingService.Application.Debug("UI updated successfully");
                 
                 LoggingService.Application.Information("Template customization screen with template loaded successfully");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"EXCEPTION in NavigateToTemplateCustomizationWithTemplate: {ex.Message}");
-                Console.WriteLine($"Stack trace: {ex.StackTrace}");
                 LoggingService.Application.Error("Template customization navigation failed", ex,
                     ("TemplateName", template?.TemplateName ?? "Unknown"));
-                System.Diagnostics.Debug.WriteLine($"Template customization navigation failed: {ex.Message}");
                 // Fallback to template selection if customization navigation fails
                 if (currentProduct != null)
                 {
@@ -402,7 +401,7 @@ namespace Photobooth
         /// <summary>
         /// Navigate to template customization screen
         /// </summary>
-        public async void NavigateToTemplateCustomization(ProductInfo product, TemplateCategory category)
+        public async Task NavigateToTemplateCustomization(ProductInfo product, TemplateCategory category)
         {
             try
             {
@@ -705,13 +704,13 @@ namespace Photobooth
         /// <summary>
         /// Handles category selection
         /// </summary>
-        private void CategorySelectionScreen_CategorySelected(object? sender, CategorySelectedEventArgs e)
+        private async void CategorySelectionScreen_CategorySelected(object? sender, CategorySelectedEventArgs e)
         {
             try
             {
                 if (e.Product != null)
                 {
-                    NavigateToTemplateCustomization(e.Product, e.Category);
+                    await NavigateToTemplateCustomization(e.Product, e.Category);
                 }
                 else
                 {
@@ -747,11 +746,10 @@ namespace Photobooth
         {
             try
             {
-                Console.WriteLine("=== MAINWINDOW TEMPLATE SELECTED EVENT ===");
-                Console.WriteLine($"Sender: {sender?.GetType().Name}");
-                Console.WriteLine($"Template: {e.Template?.TemplateName ?? "NULL"}");
-                Console.WriteLine($"Template Category: {e.Template?.Category ?? "NULL"}");
-                Console.WriteLine("Calling NavigateToTemplateCustomizationWithTemplate...");
+                LoggingService.Application.Debug("Template selected event received",
+                    ("Sender", sender?.GetType().Name ?? "NULL"),
+                    ("TemplateName", e.Template?.TemplateName ?? "NULL"),
+                    ("TemplateCategory", e.Template?.Category ?? "NULL"));
                 
                 // Navigate to customization screen with the selected template
                 if (e.Template != null)
@@ -760,7 +758,7 @@ namespace Photobooth
                 }
                 else
                 {
-                    Console.WriteLine("ERROR: Template is null, cannot navigate to customization");
+                    LoggingService.Application.Warning("Template is null, cannot navigate to customization - falling back");
                     // Fallback to template selection if template is null
                     if (currentProduct != null)
                     {
@@ -772,13 +770,11 @@ namespace Photobooth
                     }
                 }
                 
-                Console.WriteLine("NavigateToTemplateCustomizationWithTemplate completed");
+                LoggingService.Application.Debug("Template selection navigation completed");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"EXCEPTION in TemplateSelectionScreen_TemplateSelected: {ex.Message}");
-                Console.WriteLine($"Stack trace: {ex.StackTrace}");
-                System.Diagnostics.Debug.WriteLine($"Template selection navigation failed: {ex.Message}");
+                LoggingService.Application.Error("Template selection navigation failed", ex);
             }
         }
 
@@ -791,7 +787,9 @@ namespace Photobooth
         {
             return new Template
             {
-                Id = Random.Shared.Next(10000, 99999), // Generate a temporary ID
+                Id = templateInfo.Config?.TemplateId != null ? 
+                    int.TryParse(templateInfo.Config.TemplateId, out var id) ? id : Guid.NewGuid().GetHashCode() :
+                    Guid.NewGuid().GetHashCode(), // Generate a safer unique ID
                 Name = templateInfo.TemplateName ?? "Unknown Template",
                 Description = templateInfo.Description ?? "",
                 FilePath = templateInfo.TemplateImagePath ?? "",

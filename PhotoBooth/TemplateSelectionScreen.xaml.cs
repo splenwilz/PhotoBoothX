@@ -13,6 +13,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Photobooth.Models;
 using Photobooth.Services;
+using Photobooth.Configuration;
 
 namespace Photobooth
 {
@@ -31,13 +32,7 @@ namespace Photobooth
             public const int AdminTapSequenceCount = 5;
             public const double AdminTapTimeWindow = 3.0; // seconds
 
-            // Three consistent template sizes
-            public const double WideWidth = 300.0;     // Even larger cards
-            public const double WideHeight = 210.0;    // Even larger cards
-            public const double TallWidth = 280.0;     // Even larger cards
-            public const double TallHeight = 210.0;    // Even larger cards
-            public const double SquareWidth = 290.0;   // Even larger cards
-            public const double SquareHeight = 210.0;  // Even larger cards
+            // Note: Template display sizes moved to PhotoboothConfiguration.TemplateDisplaySizes
         }
 
         #endregion

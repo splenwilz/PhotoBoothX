@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using Photobooth.Models;
 using Photobooth.Services;
+using Photobooth.Configuration;
 
 namespace Photobooth.Services
 {
@@ -24,15 +25,7 @@ namespace Photobooth.Services
     /// </summary>
     public class TemplateConversionService : ITemplateConversionService
     {
-        private static class Constants
-        {
-            public const double WideWidth = 300.0;     // Even larger cards
-            public const double WideHeight = 210.0;    // Even larger cards
-            public const double TallWidth = 280.0;     // Even larger cards
-            public const double TallHeight = 210.0;    // Even larger cards
-            public const double SquareWidth = 290.0;   // Even larger cards
-            public const double SquareHeight = 210.0;  // Even larger cards
-        }
+        // Note: Display size constants moved to PhotoboothConfiguration.TemplateDisplaySizes
 
         /// <summary>
         /// Converts a database Template object to a TemplateInfo object for UI display
@@ -41,21 +34,26 @@ namespace Photobooth.Services
         {
             try
             {
-                Console.WriteLine($"Converting template: {dbTemplate.Name}");
-                Console.WriteLine($"  - Preview path: {dbTemplate.PreviewPath}");
-                Console.WriteLine($"  - Template path: {dbTemplate.TemplatePath}");
-                Console.WriteLine($"  - Layout: {dbTemplate.Layout?.Name ?? "NULL"}");
+                LoggingService.Application.Debug("Converting template: {TemplateName}",
+                    ("TemplateName", dbTemplate.Name),
+                    ("PreviewPath", dbTemplate.PreviewPath),
+                    ("TemplatePath", dbTemplate.TemplatePath),
+                    ("Layout", dbTemplate.Layout?.Name ?? "NULL"));
 
                 // Check if required files exist
                 if (!File.Exists(dbTemplate.PreviewPath))
                 {
-                    Console.WriteLine($"Preview image missing: {dbTemplate.PreviewPath}");
+                    LoggingService.Application.Warning("Preview image missing for template {TemplateName}",
+                        ("TemplateName", dbTemplate.Name),
+                        ("PreviewPath", dbTemplate.PreviewPath));
                     return null;
                 }
 
                 if (!File.Exists(dbTemplate.TemplatePath))
                 {
-                    Console.WriteLine($"Template image missing: {dbTemplate.TemplatePath}");
+                    LoggingService.Application.Warning("Template image missing for template {TemplateName}",
+                        ("TemplateName", dbTemplate.Name),
+                        ("TemplatePath", dbTemplate.TemplatePath));
                     return null;
                 }
 
@@ -66,7 +64,10 @@ namespace Photobooth.Services
 
                 if (width == 0 || height == 0)
                 {
-                    Console.WriteLine($"Invalid template dimensions: {width}x{height}");
+                    LoggingService.Application.Warning("Invalid template dimensions for template {TemplateName}",
+                        ("TemplateName", dbTemplate.Name),
+                        ("Width", width),
+                        ("Height", height));
                     return null;
                 }
 
@@ -118,13 +119,21 @@ namespace Photobooth.Services
                     TemplateSize = GetTemplateSizeCategory(aspectRatio)
                 };
 
-                Console.WriteLine($"Successfully converted template: {templateInfo.TemplateName}");
+                LoggingService.Application.Debug("Successfully converted template: {TemplateName}",
+                    ("TemplateName", templateInfo.TemplateName));
                 return templateInfo;
+            }
+            catch (FileNotFoundException ex)
+            {
+                LoggingService.Application.Warning("Template files not found for {TemplateName}",
+                    ("TemplateName", dbTemplate.Name),
+                    ("MissingFile", ex.FileName ?? "Unknown"));
+                return null;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error converting template {dbTemplate.Name}: {ex.Message}");
-                System.Diagnostics.Debug.WriteLine($"Error converting template {dbTemplate.Name}: {ex.Message}");
+                LoggingService.Application.Error("Error converting template {TemplateName}", ex,
+                    ("TemplateName", dbTemplate.Name));
                 return null;
             }
         }
@@ -138,28 +147,36 @@ namespace Photobooth.Services
             {
                 if (actualWidth <= 0 || actualHeight <= 0)
                 {
-                    return (Constants.SquareWidth, Constants.SquareHeight);
+                    return (PhotoboothConfiguration.TemplateDisplaySizes.SquareWidth, 
+                           PhotoboothConfiguration.TemplateDisplaySizes.SquareHeight);
                 }
 
                 double aspectRatio = (double)actualWidth / actualHeight;
 
-                if (aspectRatio > 1.3) // Wide format (4x6, landscape)
+                if (aspectRatio > PhotoboothConfiguration.AspectRatioThresholds.WideThreshold) // Wide format (4x6, landscape)
                 {
-                    return (Constants.WideWidth, Constants.WideHeight);
+                    return (PhotoboothConfiguration.TemplateDisplaySizes.WideWidth, 
+                           PhotoboothConfiguration.TemplateDisplaySizes.WideHeight);
                 }
-                else if (aspectRatio < 0.8) // Tall format (strips)
+                else if (aspectRatio < PhotoboothConfiguration.AspectRatioThresholds.TallThreshold) // Tall format (strips)
                 {
-                    return (Constants.TallWidth, Constants.TallHeight);
+                    return (PhotoboothConfiguration.TemplateDisplaySizes.TallWidth, 
+                           PhotoboothConfiguration.TemplateDisplaySizes.TallHeight);
                 }
                 else // Square-ish format
                 {
-                    return (Constants.SquareWidth, Constants.SquareHeight);
+                    return (PhotoboothConfiguration.TemplateDisplaySizes.SquareWidth, 
+                           PhotoboothConfiguration.TemplateDisplaySizes.SquareHeight);
                 }
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error getting standard display size: {ex.Message}");
-                return (Constants.SquareWidth, Constants.SquareHeight);
+                LoggingService.Application.Warning("Error calculating display size, using default square size", 
+                    ("ActualWidth", actualWidth),
+                    ("ActualHeight", actualHeight),
+                    ("Error", ex.Message));
+                return (PhotoboothConfiguration.TemplateDisplaySizes.SquareWidth, 
+                       PhotoboothConfiguration.TemplateDisplaySizes.SquareHeight);
             }
         }
 
@@ -168,8 +185,8 @@ namespace Photobooth.Services
         /// </summary>
         public string GetAspectRatioText(double aspectRatio)
         {
-            if (aspectRatio > 1.3) return "Wide";
-            if (aspectRatio < 0.8) return "Tall";
+            if (aspectRatio > PhotoboothConfiguration.AspectRatioThresholds.WideThreshold) return "Wide";
+            if (aspectRatio < PhotoboothConfiguration.AspectRatioThresholds.TallThreshold) return "Tall";
             return "Square";
         }
 
@@ -178,40 +195,45 @@ namespace Photobooth.Services
         /// </summary>
         public string GetTemplateSizeCategory(double aspectRatio)
         {
-            if (aspectRatio > 1.3) return "wide";
-            if (aspectRatio < 0.8) return "tall";
+            if (aspectRatio > PhotoboothConfiguration.AspectRatioThresholds.WideThreshold) return "wide";
+            if (aspectRatio < PhotoboothConfiguration.AspectRatioThresholds.TallThreshold) return "tall";
             return "square";
         }
 
         /// <summary>
         /// Checks if template is valid for the selected product type
+        /// Since database-level TemplateType filtering is the primary filter, this serves as a fallback validation only
         /// </summary>
         public bool IsTemplateValidForProduct(TemplateInfo template, ProductInfo? product)
         {
-            Console.WriteLine($"--- Validating template for product ---");
-            Console.WriteLine($"Template: {template.TemplateName}");
-            Console.WriteLine($"Template category: '{template.Category}'");
-            Console.WriteLine($"Selected product: {product?.Type ?? "NULL"}");
+            LoggingService.Application.Debug("Validating template for product",
+                ("TemplateName", template.TemplateName),
+                ("TemplateCategory", template.Category),
+                ("ProductType", product?.Type ?? "NULL"));
 
             if (product == null) 
             {
-                Console.WriteLine("No selected product - returning true");
+                LoggingService.Application.Debug("No selected product - allowing all templates");
                 return true;
             }
 
             // Since we're now filtering by TemplateType at the database level using GetTemplatesByTypeAsync(),
-            // this additional validation is redundant and was causing templates to be filtered out incorrectly.
-            // The database-level filtering by TemplateType is the authoritative filter.
+            // the database-level filtering by TemplateType is the authoritative and primary filter.
+            // This method now serves as a fallback validation only and should be permissive.
             
             var productType = product.Type?.ToLowerInvariant();
             var aspectRatio = template.AspectRatio;
             
-            Console.WriteLine($"Template: {template.TemplateName}, AspectRatio: {aspectRatio:F2}, Product: {productType}");
-            Console.WriteLine("Template valid for product: true (database filtering by TemplateType is primary filter)");
+            LoggingService.Application.Debug("Template validation - allowing (database filtering is primary)",
+                ("TemplateName", template.TemplateName),
+                ("AspectRatio", aspectRatio.ToString("F2")),
+                ("ProductType", productType ?? "NULL"));
             
             // Database filtering by TemplateType handles the main filtering logic
-            // This method now serves as a fallback validation only
+            // Return true to avoid double-filtering that was causing templates to be incorrectly filtered out
             return true;
         }
+
+
     }
 } 
