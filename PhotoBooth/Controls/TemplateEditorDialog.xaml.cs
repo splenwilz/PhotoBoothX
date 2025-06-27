@@ -362,6 +362,9 @@ namespace Photobooth.Controls
                 CategoryComboBox.SelectedValue = _template.CategoryId;
             }
             
+            // Set selected template type
+            TemplateTypeComboBox.SelectedIndex = (int)_template.TemplateType;
+            
             // Pricing & Settings
             PriceTextBox.Text = _template.Price.ToString("F2", CultureInfo.InvariantCulture);
             SortOrderTextBox.Text = _template.SortOrder.ToString();
@@ -440,6 +443,15 @@ namespace Photobooth.Controls
                 {
                     _notificationService.ShowWarning("Validation Error", "Please select a category.");
                     CategoryComboBox.Focus();
+                    return;
+                }
+
+                // Get selected template type
+                var selectedTemplateType = (TemplateType)(TemplateTypeComboBox.SelectedIndex);
+                if (TemplateTypeComboBox.SelectedIndex < 0)
+                {
+                    _notificationService.ShowWarning("Validation Error", "Please select a template type.");
+                    TemplateTypeComboBox.Focus();
                     return;
                 }
 
@@ -622,6 +634,7 @@ namespace Photobooth.Controls
                     Price = price,
                     SortOrder = sortOrder,
                     IsActive = IsActiveCheckBox.IsChecked == true,
+                    TemplateType = selectedTemplateType,
                     LayoutId = _template.LayoutId,
                     FolderPath = newFolderPath,
                     TemplatePath = newTemplatePath,
@@ -644,7 +657,8 @@ namespace Photobooth.Controls
                     categoryId: updatedTemplate.CategoryId,
                     description: updatedTemplate.Description,
                     sortOrder: updatedTemplate.SortOrder,
-                    photoCount: updatedTemplate.PhotoCount
+                    photoCount: updatedTemplate.PhotoCount,
+                    templateType: updatedTemplate.TemplateType
                 );
 
                 if (!result.Success)

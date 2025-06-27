@@ -1,0 +1,269 @@
+<UserControl x:Class="Photobooth.TemplateCustomizationScreen"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:local="clr-namespace:Photobooth"
+             mc:Ignorable="d" 
+             d:DesignHeight="1080" d:DesignWidth="1920">
+    
+    <UserControl.Resources>
+        <!-- Main Background Gradient: from-purple-900 via-blue-900 to-indigo-900 -->
+        <LinearGradientBrush x:Key="MainBackgroundGradient" StartPoint="0,0" EndPoint="1,1">
+            <GradientStop Color="#581C87" Offset="0"/>
+            <!-- purple-900 -->
+            <GradientStop Color="#1E3A8A" Offset="0.5"/>
+            <!-- blue-900 -->
+            <GradientStop Color="#312E81" Offset="1"/>
+            <!-- indigo-900 -->
+        </LinearGradientBrush>
+        
+        <!-- Floating Orb Styles -->
+        <Style x:Key="FloatingOrbStyle" TargetType="Ellipse">
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <BlurEffect Radius="15"/>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        
+        <!-- Modern button style -->
+        <Style x:Key="ModernButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#28A745"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontSize" Value="20"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Padding" Value="50,20"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" 
+                                CornerRadius="25"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" 
+                                            VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#34CE57"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="Background" Value="#1E7E34"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Back button style -->
+        <Style x:Key="BackButtonStyle" TargetType="Button">
+            <Setter Property="Background">
+                <Setter.Value>
+                    <SolidColorBrush Color="White" Opacity="0.2"/>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontSize" Value="24"/>
+            <Setter Property="FontWeight" Value="Normal"/>
+            <Setter Property="Width" Value="60"/>
+            <Setter Property="Height" Value="60"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" 
+                                CornerRadius="30">
+                            <TextBlock Text="←" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="28" Foreground="White"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background">
+                                    <Setter.Value>
+                                        <SolidColorBrush Color="White" Opacity="0.3"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Fade in animation -->
+        <Storyboard x:Key="FadeInAnimation">
+            <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                           From="0" To="1" Duration="0:0:0.8"
+                           BeginTime="0:0:0.2"/>
+        </Storyboard>
+
+        <!-- Slide up animation -->
+        <Storyboard x:Key="SlideUpAnimation">
+            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
+                           From="50" To="0" Duration="0:0:0.6"
+                           BeginTime="0:0:0.3">
+                <DoubleAnimation.EasingFunction>
+                    <CubicEase EasingMode="EaseOut"/>
+                </DoubleAnimation.EasingFunction>
+            </DoubleAnimation>
+        </Storyboard>
+    </UserControl.Resources>
+
+    <Grid Background="{StaticResource MainBackgroundGradient}" ClipToBounds="True">
+        
+        <!-- Floating Orbs Layer -->
+        <Canvas Name="FloatingOrbsCanvas">
+            <!-- Purple orb: top-32 left-32 w-24 h-24 bg-purple-500/20 -->
+            <Ellipse Width="96" Height="96" 
+                     Fill="#A855F7" Opacity="0.2" 
+                     Style="{StaticResource FloatingOrbStyle}"
+                     Canvas.Left="128" Canvas.Top="128"/>
+
+            <!-- Blue orb: top-20 right-40 w-20 h-20 bg-blue-500/25 -->
+            <Ellipse Width="80" Height="80" 
+                     Fill="#3B82F6" Opacity="0.25" 
+                     Style="{StaticResource FloatingOrbStyle}"
+                     Canvas.Right="160" Canvas.Top="80"/>
+
+            <!-- Pink orb: bottom-40 left-1/4 w-32 h-32 bg-pink-500/15 -->
+            <Ellipse Width="128" Height="128" 
+                     Fill="#EC4899" Opacity="0.15" 
+                     Style="{StaticResource FloatingOrbStyle}"
+                     Canvas.Left="480" Canvas.Bottom="160"/>
+
+            <!-- Cyan orb: bottom-32 right-32 w-20 h-20 bg-cyan-500/20 -->
+            <Ellipse Width="80" Height="80" 
+                     Fill="#06B6D4" Opacity="0.2" 
+                     Style="{StaticResource FloatingOrbStyle}"
+                     Canvas.Right="128" Canvas.Bottom="128"/>
+        </Canvas>
+
+        <!-- Floating Particles Canvas -->
+        <Canvas Name="ParticlesCanvas" ClipToBounds="True">
+            <!-- Particles will be added programmatically -->
+        </Canvas>
+        
+        <!-- Loading Panel -->
+        <Border Name="LoadingPanel" 
+                Background="#80000000" 
+                Visibility="Collapsed"
+                Panel.ZIndex="999">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                <ProgressBar IsIndeterminate="True" Width="200" Height="4" Margin="0,0,0,15"/>
+                <TextBlock Text="Loading template..." Foreground="White" FontSize="18" HorizontalAlignment="Center"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Main Content -->
+        <Grid Margin="60">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Header with Back Button -->
+            <Grid Grid.Row="0" Margin="0,0,0,40">
+                <Button Name="BackButton" 
+                        Style="{StaticResource BackButtonStyle}"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Top"
+                        Click="BackButton_Click"/>
+                
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock Name="TemplateNameText" 
+                               Text="Template Preview" 
+                               FontSize="36" 
+                               FontWeight="Bold" 
+                               Foreground="White"
+                               HorizontalAlignment="Center"/>
+                    <TextBlock Name="TemplateDescriptionText" 
+                               Text="Review your selected template" 
+                               FontSize="18" 
+                               Foreground="White"
+                               Opacity="0.9"
+                               HorizontalAlignment="Center"
+                               Margin="0,8,0,0"/>
+                </StackPanel>
+            </Grid>
+
+            <!-- Template Preview - Full Center -->
+            <Grid Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Viewbox Name="TemplatePreviewContainer" 
+                         Stretch="Uniform"
+                         MaxHeight="800"
+                         MaxWidth="1200">
+                    
+                    <Border CornerRadius="20" 
+                            ClipToBounds="True"
+                            Background="White">
+                        <Border.Effect>
+                            <DropShadowEffect Color="Black" 
+                                            Opacity="0.15" 
+                                            ShadowDepth="12" 
+                                            BlurRadius="30"/>
+                        </Border.Effect>
+                        
+                        <Image Name="TemplatePreviewImage" 
+                               Stretch="Uniform"
+                               RenderOptions.BitmapScalingMode="HighQuality"/>
+                    </Border>
+                </Viewbox>
+            </Grid>
+
+            <!-- Action Buttons -->
+            <StackPanel Grid.Row="2" 
+                        Orientation="Horizontal" 
+                        HorizontalAlignment="Center" 
+                        Margin="0,40,0,0">
+                
+                <!-- Template Info -->
+                <Border CornerRadius="15" 
+                        Padding="20,12" 
+                        Margin="0,0,20,0"
+                        VerticalAlignment="Center"
+                        Background="#40FFFFFF"
+                        BorderBrush="#60FFFFFF"
+                        BorderThickness="1">
+                    <Border.Effect>
+                        <DropShadowEffect Color="Black" 
+                                        Opacity="0.3" 
+                                        ShadowDepth="4" 
+                                        BlurRadius="15"/>
+                    </Border.Effect>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Name="TemplateDimensionsTextBlock" 
+                                   Text="{Binding TemplateDimensionsText, FallbackValue='Dimensions: Loading...'}" 
+                                   FontSize="16" 
+                                   Foreground="White"
+                                   FontWeight="Bold"
+                                   VerticalAlignment="Center"/>
+                        <Rectangle Width="2" 
+                                   Height="18" 
+                                   Fill="White" 
+                                   Opacity="0.8"
+                                   Margin="15,0"/>
+                        <TextBlock Text="High Quality" 
+                                   FontSize="16" 
+                                   Foreground="White"
+                                   FontWeight="Bold"
+                                   VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Border>
+                
+                <!-- Continue Button -->
+                <Button Name="ContinueButton" 
+                        Content="Continue to Photo Session" 
+                        Style="{StaticResource ModernButtonStyle}"
+                        Margin="20,0,0,0"
+                        Padding="20,12"
+                        Click="ContinueButton_Click"/>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</UserControl> 

@@ -5,12 +5,15 @@ using System.Linq;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Media.Animation;
+using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
-using System.Windows.Shapes;
 using System.Windows.Threading;
+using Photobooth.Models;
 using Photobooth.Services;
+using Photobooth.Configuration;
 
 namespace Photobooth
 {
@@ -29,13 +32,7 @@ namespace Photobooth
             public const int AdminTapSequenceCount = 5;
             public const double AdminTapTimeWindow = 3.0; // seconds
 
-            // Three consistent template sizes
-            public const double WideWidth = 300.0;
-            public const double WideHeight = 200.0;
-            public const double TallWidth = 200.0;
-            public const double TallHeight = 400.0;
-            public const double SquareWidth = 280.0;
-            public const double SquareHeight = 280.0;
+            // Note: Template display sizes moved to PhotoboothConfiguration.TemplateDisplaySizes
         }
 
         #endregion
@@ -54,19 +51,19 @@ namespace Photobooth
 
 
 
+
+
         #endregion
 
         #region Private Fields
 
         private List<TemplateInfo> allTemplates = new List<TemplateInfo>();
         private List<TemplateInfo> filteredTemplates = new List<TemplateInfo>();
-        private string currentCategory = "All";
-        private int currentPage = 0;
-        private int totalPages = 0;
         private ProductInfo? selectedProduct;
+        private readonly IDatabaseService _databaseService;
+        private readonly ITemplateConversionService _templateConversionService;
 
-        // Animation resources
-        private readonly List<Storyboard> activeStoryboards = new List<Storyboard>();
+
 
         // File system watcher for automatic template refresh
         private FileSystemWatcher? templateWatcher;
@@ -81,11 +78,20 @@ namespace Photobooth
         /// <summary>
         /// Constructor - initializes the template selection screen
         /// </summary>
-        public TemplateSelectionScreen()
+        public TemplateSelectionScreen(IDatabaseService databaseService, ITemplateConversionService templateConversionService)
         {
+            _databaseService = databaseService ?? throw new ArgumentNullException(nameof(databaseService));
+            _templateConversionService = templateConversionService ?? throw new ArgumentNullException(nameof(templateConversionService));
             InitializeComponent();
             this.Loaded += OnLoaded;
             InitializeTemplateWatcher();
+        }
+
+        /// <summary>
+        /// Constructor for design-time support
+        /// </summary>
+        public TemplateSelectionScreen() : this(new DatabaseService(), new TemplateConversionService())
+        {
         }
 
         /// <summary>
@@ -95,11 +101,13 @@ namespace Photobooth
         {
             try
             {
-                InitializeAnimations();
+                Console.WriteLine("=== TEMPLATE SELECTION SCREEN LOADED ===");
+                Console.WriteLine($"Selected product: {selectedProduct?.Type ?? "NULL"}");
                 LoadTemplates();
             }
             catch (Exception ex)
             {
+                Console.WriteLine($"Template screen initialization failed: {ex.Message}");
                 System.Diagnostics.Debug.WriteLine($"Template screen initialization failed: {ex.Message}");
                 ShowErrorMessage("Failed to load templates. Please restart the application.");
             }
@@ -120,6 +128,8 @@ namespace Photobooth
                 System.Diagnostics.Debug.WriteLine($"Failed to set product type: {ex.Message}");
             }
         }
+
+
 
         /// <summary>
         /// Sets up file system watcher to detect template changes
@@ -215,100 +225,128 @@ namespace Photobooth
         }
 
         /// <summary>
-        /// Loads all templates from the Templates folder with seasonal prioritization
+        /// Loads templates from database without categorization
         /// </summary>
         private async void LoadTemplates()
         {
             try
             {
+                Console.WriteLine("=== LOADING TEMPLATES BY TYPE ===");
+                Console.WriteLine($"Selected product: {selectedProduct?.Type ?? "NULL"}");
+
                 allTemplates.Clear();
-                var templatesPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, Constants.TemplatesFolder);
 
-                if (!Directory.Exists(templatesPath))
+                // Map product type to template type
+                TemplateType templateType = GetTemplateTypeFromProduct(selectedProduct);
+                Console.WriteLine($"Template type: {templateType}");
+
+                // Load templates from database filtered by type
+                var dbTemplates = await _databaseService.GetTemplatesByTypeAsync(templateType);
+                Console.WriteLine($"Database returned: {dbTemplates.Success}, Templates: {dbTemplates.Data?.Count() ?? 0}");
+
+                if (dbTemplates.Success && dbTemplates.Data != null)
                 {
-                    Directory.CreateDirectory(templatesPath);
-                    System.Diagnostics.Debug.WriteLine($"Created templates directory: {templatesPath}");
-
-                    // Update display with empty list
-                    ApplyFilter(currentCategory);
-                    return;
-                }
-
-                var templateFolders = Directory.GetDirectories(templatesPath);
-                var loadedTemplates = new List<TemplateInfo>();
-
-                System.Diagnostics.Debug.WriteLine($"Loading {templateFolders.Length} template folders...");
-
-                foreach (var folder in templateFolders)
-                {
-                    try
+                    foreach (var dbTemplate in dbTemplates.Data)
                     {
-                        var template = await LoadTemplateFromFolder(folder);
-                        if (template != null && IsTemplateValidForProduct(template))
+                        var templateInfo = ConvertDatabaseTemplateToTemplateInfo(dbTemplate);
+                        if (templateInfo != null)
                         {
-                            loadedTemplates.Add(template);
-                            System.Diagnostics.Debug.WriteLine($"Loaded template: {template.TemplateName}");
+                            var isValid = IsTemplateValidForProduct(templateInfo);
+                            Console.WriteLine($"Template: {templateInfo.TemplateName}, Valid: {isValid}");
+                            
+                            if (isValid)
+                            {
+                                allTemplates.Add(templateInfo);
+                            }
                         }
                     }
-                    catch (Exception ex)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"Failed to load template from {folder}: {ex.Message}");
-                    }
                 }
 
+                Console.WriteLine($"Total valid templates loaded: {allTemplates.Count}");
+
                 // Apply seasonal prioritization
-                allTemplates = ApplySeasonalPrioritization(loadedTemplates);
+                allTemplates = ApplySeasonalPrioritization(allTemplates);
 
-                System.Diagnostics.Debug.WriteLine($"Total templates loaded: {allTemplates.Count}");
+                // Show all templates without filtering
+                filteredTemplates = new List<TemplateInfo>(allTemplates);
+                
+                // Update display
+                UpdateTemplateDisplay();
 
-                // Apply current filter and update display
-                ApplyFilter(currentCategory);
+                Console.WriteLine("=== TEMPLATE LOADING COMPLETED ===");
             }
             catch (Exception ex)
             {
+                Console.WriteLine($"ERROR loading templates: {ex.Message}");
                 System.Diagnostics.Debug.WriteLine($"Template loading failed: {ex.Message}");
-                ShowErrorMessage("Failed to load templates.");
+                ShowErrorMessage($"Failed to load templates: {ex.Message}");
             }
         }
 
         /// <summary>
-        /// Loads a single template from its folder with three-size system
+        /// Converts a database Template object to a TemplateInfo object for UI display
+        /// Delegates to TemplateConversionService for consistency
+        /// </summary>
+        private TemplateInfo? ConvertDatabaseTemplateToTemplateInfo(Template dbTemplate)
+        {
+            return _templateConversionService.ConvertDatabaseTemplateToTemplateInfo(dbTemplate);
+        }
+
+        /// <summary>
+        /// Loads a single template from its folder with three-size system (DEPRECATED - kept for compatibility)
         /// </summary>
         private async Task<TemplateInfo?> LoadTemplateFromFolder(string folderPath)
         {
             try
             {
+                Console.WriteLine($"--- Loading template from folder: {folderPath} ---");
+
                 var configPath = System.IO.Path.Combine(folderPath, Constants.ConfigFileName);
+                Console.WriteLine($"Looking for config at: {configPath}");
+                
                 if (!File.Exists(configPath))
                 {
+                    Console.WriteLine($"Config file missing: {configPath}");
                     System.Diagnostics.Debug.WriteLine($"Config file missing: {configPath}");
                     return null;
                 }
 
+                Console.WriteLine("Reading config file...");
                 var configJson = await File.ReadAllTextAsync(configPath);
+                Console.WriteLine($"Config JSON length: {configJson.Length} chars");
+                
                 var config = JsonSerializer.Deserialize<TemplateConfig>(configJson);
 
                 if (config == null)
                 {
+                    Console.WriteLine($"Failed to parse config: {configPath}");
                     System.Diagnostics.Debug.WriteLine($"Failed to parse config: {configPath}");
                     return null;
                 }
 
+                Console.WriteLine($"Config parsed successfully: {config.TemplateName} (Category: {config.Category})");
+
                 // Find preview image
+                Console.WriteLine("Looking for preview image...");
                 var previewPath = FindPreviewImage(folderPath);
                 if (string.IsNullOrEmpty(previewPath))
                 {
+                    Console.WriteLine($"Preview image missing: {folderPath}");
                     System.Diagnostics.Debug.WriteLine($"Preview image missing: {folderPath}");
                     return null;
                 }
+                Console.WriteLine($"Preview image found: {previewPath}");
 
                 // Find template image
                 var templatePath = System.IO.Path.Combine(folderPath, "template.png");
+                Console.WriteLine($"Looking for template image at: {templatePath}");
                 if (!File.Exists(templatePath))
                 {
+                    Console.WriteLine($"Template image missing: {templatePath}");
                     System.Diagnostics.Debug.WriteLine($"Template image missing: {templatePath}");
                     return null;
                 }
+                Console.WriteLine("Template image found");
 
                 // Calculate consistent display dimensions
                 var (displayWidth, displayHeight) = GetStandardDisplaySize(
@@ -333,7 +371,7 @@ namespace Photobooth
                     // Three-size system display properties
                     DisplayWidth = displayWidth,
                     DisplayHeight = displayHeight,
-                    DimensionText = $"{config.Dimensions.Width} × {config.Dimensions.Height}",
+                    DimensionText = $"{config.Dimensions.Width} Ã— {config.Dimensions.Height}",
                     AspectRatio = aspectRatio,
                     AspectRatioText = GetAspectRatioText(aspectRatio),
                     TemplateSize = GetTemplateSizeCategory(aspectRatio)
@@ -347,57 +385,46 @@ namespace Photobooth
         }
 
         /// <summary>
+        /// Maps product type to template type for filtering
+        /// </summary>
+        private TemplateType GetTemplateTypeFromProduct(ProductInfo? product)
+        {
+            if (product == null) return TemplateType.Strip; // Default to strips
+
+            return product.Type?.ToLowerInvariant() switch
+            {
+                "strips" or "photostrips" => TemplateType.Strip,
+                "4x6" or "photo4x6" => TemplateType.Photo4x6,
+                "phone" or "smartphoneprint" => TemplateType.Photo4x6, // Phone prints use 4x6 templates
+                _ => TemplateType.Strip // Default to strips
+            };
+        }
+
+        /// <summary>
         /// Gets standard display size based on aspect ratio - THREE SIZES ONLY
+        /// Delegates to TemplateConversionService for consistency
         /// </summary>
         private (double width, double height) GetStandardDisplaySize(int actualWidth, int actualHeight)
         {
-            try
-            {
-                if (actualWidth <= 0 || actualHeight <= 0)
-                {
-                    return (Constants.SquareWidth, Constants.SquareHeight);
-                }
-
-                double aspectRatio = (double)actualWidth / actualHeight;
-
-                if (aspectRatio > 1.3) // Wide format (4x6, landscape)
-                {
-                    return (Constants.WideWidth, Constants.WideHeight);
-                }
-                else if (aspectRatio < 0.8) // Tall format (strips)
-                {
-                    return (Constants.TallWidth, Constants.TallHeight);
-                }
-                else // Square-ish format
-                {
-                    return (Constants.SquareWidth, Constants.SquareHeight);
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error getting standard display size: {ex.Message}");
-                return (Constants.SquareWidth, Constants.SquareHeight);
-            }
+            return _templateConversionService.GetStandardDisplaySize(actualWidth, actualHeight);
         }
 
         /// <summary>
         /// Gets human-readable aspect ratio description
+        /// Delegates to TemplateConversionService for consistency
         /// </summary>
         private string GetAspectRatioText(double aspectRatio)
         {
-            if (aspectRatio > 1.3) return "Wide";
-            if (aspectRatio < 0.8) return "Tall";
-            return "Square";
+            return _templateConversionService.GetAspectRatioText(aspectRatio);
         }
 
         /// <summary>
         /// Gets template size category for CSS-like styling
+        /// Delegates to TemplateConversionService for consistency
         /// </summary>
         private string GetTemplateSizeCategory(double aspectRatio)
         {
-            if (aspectRatio > 1.3) return "wide";
-            if (aspectRatio < 0.8) return "tall";
-            return "square";
+            return _templateConversionService.GetTemplateSizeCategory(aspectRatio);
         }
 
         /// <summary>
@@ -421,19 +448,11 @@ namespace Photobooth
 
         /// <summary>
         /// Checks if template is valid for the selected product type
+        /// Delegates to TemplateConversionService for consistency
         /// </summary>
         private bool IsTemplateValidForProduct(TemplateInfo template)
         {
-            if (selectedProduct == null) return true;
-
-            // Map product types to template categories
-            return selectedProduct.Type.ToLowerInvariant() switch
-            {
-                "strips" => template.Config.Category?.ToLowerInvariant() == "strip",
-                "4x6" => template.Config.Category?.ToLowerInvariant() == "4x6",
-                "phone" => template.Config.Category?.ToLowerInvariant() == "4x6", // Phone prints use 4x6 templates
-                _ => true
-            };
+            return _templateConversionService.IsTemplateValidForProduct(template, selectedProduct);
         }
 
         /// <summary>
@@ -475,58 +494,46 @@ namespace Photobooth
 
         #region Filtering and Pagination
 
-        /// <summary>
-        /// Applies category filter and updates display
-        /// </summary>
-        private void ApplyFilter(string category)
-        {
-            try
-            {
-                currentCategory = category;
 
-                if (category.ToLowerInvariant() == "all")
-                {
-                    filteredTemplates = new List<TemplateInfo>(allTemplates);
-                }
-                else
-                {
-                    filteredTemplates = allTemplates
-                        .Where(t => string.Equals(t.Category, category, StringComparison.OrdinalIgnoreCase))
-                        .ToList();
-                }
-
-                // Reset to first page
-                currentPage = 0;
-                totalPages = Math.Max(1, (int)Math.Ceiling((double)filteredTemplates.Count / Constants.TemplatesPerPage));
-
-                UpdateCategoryButtons();
-                UpdateTemplateDisplay();
-                UpdatePagination();
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Filter application failed: {ex.Message}");
-            }
-        }
 
         /// <summary>
-        /// Updates the template display for current page
+        /// Updates the template display for current page - unified view without categories
         /// </summary>
         private void UpdateTemplateDisplay()
         {
             try
             {
-                var startIndex = currentPage * Constants.TemplatesPerPage;
-                var pageTemplates = filteredTemplates
-                    .Skip(startIndex)
-                    .Take(Constants.TemplatesPerPage)
-                    .ToList();
+                if (CategorizedTemplatesContainer == null) return;
 
-                TemplatesContainer.ItemsSource = pageTemplates;
+                // Clear existing content
+                CategorizedTemplatesContainer.Children.Clear();
 
-                // Update navigation buttons
-                PrevButton.IsEnabled = currentPage > 0;
-                NextButton.IsEnabled = currentPage < totalPages - 1;
+                if (!filteredTemplates.Any())
+                {
+                    // Show empty state
+                    var emptyMessage = new TextBlock
+                    {
+                        Text = "No templates available for the selected product type.",
+                        FontSize = 18,
+                        Foreground = Brushes.White,
+                        HorizontalAlignment = HorizontalAlignment.Center,
+                        Margin = new Thickness(0, 50, 0, 0),
+                        Opacity = 0.8
+                    };
+                    CategorizedTemplatesContainer.Children.Add(emptyMessage);
+                    
+                    if (TemplateCountInfo != null)
+                        TemplateCountInfo.Text = "No templates found";
+                    return;
+                }
+
+                // Create a single unified grid for all templates
+                var templateGrid = CreateTemplateGrid(filteredTemplates);
+                CategorizedTemplatesContainer.Children.Add(templateGrid);
+
+                // Update template count info
+                if (TemplateCountInfo != null)
+                    TemplateCountInfo.Text = $"{filteredTemplates.Count} templates available";
             }
             catch (Exception ex)
             {
@@ -534,64 +541,106 @@ namespace Photobooth
             }
         }
 
-        /// <summary>
-        /// Updates category button visual states
-        /// </summary>
-        private void UpdateCategoryButtons()
-        {
-            try
-            {
-                var buttons = new[] { AllButton, ClassicButton, FunButton, HolidayButton, SeasonalButton };
-                var categories = new[] { "All", "Classic", "Fun", "Holiday", "Seasonal" };
 
-                for (int i = 0; i < buttons.Length; i++)
-                {
-                    if (buttons[i] != null)
-                    {
-                        buttons[i].Tag = string.Equals(categories[i], currentCategory, StringComparison.OrdinalIgnoreCase)
-                            ? "Selected" : null;
-                    }
-                }
-            }
-            catch (Exception ex)
+
+        /// <summary>
+        /// Creates a template grid for a category's templates
+        /// </summary>
+        private UniformGrid CreateTemplateGrid(List<TemplateInfo> templates)
+        {
+            var grid = new UniformGrid
             {
-                System.Diagnostics.Debug.WriteLine($"Category button update failed: {ex.Message}");
+                Columns = 4, // 4 templates per row (larger cards need fewer columns)
+                Margin = new Thickness(0, 0, 0, 20) // Minimal space after each category
+            };
+
+            foreach (var template in templates)
+            {
+                var templateCard = CreateTemplateCard(template);
+                grid.Children.Add(templateCard);
             }
+
+            return grid;
         }
 
         /// <summary>
-        /// Updates pagination display
+        /// Creates a template card button
         /// </summary>
-        private void UpdatePagination()
+        private UIElement CreateTemplateCard(TemplateInfo template)
         {
-            try
+            // Create container for image + text below
+            var container = new StackPanel
             {
-                // Update page info
-                PageInfo.Text = $"Page {currentPage + 1} of {totalPages}";
+                Margin = new Thickness(15), // More padding around template cards
+                HorizontalAlignment = HorizontalAlignment.Left // Left align the whole container
+            };
 
-                // Update pagination dots
-                PaginationDots.Children.Clear();
-
-                for (int i = 0; i < totalPages; i++)
-                {
-                    var dot = new Ellipse
-                    {
-                        Width = 12,
-                        Height = 12,
-                        Margin = new Thickness(4),
-                        Fill = i == currentPage
-                            ? new SolidColorBrush(Colors.White)
-                            : new SolidColorBrush(Colors.White) { Opacity = 0.3 }
-                    };
-
-                    PaginationDots.Children.Add(dot);
-                }
-            }
-            catch (Exception ex)
+            // Create the image button (no text overlay)
+            var imageButton = new Button
             {
-                System.Diagnostics.Debug.WriteLine($"Pagination update failed: {ex.Message}");
-            }
+                Width = template.DisplayWidth,
+                Height = template.DisplayHeight,
+                Tag = template,
+                Style = null, // Remove custom style
+                Background = Brushes.Transparent,
+                BorderBrush = Brushes.Transparent, // Remove border
+                BorderThickness = new Thickness(0), // No border
+                Padding = new Thickness(0),
+                Cursor = Cursors.Hand
+            };
+
+            // Create the image content
+            var imageBorder = new Border
+            {
+                CornerRadius = new CornerRadius(16), // Larger border radius
+                ClipToBounds = true,
+                Background = Brushes.Black
+            };
+
+            var image = new Image
+            {
+                Source = new BitmapImage(new Uri(template.PreviewImagePath, UriKind.RelativeOrAbsolute)),
+                Stretch = Stretch.UniformToFill,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+
+            imageBorder.Child = image;
+            imageButton.Content = imageBorder;
+
+            // Add drop shadow to button
+            imageButton.Effect = new DropShadowEffect
+            {
+                BlurRadius = 8,
+                Opacity = 0.3,
+                ShadowDepth = 3
+            };
+
+            // Create the template name below the image
+            var nameLabel = new TextBlock
+            {
+                Text = template.TemplateName,
+                Foreground = Brushes.White,
+                FontSize = 16,
+                FontWeight = FontWeights.SemiBold,
+                TextAlignment = TextAlignment.Left, // Left align template name
+                Margin = new Thickness(0, 10, 0, 0),
+                TextWrapping = TextWrapping.Wrap,
+                MaxWidth = template.DisplayWidth,
+                HorizontalAlignment = HorizontalAlignment.Left // Left align the text block
+            };
+
+            imageButton.Click += TemplateCard_Click;
+            Console.WriteLine($"Created template card for: {template.TemplateName}");
+            Console.WriteLine($"Button Tag set to: {imageButton.Tag?.GetType().Name}");
+
+            container.Children.Add(imageButton);
+            container.Children.Add(nameLabel);
+
+            return container;
         }
+
+
 
         #endregion
 
@@ -612,23 +661,9 @@ namespace Photobooth
             }
         }
 
-        /// <summary>
-        /// Handles category button clicks
-        /// </summary>
-        private void CategoryButton_Click(object sender, RoutedEventArgs e)
-        {
-            try
-            {
-                if (sender is Button button && button.Content is string category)
-                {
-                    ApplyFilter(category);
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Category button error: {ex.Message}");
-            }
-        }
+
+
+
 
         /// <summary>
         /// Handles template card selection
@@ -637,56 +672,46 @@ namespace Photobooth
         {
             try
             {
-                if (sender is Button button && button.Tag is TemplateInfo template)
+                Console.WriteLine("=== TEMPLATE CARD CLICKED ===");
+                Console.WriteLine($"Sender type: {sender?.GetType().Name}");
+                
+                if (sender is Button button)
                 {
-                    TemplateSelected?.Invoke(this, new TemplateSelectedEventArgs(template));
+                    Console.WriteLine($"Button found. Tag type: {button.Tag?.GetType().Name}");
+                    Console.WriteLine($"Button Tag value: {button.Tag}");
+                    
+                    if (button.Tag is TemplateInfo template)
+                    {
+                        Console.WriteLine($"TemplateInfo found: {template.TemplateName}");
+                        Console.WriteLine($"Template Category: {template.Category}");
+                        Console.WriteLine($"Template Path: {template.PreviewImagePath}");
+                        Console.WriteLine($"TemplateSelected event subscribers: {TemplateSelected?.GetInvocationList()?.Length ?? 0}");
+                        
+                        Console.WriteLine("Invoking TemplateSelected event...");
+                        TemplateSelected?.Invoke(this, new TemplateSelectedEventArgs(template));
+                        Console.WriteLine("TemplateSelected event invoked successfully");
+                    }
+                    else
+                    {
+                        Console.WriteLine("ERROR: Button.Tag is not TemplateInfo!");
+                        Console.WriteLine($"Actual Tag type: {button.Tag?.GetType().FullName ?? "null"}");
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("ERROR: Sender is not a Button!");
+                    Console.WriteLine($"Actual sender type: {sender?.GetType().FullName ?? "null"}");
                 }
             }
             catch (Exception ex)
             {
+                Console.WriteLine($"EXCEPTION in TemplateCard_Click: {ex.Message}");
+                Console.WriteLine($"Stack trace: {ex.StackTrace}");
                 System.Diagnostics.Debug.WriteLine($"Template selection error: {ex.Message}");
             }
         }
 
-        /// <summary>
-        /// Handles previous page navigation
-        /// </summary>
-        private void PreviousPage_Click(object sender, RoutedEventArgs e)
-        {
-            try
-            {
-                if (currentPage > 0)
-                {
-                    currentPage--;
-                    UpdateTemplateDisplay();
-                    UpdatePagination();
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Previous page error: {ex.Message}");
-            }
-        }
 
-        /// <summary>
-        /// Handles next page navigation
-        /// </summary>
-        private void NextPage_Click(object sender, RoutedEventArgs e)
-        {
-            try
-            {
-                if (currentPage < totalPages - 1)
-                {
-                    currentPage++;
-                    UpdateTemplateDisplay();
-                    UpdatePagination();
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Next page error: {ex.Message}");
-            }
-        }
 
 
 
@@ -738,57 +763,7 @@ namespace Photobooth
             }
         }
 
-        /// <summary>
-        /// Initializes floating orb animations
-        /// </summary>
-        private void InitializeAnimations()
-        {
-            try
-            {
-                var random = new Random();
-                foreach (Ellipse orb in FloatingOrbsCanvas.Children)
-                {
-                    var translateTransform = new TranslateTransform();
-                    orb.RenderTransform = translateTransform;
 
-                    var storyboard = new Storyboard();
-
-                    var yAnimation = new DoubleAnimation
-                    {
-                        From = 0,
-                        To = random.Next(-20, -5),
-                        Duration = TimeSpan.FromSeconds(3 + random.NextDouble() * 2),
-                        AutoReverse = true,
-                        RepeatBehavior = RepeatBehavior.Forever,
-                        EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
-                    };
-
-                    var xAnimation = new DoubleAnimation
-                    {
-                        From = 0,
-                        To = random.Next(-10, 10),
-                        Duration = TimeSpan.FromSeconds(4 + random.NextDouble() * 2),
-                        AutoReverse = true,
-                        RepeatBehavior = RepeatBehavior.Forever,
-                        EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
-                    };
-
-                    Storyboard.SetTarget(yAnimation, translateTransform);
-                    Storyboard.SetTargetProperty(yAnimation, new PropertyPath("Y"));
-                    Storyboard.SetTarget(xAnimation, translateTransform);
-                    Storyboard.SetTargetProperty(xAnimation, new PropertyPath("X"));
-
-                    storyboard.Children.Add(yAnimation);
-                    storyboard.Children.Add(xAnimation);
-                    activeStoryboards.Add(storyboard);
-                    storyboard.Begin();
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Animation initialization failed: {ex.Message}");
-            }
-        }
 
         #endregion
 
@@ -829,13 +804,6 @@ namespace Photobooth
                 // Stop refresh delay timer
                 refreshDelayTimer?.Stop();
                 refreshDelayTimer = null;
-
-                // Stop animations
-                foreach (var storyboard in activeStoryboards)
-                {
-                    storyboard.Stop();
-                }
-                activeStoryboards.Clear();
             }
             catch (Exception ex)
             {

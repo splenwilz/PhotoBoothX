@@ -47,6 +47,12 @@ namespace Photobooth.Models
         SmartphonePrint
     }
 
+    public enum TemplateType
+    {
+        Strip,
+        Photo4x6
+    }
+
     public class ProductCategory
     {
         public int Id { get; set; }
@@ -228,6 +234,7 @@ namespace Photobooth.Models
         public DateTime UploadedAt { get; set; } = DateTime.Now;
         public string? UploadedBy { get; set; }
         public string Description { get; set; } = string.Empty;
+        public TemplateType TemplateType { get; set; } = TemplateType.Strip;
         
         // Computed properties from layout
         public int Width => Layout?.Width ?? 0;

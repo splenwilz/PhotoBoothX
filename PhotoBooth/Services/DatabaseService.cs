@@ -31,8 +31,9 @@ namespace Photobooth.Services
         Task<DatabaseResult<DailySalesSummary?>> GetDailySalesAsync(DateTime date);
         Task<DatabaseResult<List<PopularTemplateDto>>> GetPopularTemplatesAsync(int limit = 10);
         Task<DatabaseResult<List<Template>>> GetAllTemplatesAsync(bool showAllSeasons = false);
+        Task<DatabaseResult<List<Template>>> GetTemplatesByTypeAsync(TemplateType templateType, bool showAllSeasons = false);
         Task<DatabaseResult<Template>> CreateTemplateAsync(Template template);
-        Task<DatabaseResult<Template>> UpdateTemplateAsync(int templateId, string? name = null, bool? isActive = null, decimal? price = null, int? categoryId = null, string? description = null, int? sortOrder = null, int? photoCount = null);
+        Task<DatabaseResult<Template>> UpdateTemplateAsync(int templateId, string? name = null, bool? isActive = null, decimal? price = null, int? categoryId = null, string? description = null, int? sortOrder = null, int? photoCount = null, TemplateType? templateType = null);
         Task<DatabaseResult> BulkUpdateTemplateCategoryAsync(List<int> templateIds, int categoryId);
         Task<DatabaseResult> UpdateTemplatePathsAsync(int templateId, string folderPath, string templatePath, string previewPath);
         Task<DatabaseResult> UpdateTemplateFileSizeAsync(int templateId, long fileSize);
@@ -1036,7 +1037,7 @@ COMMIT;";
                         t.Id, t.Name, t.CategoryId, t.LayoutId,
                         t.FolderPath, t.TemplatePath, t.PreviewPath,
                         t.IsActive, t.Price, t.SortOrder, t.FileSize,
-                        t.Description, t.UploadedAt, t.UploadedBy,
+                        t.Description, t.UploadedAt, t.UploadedBy, t.TemplateType,
                         tc.Name as CategoryName, tc.IsSeasonalCategory, tc.SeasonStartDate, tc.SeasonEndDate, tc.SeasonalPriority, tc.SortOrder as CategorySortOrder,
                         tl.Name as LayoutName, tl.LayoutKey, tl.Width, tl.Height, tl.PhotoCount, tl.ProductCategoryId,
                         pc.Name as ProductCategoryName,
@@ -1096,7 +1097,8 @@ COMMIT;";
                                     FileSize = GetLongValue(reader, "FileSize"),
                                     Description = GetStringValue(reader, "Description"),
                                     UploadedAt = DateTime.Parse(GetStringValue(reader, "UploadedAt")),
-                                    UploadedBy = GetStringValue(reader, "UploadedBy")
+                                    UploadedBy = GetStringValue(reader, "UploadedBy"),
+                                    TemplateType = (TemplateType)GetIntValue(reader, "TemplateType", (int)TemplateType.Strip)
                                 };
 
                                 // Set CategoryName for display (used by UI)
@@ -1165,6 +1167,150 @@ COMMIT;";
             }
         }
 
+        public async Task<DatabaseResult<List<Template>>> GetTemplatesByTypeAsync(TemplateType templateType, bool showAllSeasons = false)
+        {
+            try
+            {
+                var templates = new List<Template>();
+                
+                var query = @"
+                    SELECT 
+                        t.Id, t.Name, t.CategoryId, t.LayoutId,
+                        t.FolderPath, t.TemplatePath, t.PreviewPath,
+                        t.IsActive, t.Price, t.SortOrder, t.FileSize,
+                        t.Description, t.UploadedAt, t.UploadedBy, t.TemplateType,
+                        tc.Name as CategoryName, tc.IsSeasonalCategory, tc.SeasonStartDate, tc.SeasonEndDate, tc.SeasonalPriority, tc.SortOrder as CategorySortOrder,
+                        tl.Name as LayoutName, tl.LayoutKey, tl.Width, tl.Height, tl.PhotoCount, tl.ProductCategoryId,
+                        pc.Name as ProductCategoryName,
+                        -- Calculate effective priority for seasonal ordering
+                        CASE 
+                            WHEN tc.IsSeasonalCategory = 1 AND (
+                                -- Normal seasons (start <= end): check if current date is within range
+                                (tc.SeasonStartDate <= tc.SeasonEndDate AND strftime('%m-%d', 'now') BETWEEN tc.SeasonStartDate AND tc.SeasonEndDate)
+                                OR
+                                -- Cross-year seasons (start > end): check if current date is in either part of the range
+                                (tc.SeasonStartDate > tc.SeasonEndDate AND (strftime('%m-%d', 'now') >= tc.SeasonStartDate OR strftime('%m-%d', 'now') <= tc.SeasonEndDate))
+                            ) THEN tc.SeasonalPriority
+                            ELSE 0
+                        END as EffectivePriority
+                    FROM Templates t
+                    LEFT JOIN TemplateCategories tc ON t.CategoryId = tc.Id
+                    LEFT JOIN TemplateLayouts tl ON t.LayoutId = tl.Id
+                    LEFT JOIN ProductCategories pc ON tl.ProductCategoryId = pc.Id
+                    WHERE t.TemplateType = @TemplateType
+                    ORDER BY 
+                        -- First: Active seasonal categories by their priority (highest first)
+                        CASE 
+                            WHEN tc.IsSeasonalCategory = 1 AND (
+                                -- Normal seasons (start <= end): check if current date is within range
+                                (tc.SeasonStartDate <= tc.SeasonEndDate AND strftime('%m-%d', 'now') BETWEEN tc.SeasonStartDate AND tc.SeasonEndDate)
+                                OR
+                                -- Cross-year seasons (start > end): check if current date is in either part of the range
+                                (tc.SeasonStartDate > tc.SeasonEndDate AND (strftime('%m-%d', 'now') >= tc.SeasonStartDate OR strftime('%m-%d', 'now') <= tc.SeasonEndDate))
+                            ) THEN tc.SeasonalPriority
+                            ELSE 0
+                        END DESC,
+                        -- Then: Regular category sort order
+                        tc.SortOrder ASC,
+                        -- Finally: Template sort order within category
+                        t.SortOrder ASC";
+
+                using (var connection = new SqliteConnection(_connectionString))
+                {
+                    await connection.OpenAsync();
+                    using (var command = new SqliteCommand(query, connection))
+                    {
+                        command.Parameters.AddWithValue("@TemplateType", (int)templateType);
+                        
+                        using (var reader = await command.ExecuteReaderAsync())
+                        {
+                            while (await reader.ReadAsync())
+                            {
+                                var template = new Template
+                                {
+                                    Id = GetIntValue(reader, "Id"),
+                                    Name = GetStringValue(reader, "Name"),
+                                    CategoryId = GetIntValue(reader, "CategoryId"),
+                                    LayoutId = GetStringValue(reader, "LayoutId"),
+                                    FolderPath = GetStringValue(reader, "FolderPath"),
+                                    TemplatePath = GetStringValue(reader, "TemplatePath"),
+                                    PreviewPath = GetStringValue(reader, "PreviewPath"),
+                                    IsActive = GetBoolValue(reader, "IsActive"),
+                                    Price = (decimal)GetDoubleValue(reader, "Price"),
+                                    SortOrder = GetIntValue(reader, "SortOrder"),
+                                    FileSize = GetLongValue(reader, "FileSize"),
+                                    Description = GetStringValue(reader, "Description"),
+                                    UploadedAt = DateTime.Parse(GetStringValue(reader, "UploadedAt")),
+                                    UploadedBy = GetStringValue(reader, "UploadedBy"),
+                                    TemplateType = (TemplateType)GetIntValue(reader, "TemplateType", (int)TemplateType.Strip)
+                                };
+
+                                // Set CategoryName for display (used by UI)
+                                template.CategoryName = reader["CategoryName"].ToString() ?? "";
+
+                                // Set category information if available
+                                if (reader["CategoryName"] != DBNull.Value)
+                                {
+                                    template.Category = new TemplateCategory 
+                                    { 
+                                        Id = template.CategoryId, 
+                                        Name = reader["CategoryName"].ToString() ?? "",
+                                        IsSeasonalCategory = GetBoolValue(reader, "IsSeasonalCategory", false),
+                                        SeasonStartDate = GetStringValue(reader, "SeasonStartDate"),
+                                        SeasonEndDate = GetStringValue(reader, "SeasonEndDate"),
+                                        SeasonalPriority = GetIntValue(reader, "SeasonalPriority", 0),
+                                        SortOrder = GetIntValue(reader, "CategorySortOrder", 0)
+                                    };
+                                }
+
+                                // Set layout information if available
+                                if (reader["LayoutName"] != DBNull.Value)
+                                {
+                                    template.Layout = new TemplateLayout
+                                    {
+                                        Id = template.LayoutId,
+                                        Name = reader["LayoutName"].ToString() ?? "",
+                                        LayoutKey = GetStringValue(reader, "LayoutKey"),
+                                        Width = GetIntValue(reader, "Width"),
+                                        Height = GetIntValue(reader, "Height"),
+                                        PhotoCount = GetIntValue(reader, "PhotoCount"),
+                                        ProductCategoryId = GetIntValue(reader, "ProductCategoryId")
+                                    };
+                                }
+
+                                templates.Add(template);
+                            }
+                        }
+                    }
+                }
+
+                // Apply seasonal filtering: only keep templates from categories that are currently in season (or non-seasonal)
+                // Skip filtering if showAllSeasons is true (admin wants to see all templates regardless of season)
+                if (showAllSeasons)
+                {
+                    // Return all templates without seasonal filtering
+                    return DatabaseResult<List<Template>>.SuccessResult(templates);
+                }
+                else
+                {
+                    // Apply normal seasonal filtering
+                    var filteredTemplates = new List<Template>();
+                    foreach (var template in templates)
+                    {
+                        if (template.Category == null || !template.Category.IsSeasonalCategory || template.Category.IsCurrentlyInSeason)
+                        {
+                            filteredTemplates.Add(template);
+                        }
+                    }
+                    return DatabaseResult<List<Template>>.SuccessResult(filteredTemplates);
+                }
+            }
+            catch (Exception ex)
+            {
+                return DatabaseResult<List<Template>>.ErrorResult($"Failed to get templates by type: {ex.Message}", ex);
+            }
+        }
+
         public async Task<DatabaseResult<Template>> CreateTemplateAsync(Template template)
         {
             try
@@ -1173,11 +1319,11 @@ COMMIT;";
                     INSERT INTO Templates (Name, CategoryId, LayoutId,
                                          FolderPath, TemplatePath, PreviewPath,
                                          IsActive, Price, SortOrder, FileSize,
-                                         Description, UploadedAt, UploadedBy)
+                                         Description, UploadedAt, UploadedBy, TemplateType)
                     VALUES (@Name, @CategoryId, @LayoutId,
                             @FolderPath, @TemplatePath, @PreviewPath,
                             @IsActive, @Price, @SortOrder, @FileSize,
-                            @Description, @UploadedAt, @UploadedBy);
+                            @Description, @UploadedAt, @UploadedBy, @TemplateType);
                     SELECT last_insert_rowid();";
 
                 using var connection = new SqliteConnection(_connectionString);
@@ -1197,6 +1343,7 @@ COMMIT;";
                 command.Parameters.AddWithValue("@Description", template.Description);
                 command.Parameters.AddWithValue("@UploadedAt", template.UploadedAt.ToString("yyyy-MM-dd HH:mm:ss"));
                 command.Parameters.AddWithValue("@UploadedBy", template.UploadedBy ?? (object)DBNull.Value);
+                command.Parameters.AddWithValue("@TemplateType", (int)template.TemplateType);
 
                 var newId = await command.ExecuteScalarAsync();
                 template.Id = Convert.ToInt32(newId);
@@ -1209,7 +1356,7 @@ COMMIT;";
             }
         }
 
-        public async Task<DatabaseResult<Template>> UpdateTemplateAsync(int templateId, string? name = null, bool? isActive = null, decimal? price = null, int? categoryId = null, string? description = null, int? sortOrder = null, int? photoCount = null)
+        public async Task<DatabaseResult<Template>> UpdateTemplateAsync(int templateId, string? name = null, bool? isActive = null, decimal? price = null, int? categoryId = null, string? description = null, int? sortOrder = null, int? photoCount = null, TemplateType? templateType = null)
         {
             try
             {
@@ -1250,6 +1397,12 @@ COMMIT;";
                 {
                     updates.Add("SortOrder = @SortOrder");
                     parameters.Add(("@SortOrder", sortOrder.Value));
+                }
+
+                if (templateType.HasValue)
+                {
+                    updates.Add("TemplateType = @TemplateType");
+                    parameters.Add(("@TemplateType", (int)templateType.Value));
                 }
 
                 // PhotoCount is now computed from layout, no longer stored in template table

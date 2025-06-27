@@ -1,0 +1,222 @@
+<UserControl x:Class="Photobooth.CategorySelectionScreen"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <UserControl.Resources>
+
+        <!-- Main Background Gradient -->
+        <LinearGradientBrush x:Key="MainBackgroundGradient" StartPoint="0,0" EndPoint="1,1">
+            <GradientStop Color="#581C87" Offset="0"/>
+            <!-- purple-900 -->
+            <GradientStop Color="#1E3A8A" Offset="0.5"/>
+            <!-- blue-900 -->
+            <GradientStop Color="#312E81" Offset="1"/>
+            <!-- indigo-900 -->
+        </LinearGradientBrush>
+
+        <!-- Floating Orb Style -->
+        <Style x:Key="FloatingOrbStyle" TargetType="Ellipse">
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <BlurEffect Radius="15"/>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Category Card Style -->
+        <Style x:Key="CategoryCardStyle" TargetType="Button">
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Margin" Value="12"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                CornerRadius="16"
+                                Effect="{TemplateBinding Effect}">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Effect">
+                                    <Setter.Value>
+                                        <DropShadowEffect BlurRadius="25" Opacity="0.4" ShadowDepth="8"/>
+                                    </Setter.Value>
+                                </Setter>
+                                <Setter Property="RenderTransform">
+                                    <Setter.Value>
+                                        <ScaleTransform ScaleX="1.05" ScaleY="1.05"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="RenderTransform">
+                                    <Setter.Value>
+                                        <ScaleTransform ScaleX="0.95" ScaleY="0.95"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <DropShadowEffect BlurRadius="15" Opacity="0.2" ShadowDepth="5"/>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Back Button Style -->
+        <Style x:Key="BackButtonStyle" TargetType="Button">
+            <Setter Property="Background">
+                <Setter.Value>
+                    <SolidColorBrush Color="White" Opacity="0.1"/>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontSize" Value="18"/>
+            <Setter Property="FontWeight" Value="Normal"/>
+            <Setter Property="Width" Value="60"/>
+            <Setter Property="Height" Value="60"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                CornerRadius="30">
+                            <TextBlock Text="←" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="24"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background">
+                                    <Setter.Value>
+                                        <SolidColorBrush Color="White" Opacity="0.2"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+    </UserControl.Resources>
+
+    <!-- Main Container -->
+    <Grid Background="{StaticResource MainBackgroundGradient}" ClipToBounds="True">
+
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <!-- Header -->
+            <RowDefinition Height="Auto"/>
+            <!-- Title -->
+            <RowDefinition Height="*"/>
+            <!-- Categories Grid -->
+            <RowDefinition Height="60"/>
+            <!-- Bottom Spacing -->
+        </Grid.RowDefinitions>
+
+        <!-- Floating Orbs Layer -->
+        <Canvas Name="FloatingOrbsCanvas">
+            <Ellipse Width="96" Height="96" 
+                     Fill="#A855F7" 
+                     Style="{StaticResource FloatingOrbStyle}"
+                     Canvas.Left="150" Canvas.Top="100" Opacity="0.3"/>
+            <Ellipse Width="64" Height="64" 
+                     Fill="#3B82F6" 
+                     Style="{StaticResource FloatingOrbStyle}"
+                     Canvas.Left="800" Canvas.Top="200" Opacity="0.4"/>
+            <Ellipse Width="128" Height="128" 
+                     Fill="#6366F1" 
+                     Style="{StaticResource FloatingOrbStyle}"
+                     Canvas.Left="1200" Canvas.Top="300" Opacity="0.2"/>
+        </Canvas>
+
+        <!-- Back Button -->
+        <Button Name="BackButton" 
+                Grid.Row="0"
+                Style="{StaticResource BackButtonStyle}"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Top"
+                Margin="40,40,0,0"
+                Click="BackButton_Click"/>
+
+        <!-- Title Section -->
+        <StackPanel Grid.Row="1" 
+                    HorizontalAlignment="Center" 
+                    VerticalAlignment="Top"
+                    Margin="0,60,0,40">
+            <TextBlock Text="Choose Your Style" 
+                       FontSize="56" 
+                       FontWeight="Bold" 
+                       Foreground="White" 
+                       HorizontalAlignment="Center"
+                       TextAlignment="Center"/>
+            <TextBlock Name="ProductSubtitle"
+                       Text="Select a category for your photo strip" 
+                       FontSize="20" 
+                       Foreground="White" 
+                       Opacity="0.8"
+                       HorizontalAlignment="Center"
+                       TextAlignment="Center"
+                       Margin="0,12,0,0"/>
+        </StackPanel>
+
+        <!-- Categories Grid -->
+        <ScrollViewer Grid.Row="2" 
+                      HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Auto"
+                      Margin="60,0,60,20">
+            <UniformGrid Name="CategoriesGrid" 
+                         Columns="3" 
+                         VerticalAlignment="Top"
+                         HorizontalAlignment="Center"
+                         MaxWidth="1000">
+                
+                <!-- Categories will be loaded dynamically here -->
+                
+            </UniformGrid>
+        </ScrollViewer>
+
+        <!-- Loading Panel -->
+        <Grid Name="LoadingPanel" 
+              Grid.Row="2" 
+              Background="#80000000" 
+              Visibility="Collapsed">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                <TextBlock Text="Loading categories..." 
+                           FontSize="18" 
+                           Foreground="White" 
+                           HorizontalAlignment="Center"/>
+                <ProgressBar Width="200" 
+                             Height="4" 
+                             IsIndeterminate="True" 
+                             Margin="0,20,0,0"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- Empty State Panel -->
+        <StackPanel Name="EmptyStatePanel" 
+                    Grid.Row="2"
+                    HorizontalAlignment="Center" 
+                    VerticalAlignment="Center"
+                    Visibility="Collapsed">
+            <TextBlock Text="No categories available" 
+                       FontSize="24" 
+                       Foreground="White" 
+                       HorizontalAlignment="Center"
+                       Opacity="0.8"/>
+            <TextBlock Text="Please contact your administrator to add template categories." 
+                       FontSize="16" 
+                       Foreground="White" 
+                       HorizontalAlignment="Center"
+                       Opacity="0.6"
+                       Margin="0,8,0,0"/>
+        </StackPanel>
+
+    </Grid>
+
+</UserControl> 

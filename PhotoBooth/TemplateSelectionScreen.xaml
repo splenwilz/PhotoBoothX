@@ -14,14 +14,7 @@
             <!-- indigo-900 -->
         </LinearGradientBrush>
 
-        <!-- Floating Orb Style -->
-        <Style x:Key="FloatingOrbStyle" TargetType="Ellipse">
-            <Setter Property="Effect">
-                <Setter.Value>
-                    <BlurEffect Radius="15"/>
-                </Setter.Value>
-            </Setter>
-        </Style>
+
 
         <!-- Category Button Style -->
         <Style x:Key="CategoryButtonStyle" TargetType="Button">
@@ -31,10 +24,10 @@
                 </Setter.Value>
             </Setter>
             <Setter Property="Foreground" Value="White"/>
-            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="FontSize" Value="14"/>
             <Setter Property="FontWeight" Value="Normal"/>
-            <Setter Property="Padding" Value="20,10"/>
-            <Setter Property="Margin" Value="8,0"/>
+            <Setter Property="Padding" Value="16,8"/>
+            <Setter Property="Margin" Value="6,0"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
@@ -183,223 +176,74 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <!-- Header -->
-            <RowDefinition Height="Auto"/>
-            <!-- Title -->
-            <RowDefinition Height="Auto"/>
-            <!-- Categories -->
             <RowDefinition Height="*"/>
-            <!-- Templates -->
+            <!-- Templates (takes most space) -->
             <RowDefinition Height="Auto"/>
             <!-- Pagination -->
-            <RowDefinition Height="60"/>
+            <RowDefinition Height="40"/>
             <!-- Bottom Spacing -->
         </Grid.RowDefinitions>
 
-        <!-- Floating Orbs Layer -->
-        <Canvas Name="FloatingOrbsCanvas">
-            <Ellipse Width="96" Height="96" 
-                     Fill="#A855F7" Opacity="0.2" 
-                     Style="{StaticResource FloatingOrbStyle}"
-                     Canvas.Left="128" Canvas.Top="128"/>
-            <Ellipse Width="80" Height="80" 
-                     Fill="#3B82F6" Opacity="0.25" 
-                     Style="{StaticResource FloatingOrbStyle}"
-                     Canvas.Right="160" Canvas.Top="80"/>
-            <Ellipse Width="128" Height="128" 
-                     Fill="#EC4899" Opacity="0.15" 
-                     Style="{StaticResource FloatingOrbStyle}"
-                     Canvas.Left="480" Canvas.Bottom="160"/>
-            <Ellipse Width="80" Height="80" 
-                     Fill="#06B6D4" Opacity="0.2" 
-                     Style="{StaticResource FloatingOrbStyle}"
-                     Canvas.Right="128" Canvas.Bottom="128"/>
-        </Canvas>
 
 
 
-        <!-- Header Row -->
-        <Grid Grid.Row="0" Margin="40,40,40,20">
+
+        <!-- Header Row - Styled -->
+        <Grid Grid.Row="0" Margin="30,30,30,20">
             <Button Style="{StaticResource BackButtonStyle}"
                     HorizontalAlignment="Left"
                     Click="BackButton_Click"/>
-        </Grid>
-
-        <!-- Title Section -->
-        <StackPanel Grid.Row="1" HorizontalAlignment="Center" Margin="0,0,0,40">
-            <TextBlock Text="Choose Your Template" 
-                       FontSize="64" 
+            <!-- Styled gradient title -->
+            <TextBlock Text="Choose your experience!" 
+                       FontSize="36" 
                        FontWeight="Bold" 
-                       Foreground="White" 
                        HorizontalAlignment="Center"
-                       Margin="0,0,0,16"/>
-            <TextBlock Text="Select a design for your photo strip" 
-                       FontSize="24" 
-                       Foreground="#DDD6FE"
-                       HorizontalAlignment="Center"/>
-        </StackPanel>
+                       VerticalAlignment="Center">
+                <TextBlock.Foreground>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                        <GradientStop Color="#E0E7FF" Offset="0"/>
+                        <!-- light indigo -->
+                        <GradientStop Color="#DBEAFE" Offset="0.3"/>
+                        <!-- light blue -->
+                        <GradientStop Color="#ECFDF5" Offset="0.6"/>
+                        <!-- light cyan/mint -->
+                        <GradientStop Color="#F8FAFC" Offset="1"/>
+                        <!-- almost white -->
+                    </LinearGradientBrush>
+                </TextBlock.Foreground>
+                <TextBlock.Effect>
+                    <DropShadowEffect BlurRadius="8" 
+                                      ShadowDepth="2" 
+                                      Opacity="0.3" 
+                                      Color="Black"/>
+                </TextBlock.Effect>
+            </TextBlock>
 
-        <!-- Category Filter Buttons -->
-        <StackPanel Grid.Row="2" 
-                    Orientation="Horizontal" 
-                    HorizontalAlignment="Center"
-                    Margin="0,0,0,60">
-            <Button Content="All" Style="{StaticResource CategoryButtonStyle}" 
-                    Click="CategoryButton_Click" Tag="Selected" Name="AllButton"/>
-            <Button Content="Portrait" Style="{StaticResource CategoryButtonStyle}" 
-                    Click="CategoryButton_Click" Name="PortraitButton"/>
-            <Button Content="Landscape" Style="{StaticResource CategoryButtonStyle}" 
-                    Click="CategoryButton_Click" Name="LandscapeButton"/>
-            <Button Content="Classic" Style="{StaticResource CategoryButtonStyle}" 
-                    Click="CategoryButton_Click" Name="ClassicButton"/>
-            <Button Content="Fun" Style="{StaticResource CategoryButtonStyle}" 
-                    Click="CategoryButton_Click" Name="FunButton"/>
-            <Button Content="Holiday" Style="{StaticResource CategoryButtonStyle}" 
-                    Click="CategoryButton_Click" Name="HolidayButton"/>
-            <Button Content="Seasonal" Style="{StaticResource CategoryButtonStyle}" 
-                    Click="CategoryButton_Click" Name="SeasonalButton"/>
-        </StackPanel>
-
-        <!-- Template Display Area -->
-        <Grid Grid.Row="3" HorizontalAlignment="Center" VerticalAlignment="Center">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <!-- Left Arrow -->
-                <ColumnDefinition Width="*"/>
-                <!-- Templates -->
-                <ColumnDefinition Width="Auto"/>
-                <!-- Right Arrow -->
-            </Grid.ColumnDefinitions>
-
-            <!-- Left Navigation Arrow -->
-            <Button Grid.Column="0" 
-                    Style="{StaticResource NavArrowStyle}"
-                    Content="‹"
-                    VerticalAlignment="Center"
-                    Margin="40,0,20,0"
-                    Click="PreviousPage_Click"
-                    Name="PrevButton"/>
-
-            <!-- Template Cards Container -->
-            <ItemsControl Grid.Column="1" 
-                          Name="TemplatesContainer" 
-                          HorizontalAlignment="Center"
-                          VerticalAlignment="Center">
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center"/>
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <Button Style="{StaticResource TemplateCardStyle}"
-                                Click="TemplateCard_Click"
-                                Tag="{Binding}">
-                            <Button.Effect>
-                                <DropShadowEffect BlurRadius="10" Opacity="0.2" ShadowDepth="2"/>
-                            </Button.Effect>
-
-                            <!-- Template Card - THREE CONSISTENT SIZES -->
-                            <Grid Name="TemplateCardContainer" 
-                                  Width="{Binding DisplayWidth}" 
-                                  Height="{Binding DisplayHeight}"
-                                  Margin="20">
-
-                                <!-- Main Template Image Container -->
-                                <Border CornerRadius="16" ClipToBounds="True">
-                                    <Image Source="{Binding PreviewImagePath}" 
-                                           Stretch="UniformToFill"
-                                           HorizontalAlignment="Center"
-                                           VerticalAlignment="Center"/>
-                                </Border>
-
-                                <!-- Aspect Ratio Badge - Top Left -->
-                                <Border Background="#581C87" 
-                                        CornerRadius="8"
-                                        Padding="8,4"
-                                        HorizontalAlignment="Left"
-                                        VerticalAlignment="Top"
-                                        Margin="12">
-                                    <TextBlock Text="{Binding AspectRatioText}" 
-                                               Foreground="White" 
-                                               FontSize="10"
-                                               FontWeight="SemiBold"/>
-                                </Border>
-
-                                <!-- Category Badge - Top Right -->
-                                <Border Background="#000000" 
-                                        Opacity="0.8"
-                                        CornerRadius="12"
-                                        Padding="8,4"
-                                        HorizontalAlignment="Right"
-                                        VerticalAlignment="Top"
-                                        Margin="12">
-                                    <TextBlock Text="{Binding Category}" 
-                                               Foreground="White" 
-                                               FontSize="10"
-                                               FontWeight="SemiBold"/>
-                                </Border>
-
-                                <!-- Template Info Overlay - Bottom with dynamic sizing -->
-                                <Border Background="#000000" 
-                                        Opacity="0.85"
-                                        CornerRadius="0,0,16,16"
-                                        VerticalAlignment="Bottom"
-                                        HorizontalAlignment="Stretch"
-                                        MinHeight="60"
-                                        MaxHeight="80">
-                                    <StackPanel Margin="12,8" VerticalAlignment="Center">
-                                        <TextBlock Text="{Binding TemplateName}" 
-                                                   FontSize="14" 
-                                                   FontWeight="Bold" 
-                                                   Foreground="White"
-                                                   Margin="0,0,0,2"
-                                                   TextTrimming="CharacterEllipsis"/>
-                                        <TextBlock Text="{Binding Description}" 
-                                                   FontSize="10" 
-                                                   Foreground="#CCCCCC"
-                                                   TextWrapping="Wrap"
-                                                   TextTrimming="CharacterEllipsis"
-                                                   MaxHeight="32"/>
-                                        <TextBlock Text="{Binding DimensionText}" 
-                                                   FontSize="8" 
-                                                   Foreground="#AAAAAA"
-                                                   Margin="0,2,0,0"/>
-                                    </StackPanel>
-                                </Border>
-                            </Grid>
-                        </Button>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-
-            <!-- Right Navigation Arrow -->
-            <Button Grid.Column="2" 
-                    Style="{StaticResource NavArrowStyle}"
-                    Content="›"
-                    VerticalAlignment="Center"
-                    Margin="20,0,40,0"
-                    Click="NextPage_Click"
-                    Name="NextButton"/>
         </Grid>
 
-        <!-- Pagination Dots -->
-        <StackPanel Grid.Row="4" 
-                    Orientation="Horizontal" 
-                    HorizontalAlignment="Center"
-                    Margin="0,40,0,0"
-                    Name="PaginationDots">
-            <!-- Dots will be added programmatically -->
-        </StackPanel>
+        <!-- Template Display Area - Scrollable with Category Headers -->
+        <ScrollViewer Grid.Row="1" 
+                      HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Hidden"
+                      Margin="30,20,30,20">
+            
+            <StackPanel Name="CategorizedTemplatesContainer" 
+                        HorizontalAlignment="Center"
+                        MaxWidth="1400">
+                <!-- Category sections will be added here dynamically -->
+            </StackPanel>
+            
+        </ScrollViewer>
 
-        <!-- Page Info -->
-        <TextBlock Grid.Row="4"
-                   Text="Page 1 of 3"
-                   FontSize="16"
+        <!-- Template Count Info -->
+        <TextBlock Grid.Row="2"
+                   Name="TemplateCountInfo"
+                   Text="Loading templates..."
+                   FontSize="14"
                    Foreground="#DDD6FE"
                    HorizontalAlignment="Center"
-                   VerticalAlignment="Bottom"
-                   Margin="0,0,0,20"
-                   Name="PageInfo"/>
+                   VerticalAlignment="Center"
+                   Margin="0,10,0,10"/>
 
     </Grid>
 
