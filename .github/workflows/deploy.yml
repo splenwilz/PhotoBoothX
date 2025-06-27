@@ -71,13 +71,13 @@ jobs:
       with:
         name: published-app
         path: ${{ env.PUBLISH_PATH }}
-        retention-days: 30
+        retention-days: 7
 
   create-installer:
     name: Create Installer
     needs: build-and-test
     runs-on: windows-latest
-    if: github.ref == 'refs/heads/production' || github.event_name == 'release'
+    if: github.ref == 'refs/heads/production' || github.ref == 'refs/heads/master' || github.event_name == 'release'
     
     steps:
     - name: Checkout code
@@ -205,7 +205,7 @@ jobs:
       with:
         name: installer
         path: dist/*.exe
-        retention-days: 90
+        retention-days: 7
         
     - name: List installer files
       run: Get-ChildItem -Path "dist" -Recurse
@@ -215,7 +215,7 @@ jobs:
     name: Create GitHub Release
     needs: [build-and-test, create-installer]
     runs-on: windows-latest
-    if: github.ref == 'refs/heads/production'
+    if: github.ref == 'refs/heads/production' || github.ref == 'refs/heads/master'
     
     steps:
     - name: Checkout code
@@ -297,7 +297,7 @@ jobs:
     name: Notify Deployment Success
     needs: [create-release]
     runs-on: windows-latest
-    if: success() && github.ref == 'refs/heads/production'
+    if: success() && (github.ref == 'refs/heads/production' || github.ref == 'refs/heads/master')
     
     steps:
     - name: Success notification
