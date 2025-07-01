@@ -34,6 +34,20 @@ namespace Photobooth.Services
         {
             try
             {
+                Console.WriteLine("🔄 CONVERTING DATABASE TEMPLATE TO TEMPLATE INFO");
+                Console.WriteLine($"Template ID: {dbTemplate.Id}");
+                Console.WriteLine($"Template Name: {dbTemplate.Name}");
+                Console.WriteLine($"Template Path: {dbTemplate.TemplatePath}");
+                Console.WriteLine($"Preview Path: {dbTemplate.PreviewPath}");
+                Console.WriteLine($"Layout is null: {dbTemplate.Layout == null}");
+                if (dbTemplate.Layout != null)
+                {
+                    Console.WriteLine($"Layout ID: {dbTemplate.Layout.Id}");
+                    Console.WriteLine($"Layout PhotoCount: {dbTemplate.Layout.PhotoCount}");
+                    Console.WriteLine($"Layout PhotoAreas count: {dbTemplate.Layout.PhotoAreas?.Count ?? 0}");
+                }
+                Console.WriteLine($"PhotoAreas direct access count: {dbTemplate.PhotoAreas?.Count ?? 0}");
+                
                 LoggingService.Application.Debug("Converting template: {TemplateName}",
                     ("TemplateName", dbTemplate.Name),
                     ("PreviewPath", dbTemplate.PreviewPath),
@@ -76,6 +90,45 @@ namespace Photobooth.Services
                 var (displayWidth, displayHeight) = GetStandardDisplaySize(width, height);
 
                 // Create TemplateConfig for compatibility
+                var photoAreas = new List<PhotoArea>();
+                
+                // Try to get photo areas from Layout first, then from direct PhotoAreas property
+                if (dbTemplate.Layout?.PhotoAreas != null && dbTemplate.Layout.PhotoAreas.Any())
+                {
+                    Console.WriteLine($"✅ Using Layout PhotoAreas: {dbTemplate.Layout.PhotoAreas.Count}");
+                    photoAreas = dbTemplate.Layout.PhotoAreas.Select(pa => new PhotoArea
+                    {
+                        Id = pa.PhotoIndex.ToString(),
+                        X = pa.X,
+                        Y = pa.Y,
+                        Width = pa.Width,
+                        Height = pa.Height
+                    }).ToList();
+                }
+                else if (dbTemplate.PhotoAreas != null && dbTemplate.PhotoAreas.Any())
+                {
+                    Console.WriteLine($"✅ Using direct PhotoAreas: {dbTemplate.PhotoAreas.Count}");
+                    photoAreas = dbTemplate.PhotoAreas.Select(pa => new PhotoArea
+                    {
+                        Id = pa.Id,
+                        X = pa.X,
+                        Y = pa.Y,
+                        Width = pa.Width,
+                        Height = pa.Height
+                    }).ToList();
+                }
+                else
+                {
+                    Console.WriteLine("❌ NO PHOTO AREAS FOUND - will use empty list");
+                }
+                
+                // Log each photo area
+                for (int i = 0; i < photoAreas.Count; i++)
+                {
+                    var pa = photoAreas[i];
+                    Console.WriteLine($"Config Photo Area {i + 1}: X={pa.X}, Y={pa.Y}, W={pa.Width}, H={pa.Height}");
+                }
+                
                 var config = new TemplateConfig
                 {
                     TemplateName = dbTemplate.Name,
@@ -88,14 +141,7 @@ namespace Photobooth.Services
                         Width = width,
                         Height = height
                     },
-                    PhotoAreas = dbTemplate.PhotoAreas.Select(pa => new PhotoArea
-                    {
-                        Id = pa.Id,
-                        X = pa.X,
-                        Y = pa.Y,
-                        Width = pa.Width,
-                        Height = pa.Height
-                    }).ToList()
+                    PhotoAreas = photoAreas
                 };
 
                 var templateInfo = new TemplateInfo

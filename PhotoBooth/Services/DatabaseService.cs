@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
-using Microsoft.Data.Sqlite;
-using System.IO;
-using System.Threading.Tasks;
+using System.Data;
 using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
+using Microsoft.Data.Sqlite;
 using Photobooth.Models;
 using System.Security.Cryptography;
 using System.Text;
@@ -143,6 +145,7 @@ namespace Photobooth.Services
                     foreach (var commandText in commands)
                     {
                         commandIndex++;
+                        Console.WriteLine($"Executing database command {commandIndex}/{commands.Length}");
 
                         // Clean up the command - remove comments and whitespace
                         var lines = commandText.Split('\n');
@@ -175,34 +178,39 @@ namespace Photobooth.Services
                         
                         if (cleanLines.Count == 0)
                         {
-
+                            Console.WriteLine($"Skipping empty command {commandIndex}");
                             continue;
                         }
                         
                         var trimmedCommand = string.Join(" ", cleanLines);
+                        Console.WriteLine($"Executing: {trimmedCommand.Substring(0, Math.Min(50, trimmedCommand.Length))}...");
 
                         using var command = new SqliteCommand(trimmedCommand, connection, transaction);
                         await command.ExecuteNonQueryAsync();
-
+                        Console.WriteLine($"✅ Command {commandIndex} executed successfully");
                     }
 
+                    Console.WriteLine("🔄 Committing transaction...");
                     await transaction.CommitAsync();
+                    Console.WriteLine("✅ Transaction committed successfully");
 
                     // Create default admin users (only for new database)
-
+                    Console.WriteLine("🔑 Creating default admin users...");
                     await CreateDefaultAdminUserDirect(connection);
+                    Console.WriteLine("✅ Default admin users created");
 
                     // Create default system settings (only for new database)
-
+                    Console.WriteLine("⚙️ Creating default settings...");
                     await CreateDefaultSettingsDirect(connection);
+                    Console.WriteLine("✅ Default settings created");
 
-
+                    Console.WriteLine("🎉 Database initialization completed successfully!");
                     return DatabaseResult.SuccessResult();
                 }
-                catch
+                catch (Exception ex)
                 {
-
-
+                    Console.WriteLine($"❌ Database initialization error: {ex.Message}");
+                    Console.WriteLine($"❌ Stack trace: {ex.StackTrace}");
                     await transaction.RollbackAsync();
                     throw;
                 }
@@ -306,172 +314,22 @@ namespace Photobooth.Services
         
         private int GetExpectedSchemaVersion()
         {
-            return 1; // Keep at version 1 since we recreate DB instead of migrating
-        }
-        
-        private async Task ApplyIncrementalMigrations(SqliteConnection connection, int fromVersion, int toVersion)
-        {
-
-            // Apply version-specific migrations
-            for (int version = fromVersion + 1; version <= toVersion; version++)
-            {
-
-                switch (version)
-                {
-                    case 2:
-                        await ApplyLayoutUUIDMigration(connection);
-                        break;
-                    default:
-
-                        break;
-                }
-            }
+            return 1; // Keep at version 1 during development - we recreate DB instead of migrating
         }
         
         /// <summary>
-        /// Migration v1 -> v2: Convert TemplateLayouts to use UUID primary keys
+        /// Apply incremental database migrations (production only)
+        /// During development phase: No migrations - schema changes go directly into Database_Schema.sql
+        /// After v1.0 release: Implement proper migrations for production database updates
         /// </summary>
-        private async Task ApplyLayoutUUIDMigration(SqliteConnection connection)
+        private async Task ApplyIncrementalMigrations(SqliteConnection connection, int fromVersion, int toVersion)
         {
-
-            try
-            {
-                var migrationSql = @"
--- Start transaction for atomic migration
-BEGIN;
-
--- 1. Create new TemplateLayouts table with proper UUID structure
-CREATE TABLE TemplateLayouts_new (
-    Id TEXT PRIMARY KEY, -- UUID e.g., '550e8400-e29b-41d4-a716-446655440001'
-    LayoutKey TEXT NOT NULL UNIQUE, -- e.g., 'strip-614x1864', 'strip-591x1772' (for backward compatibility)
-    Name TEXT NOT NULL, -- e.g., 'Classic Photo Strip', 'Compact Strip'
-    Description TEXT,
-    Width INTEGER NOT NULL,
-    Height INTEGER NOT NULL,
-    PhotoCount INTEGER NOT NULL,
-    ProductCategoryId INTEGER NOT NULL, -- Links to Strips, 4x6, etc.
-    IsActive BOOLEAN NOT NULL DEFAULT 1,
-    SortOrder INTEGER NOT NULL DEFAULT 0,
-    CreatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (ProductCategoryId) REFERENCES ProductCategories(Id)
-);
-
--- 2. Migrate existing data with new UUID primary keys
-INSERT INTO TemplateLayouts_new (Id, LayoutKey, Name, Description, Width, Height, PhotoCount, ProductCategoryId, IsActive, SortOrder, CreatedAt) VALUES
-    ('550e8400-e29b-41d4-a716-446655440001', 'strip-614x1864', 'Classic Photo Strip', 'Standard 4-photo vertical strip layout', 614, 1864, 4, 1, 1, 1, CURRENT_TIMESTAMP),
-    ('550e8400-e29b-41d4-a716-446655440002', 'strip-591x1772', 'Compact Photo Strip', 'Compact 4-photo vertical strip layout', 591, 1772, 4, 1, 1, 2, CURRENT_TIMESTAMP),
-    ('550e8400-e29b-41d4-a716-446655440003', '4x6-1200x1800', 'Standard 4x6', 'Single photo 4x6 print layout', 1200, 1800, 1, 2, 1, 1, CURRENT_TIMESTAMP),
-    ('550e8400-e29b-41d4-a716-446655440004', 'square-800x800', 'Square Format', 'Square Instagram-style layout', 800, 800, 1, 2, 1, 2, CURRENT_TIMESTAMP),
-    ('550e8400-e29b-41d4-a716-446655440005', 'grid2x2-600x600', 'Grid 2x2', '4-photo grid layout', 600, 600, 4, 2, 1, 3, CURRENT_TIMESTAMP);
-
--- 3. Create new TemplatePhotoAreas table with UUID foreign keys
-CREATE TABLE TemplatePhotoAreas_new (
-    Id INTEGER PRIMARY KEY AUTOINCREMENT,
-    LayoutId TEXT NOT NULL, -- Now references UUID
-    PhotoIndex INTEGER NOT NULL, -- 1, 2, 3, 4 for strips
-    X INTEGER NOT NULL,
-    Y INTEGER NOT NULL,
-    Width INTEGER NOT NULL,
-    Height INTEGER NOT NULL,
-    Rotation REAL DEFAULT 0, -- Rotation in degrees
-    FOREIGN KEY (LayoutId) REFERENCES TemplateLayouts_new(Id) ON DELETE CASCADE,
-    UNIQUE(LayoutId, PhotoIndex)
-);
-
--- 4. Migrate photo areas with new UUID foreign keys
-INSERT INTO TemplatePhotoAreas_new (LayoutId, PhotoIndex, X, Y, Width, Height, Rotation) VALUES
-    -- strip-614x1864 layout (4 photos in vertical strip)
-    ('550e8400-e29b-41d4-a716-446655440001', 1, 42, 84, 530, 362, 0),
-    ('550e8400-e29b-41d4-a716-446655440001', 2, 42, 530, 530, 362, 0),
-    ('550e8400-e29b-41d4-a716-446655440001', 3, 42, 976, 530, 362, 0),
-    ('550e8400-e29b-41d4-a716-446655440001', 4, 42, 1422, 530, 362, 0),
-    
-    -- strip-591x1772 layout (4 photos in vertical strip - compact)
-    ('550e8400-e29b-41d4-a716-446655440002', 1, 40, 80, 511, 349, 0),
-    ('550e8400-e29b-41d4-a716-446655440002', 2, 40, 507, 511, 349, 0),
-    ('550e8400-e29b-41d4-a716-446655440002', 3, 40, 934, 511, 349, 0),
-    ('550e8400-e29b-41d4-a716-446655440002', 4, 40, 1361, 511, 349, 0),
-    
-    -- 4x6-1200x1800 layout (single photo)
-    ('550e8400-e29b-41d4-a716-446655440003', 1, 100, 150, 1000, 1500, 0),
-    
-    -- square-800x800 layout (single square photo)
-    ('550e8400-e29b-41d4-a716-446655440004', 1, 100, 100, 600, 600, 0),
-    
-    -- grid2x2-600x600 layout (4 photos in 2x2 grid)
-    ('550e8400-e29b-41d4-a716-446655440005', 1, 50, 50, 250, 250, 0),
-    ('550e8400-e29b-41d4-a716-446655440005', 2, 300, 50, 250, 250, 0),
-    ('550e8400-e29b-41d4-a716-446655440005', 3, 50, 300, 250, 250, 0),
-    ('550e8400-e29b-41d4-a716-446655440005', 4, 300, 300, 250, 250, 0);
-
--- 5. Create new Templates table with UUID foreign keys
-CREATE TABLE Templates_new (
-    Id INTEGER PRIMARY KEY AUTOINCREMENT,
-    Name TEXT NOT NULL,
-    CategoryId INTEGER NOT NULL,
-    LayoutId TEXT NOT NULL, -- Now references UUID
-    FolderPath TEXT NOT NULL UNIQUE, -- Path to template folder
-    TemplatePath TEXT NOT NULL, -- Path to template.png
-    PreviewPath TEXT NOT NULL, -- Path to preview image
-    IsActive BOOLEAN NOT NULL DEFAULT 1,
-    IsSeasonal BOOLEAN NOT NULL DEFAULT 0,
-    Price DECIMAL(10,2) DEFAULT 0, -- Premium templates
-    SortOrder INTEGER NOT NULL DEFAULT 0,
-    FileSize INTEGER DEFAULT 0, -- In bytes
-    Description TEXT DEFAULT '', -- Template description
-    UploadedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UploadedBy TEXT,
-    FOREIGN KEY (CategoryId) REFERENCES TemplateCategories(Id),
-    FOREIGN KEY (LayoutId) REFERENCES TemplateLayouts_new(Id),
-    FOREIGN KEY (UploadedBy) REFERENCES AdminUsers(UserId)
-);
-
--- 6. Migrate existing templates with proper UUID layout references
-INSERT INTO Templates_new (Name, CategoryId, LayoutId, FolderPath, TemplatePath, PreviewPath, IsActive, Price, Description, UploadedAt)
-SELECT 
-    t.Name,
-    t.CategoryId,
-    CASE t.LayoutId
-        WHEN 'strip-614x1864' THEN '550e8400-e29b-41d4-a716-446655440001'
-        WHEN 'strip-591x1772' THEN '550e8400-e29b-41d4-a716-446655440002'
-        WHEN '4x6-1200x1800' THEN '550e8400-e29b-41d4-a716-446655440003'
-        WHEN 'square-800x800' THEN '550e8400-e29b-41d4-a716-446655440004'
-        WHEN 'grid2x2-600x600' THEN '550e8400-e29b-41d4-a716-446655440005'
-        ELSE '550e8400-e29b-41d4-a716-446655440001' -- Default to strip-614x1864
-    END,
-    t.FolderPath,
-    t.TemplatePath,
-    t.PreviewPath,
-    t.IsActive,
-    t.Price,
-    t.Description,
-    t.UploadedAt
-FROM Templates t;
-
--- 7. Drop old tables and rename new ones
-DROP TABLE Templates;
-DROP TABLE TemplatePhotoAreas;
-DROP TABLE TemplateLayouts;
-
-ALTER TABLE TemplateLayouts_new RENAME TO TemplateLayouts;
-ALTER TABLE TemplatePhotoAreas_new RENAME TO TemplatePhotoAreas;
-ALTER TABLE Templates_new RENAME TO Templates;
-
--- Commit the transaction
-COMMIT;";
-
-                // Execute the migration as a single script to handle edge cases properly
-                using var command = new SqliteCommand(migrationSql, connection);
-                command.CommandTimeout = 300; // 5 minutes for complex migrations
-                await command.ExecuteNonQueryAsync();
-
-            }
-            catch
-            {
-
-                throw;
-            }
+            // Development phase: No migrations needed - just recreate DB with updated schema
+            // Production phase (post v1.0): Implement version-specific migrations here
+            await Task.CompletedTask;
         }
+        
+
 
         public async Task<DatabaseResult<List<T>>> GetAllAsync<T>() where T : class, new()
         {
@@ -1140,6 +998,19 @@ COMMIT;";
                     }
                 }
 
+                // Now load photo areas for all templates with layouts
+                foreach (var template in templates)
+                {
+                    if (template.Layout != null)
+                    {
+                        var photoAreasResult = await GetTemplatePhotoAreasAsync(template.LayoutId);
+                        if (photoAreasResult.Success && photoAreasResult.Data != null)
+                        {
+                            template.Layout.PhotoAreas = photoAreasResult.Data;
+                        }
+                    }
+                }
+
                 // Apply seasonal filtering: only keep templates from categories that are currently in season (or non-seasonal)
                 // Skip filtering if showAllSeasons is true (admin wants to see all templates regardless of season)
                 if (showAllSeasons)
@@ -1280,6 +1151,19 @@ COMMIT;";
 
                                 templates.Add(template);
                             }
+                        }
+                    }
+                }
+
+                // Now load photo areas for all templates with layouts
+                foreach (var template in templates)
+                {
+                    if (template.Layout != null)
+                    {
+                        var photoAreasResult = await GetTemplatePhotoAreasAsync(template.LayoutId);
+                        if (photoAreasResult.Success && photoAreasResult.Data != null)
+                        {
+                            template.Layout.PhotoAreas = photoAreasResult.Data;
                         }
                     }
                 }
@@ -3241,6 +3125,121 @@ It contains no important application files.
             {
 
                 throw;
+            }
+        }
+
+        private async Task<DatabaseResult> InitializeDatabaseSchema(SqliteConnection connection)
+        {
+            Console.WriteLine("📝 Initializing database schema...");
+
+            try
+            {
+                var schemaPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Database_Schema.sql");
+                Console.WriteLine($"🔍 Looking for schema file at: {schemaPath}");
+                
+                if (!File.Exists(schemaPath))
+                {
+                    Console.WriteLine($"❌ Schema file not found at {schemaPath}");
+                    return DatabaseResult.ErrorResult("Schema file not found");
+                }
+                
+                Console.WriteLine($"✅ Schema file found, reading content...");
+                var schemaContent = await File.ReadAllTextAsync(schemaPath);
+                Console.WriteLine($"📄 Schema file size: {schemaContent.Length} characters");
+                
+                // Split into individual commands (by semicolon)
+                var commands = schemaContent.Split(';', StringSplitOptions.RemoveEmptyEntries);
+                Console.WriteLine($"📋 Found {commands.Length} SQL commands to execute");
+
+                if (commands.Length == 0)
+                {
+                    Console.WriteLine("❌ No SQL commands found in schema file");
+                    return DatabaseResult.ErrorResult("No SQL commands found in schema file");
+                }
+
+                using var transaction = connection.BeginTransaction();
+                try
+                {
+                    int commandIndex = 0;
+                    foreach (var commandText in commands)
+                    {
+                        commandIndex++;
+                        Console.WriteLine($"Executing database command {commandIndex}/{commands.Length}");
+
+                        // Clean up the command - remove comments and whitespace
+                        var lines = commandText.Split('\n');
+                        var cleanLines = new List<string>();
+                        
+                        foreach (var line in lines)
+                        {
+                            var trimmedLine = line.Trim();
+                            // Skip empty lines
+                            if (string.IsNullOrEmpty(trimmedLine))
+                                continue;
+                                
+                            // Skip full comment lines
+                            if (trimmedLine.StartsWith("--"))
+                                continue;
+                                
+                            // Remove inline comments
+                            var commentIndex = trimmedLine.IndexOf("--");
+                            if (commentIndex >= 0)
+                            {
+                                trimmedLine = trimmedLine.Substring(0, commentIndex).Trim();
+                            }
+                            
+                            // Add non-empty lines
+                            if (!string.IsNullOrEmpty(trimmedLine))
+                            {
+                                cleanLines.Add(trimmedLine);
+                            }
+                        }
+                        
+                        if (cleanLines.Count == 0)
+                        {
+                            Console.WriteLine($"Skipping empty command {commandIndex}");
+                            continue;
+                        }
+                        
+                        var trimmedCommand = string.Join(" ", cleanLines);
+                        Console.WriteLine($"Executing: {trimmedCommand.Substring(0, Math.Min(50, trimmedCommand.Length))}...");
+
+                        using var command = new SqliteCommand(trimmedCommand, connection, transaction);
+                        await command.ExecuteNonQueryAsync();
+                        Console.WriteLine($"✅ Command {commandIndex} executed successfully");
+                    }
+
+                    Console.WriteLine("🔄 Committing transaction...");
+                    await transaction.CommitAsync();
+                    Console.WriteLine("✅ Transaction committed successfully");
+
+                    // Create default admin users (only for new database)
+                    Console.WriteLine("🔑 Creating default admin users...");
+                    await CreateDefaultAdminUserDirect(connection);
+                    Console.WriteLine("✅ Default admin users created");
+
+                    // Create default system settings (only for new database)
+                    Console.WriteLine("⚙️ Creating default settings...");
+                    await CreateDefaultSettingsDirect(connection);
+                    Console.WriteLine("✅ Default settings created");
+
+                    Console.WriteLine("🎉 Database initialization completed successfully!");
+                    return DatabaseResult.SuccessResult();
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"❌ Database initialization error: {ex.Message}");
+                    Console.WriteLine($"❌ Stack trace: {ex.StackTrace}");
+                    await transaction.RollbackAsync();
+                    throw;
+                }
+            }
+            catch (Exception ex)
+            {
+                var errorMsg = $"Database initialization failed: {ex.Message}";
+
+
+                return DatabaseResult.ErrorResult(errorMsg, ex);
             }
         }
     }
