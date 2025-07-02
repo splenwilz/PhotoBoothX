@@ -128,13 +128,13 @@
             <Ellipse Width="80" Height="80" 
                      Fill="#3B82F6" Opacity="0.25" 
                      Style="{StaticResource FloatingOrbStyle}"
-                     Canvas.Right="160" Canvas.Top="80"/>
+                     Canvas.Left="1600" Canvas.Top="80"/>
 
             <!-- Pink orb: bottom-40 left-1/4 w-32 h-32 bg-pink-500/15 -->
             <Ellipse Width="128" Height="128" 
                      Fill="#EC4899" Opacity="0.15" 
                      Style="{StaticResource FloatingOrbStyle}"
-                     Canvas.Left="480" Canvas.Bottom="160"/>
+                     Canvas.Left="480" Canvas.Top="792"/>
 
             <!-- Cyan orb: bottom-32 right-32 w-20 h-20 bg-cyan-500/20 -->
             <Ellipse Width="80" Height="80" 

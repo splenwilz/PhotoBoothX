@@ -1,4 +1,4 @@
-using System.Windows;
+using System.Windows.Controls;
 
 namespace Photobooth.Services
 {
@@ -7,9 +7,9 @@ namespace Photobooth.Services
         bool IsShiftPressed { get; }
         bool IsCapsLockOn { get; }
         
-        void UpdateKeyCase(FrameworkElement keyboard, VirtualKeyboardMode mode);
-        void UpdateShiftButtonState(FrameworkElement keyboard);
-        void UpdateCapsLockButtonState(FrameworkElement keyboard);
+        void UpdateKeyCase(Control keyboard, VirtualKeyboardMode mode);
+        void UpdateShiftButtonState(Control keyboard);
+        void UpdateCapsLockButtonState(Control keyboard);
         void ToggleShift();
         void ToggleCapsLock();
     }

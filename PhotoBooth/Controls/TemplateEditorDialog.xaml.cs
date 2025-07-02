@@ -5,10 +5,13 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using Microsoft.Win32;
 using Photobooth.Models;
 using Photobooth.Services;
+using PhotoBooth.Services;
 
 namespace Photobooth.Controls
 {
@@ -26,7 +29,7 @@ namespace Photobooth.Controls
 
         #region Properties
 
-        public new bool DialogResult { get; private set; } = false;
+        public bool EditSucceeded { get; private set; } = false;
         public Template? UpdatedTemplate { get; private set; }
 
         #endregion
@@ -58,13 +61,13 @@ namespace Photobooth.Controls
 
         private void CloseButton_Click(object sender, RoutedEventArgs e)
         {
-            DialogResult = false;
+            EditSucceeded = false;
             Close();
         }
 
         private void CancelButton_Click(object sender, RoutedEventArgs e)
         {
-            DialogResult = false;
+            EditSucceeded = false;
             Close();
         }
 
@@ -93,6 +96,62 @@ namespace Photobooth.Controls
         #endregion
 
         #region Private Methods
+
+        #region Input Validation Methods
+
+        /// <summary>
+        /// Validate numeric input for price and sort order fields
+        /// </summary>
+        private void NumericTextBox_PreviewTextInput(object sender, TextCompositionEventArgs e)
+        {
+            var textBox = sender as TextBox;
+            if (textBox == null) return;
+
+            try
+            {
+                Console.WriteLine($"=== NUMERIC INPUT DEBUG ===");
+                Console.WriteLine($"TextBox Name: {textBox.Name}");
+                Console.WriteLine($"Input Text: '{e.Text}'");
+                Console.WriteLine($"Current TextBox Text: '{textBox.Text}'");
+                Console.WriteLine($"Input Length: {e.Text.Length}");
+                
+                if (e.Text.Length > 0)
+                {
+                    Console.WriteLine($"First Character: '{e.Text[0]}' (ASCII: {(int)e.Text[0]})");
+                    Console.WriteLine($"Is Digit: {char.IsDigit(e.Text, 0)}");
+                }
+
+                // Allow decimal point for price fields, only integers for sort order
+                bool allowDecimal = textBox.Name == "PriceTextBox";
+                Console.WriteLine($"Allow Decimal: {allowDecimal}");
+                
+                // Check if the input is a digit
+                if (char.IsDigit(e.Text, 0))
+                {
+                    Console.WriteLine("✅ ALLOWING: Input is a digit");
+                    return; // Allow digits
+                }
+                
+                // For price fields, allow decimal point if not already present
+                if (allowDecimal && e.Text == "." && !textBox.Text.Contains("."))
+                {
+                    Console.WriteLine("✅ ALLOWING: Input is decimal point for price field");
+                    return; // Allow single decimal point
+                }
+                
+                // Block all other characters
+                Console.WriteLine("❌ BLOCKING: Input does not meet criteria");
+                e.Handled = true;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"❌ ERROR in numeric validation: {ex.Message}");
+                LoggingService.Application.Error("Error validating numeric input", ex);
+                e.Handled = true; // Block input on error for safety
+            }
+        }
+
+        #endregion
 
         #region File Management Methods
 
@@ -705,7 +764,7 @@ namespace Photobooth.Controls
                     // Note: Config files no longer used in layout-based system
 
                     UpdatedTemplate = updatedTemplate;
-                    DialogResult = true;
+                    EditSucceeded = true;
 
 
                     _notificationService.ShowSuccess("Template Updated", $"'{updatedTemplate.Name}' has been updated successfully.");
@@ -808,7 +867,7 @@ namespace Photobooth.Controls
             
             dialog.ShowDialog();
             
-            return Task.FromResult(dialog.DialogResult ? dialog.UpdatedTemplate : null);
+            return Task.FromResult(dialog.EditSucceeded ? dialog.UpdatedTemplate : null);
         }
 
         #endregion

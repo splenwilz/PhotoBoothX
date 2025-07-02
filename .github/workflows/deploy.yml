@@ -73,8 +73,8 @@ jobs:
   build-and-test:
     name: Build and Test (Full)
     runs-on: windows-latest
-    # Only run on production/main/master branches
-    if: github.ref == 'refs/heads/production' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    # Only run on production/main/master branches or release events
+    if: github.ref == 'refs/heads/production' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.event_name == 'release'
     
     steps:
     - name: Checkout code

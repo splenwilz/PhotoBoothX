@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using Photobooth.Services;
 
 namespace Photobooth.Services
 {
@@ -58,9 +59,9 @@ namespace Photobooth.Services
                     AdjustModalPosition();
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // Log to proper logging service if needed
+                LoggingService.Application.Error("Failed to handle virtual keyboard visibility change", ex);
             }
         }
 
@@ -95,9 +96,9 @@ namespace Photobooth.Services
 
                 _modalTransform.BeginAnimation(TranslateTransform.YProperty, animation);
             }
-            catch
+            catch (Exception ex)
             {
-                // Log to proper logging service if needed
+                LoggingService.Application.Error("Failed to adjust modal position", ex);
             }
         }
 
@@ -125,9 +126,9 @@ namespace Photobooth.Services
                 // Animate in
                 AnimateModalIn();
             }
-            catch
+            catch (Exception ex)
             {
-                // Log to proper logging service if needed
+                LoggingService.Application.Error("Failed to show modal", ex);
             }
         }
 
@@ -162,9 +163,9 @@ namespace Photobooth.Services
                     }
                 });
             }
-            catch
+            catch (Exception ex)
             {
-                // Log to proper logging service if needed
+                LoggingService.Application.Error("Failed to hide modal", ex);
             }
         }
 

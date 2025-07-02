@@ -332,10 +332,10 @@ namespace Photobooth.Controls
 
                 }
             }
-            catch
+            catch (Exception ex)
             {
-
-
+                LoggingService.Application.Warning("Failed to update season preview: {Error}", ("Error", ex.Message));
+                
                 // Try to set a safe fallback if SeasonPreviewText exists
                 if (SeasonPreviewText != null)
                 {
@@ -418,8 +418,9 @@ namespace Photobooth.Controls
 
                 dialog.Show();
             }
-            catch
+            catch (Exception ex)
             {
+                LoggingService.Application.Error("Error showing category dialog", ex);
                 throw;
             }
         }

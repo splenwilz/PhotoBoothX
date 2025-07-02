@@ -7,7 +7,7 @@ using System.Windows.Media;
 using Photobooth.Models;
 using Photobooth.Services;
 
-namespace Photobooth.Controls
+namespace PhotoBooth.Controls
 {
     public partial class SystemDateDialog : UserControl
     {
@@ -15,10 +15,7 @@ namespace Photobooth.Controls
         private Window? _parentWindow;
         private Action<bool>? _showAllSeasonsCallback;
 
-        public SystemDateDialog()
-        {
-            InitializeComponent();
-        }
+
 
         public SystemDateDialog(IDatabaseService databaseService, Action<bool>? showAllSeasonsCallback = null)
         {

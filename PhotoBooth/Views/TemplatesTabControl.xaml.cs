@@ -683,7 +683,7 @@ namespace Photobooth.Views
                 };
                 
                 // Show the modern system date dialog
-                await Controls.SystemDateDialog.ShowSystemDateDialogAsync(parentWindow, _databaseService, showAllSeasonsCallback);
+                await PhotoBooth.Controls.SystemDateDialog.ShowSystemDateDialogAsync(parentWindow, _databaseService, showAllSeasonsCallback);
             }
             catch (Exception ex)
             {

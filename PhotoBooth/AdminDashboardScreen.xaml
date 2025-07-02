@@ -216,7 +216,7 @@
                 </Ellipse.Fill>
             </Ellipse>
 
-            <Ellipse Width="96" Height="96" Canvas.Right="64" Canvas.Top="128" Opacity="0.08">
+            <Ellipse Width="96" Height="96" Canvas.Left="1600" Canvas.Top="128" Opacity="0.08">
                 <Ellipse.Fill>
                     <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
                         <GradientStop Color="#A78BFA" Offset="0"/>
@@ -225,7 +225,7 @@
                 </Ellipse.Fill>
             </Ellipse>
 
-            <Ellipse Width="192" Height="192" Canvas.Left="-96" Canvas.Bottom="-96" Opacity="0.04">
+            <Ellipse Width="192" Height="192" Canvas.Left="-96" Canvas.Top="792" Opacity="0.04">
                 <Ellipse.Fill>
                     <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
                         <GradientStop Color="#22D3EE" Offset="0"/>
@@ -234,7 +234,7 @@
                 </Ellipse.Fill>
             </Ellipse>
 
-            <Ellipse Width="144" Height="144" Canvas.Right="-72" Canvas.Bottom="-72" Opacity="0.06">
+            <Ellipse Width="144" Height="144" Canvas.Left="1712" Canvas.Top="872" Opacity="0.06">
                 <Ellipse.Fill>
                     <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
                         <GradientStop Color="#FB923C" Offset="0"/>

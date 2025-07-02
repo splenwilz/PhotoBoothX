@@ -41,13 +41,25 @@ namespace Photobooth.Behaviors
                     // Enable virtual keyboard
                     control.GotFocus += Control_GotFocus;
                     control.LostFocus += Control_LostFocus;
+                    control.Unloaded += Control_Unloaded;
                 }
                 else
                 {
                     // Disable virtual keyboard
                     control.GotFocus -= Control_GotFocus;
                     control.LostFocus -= Control_LostFocus;
+                    control.Unloaded -= Control_Unloaded;
                 }
+            }
+        }
+
+        private static void Control_Unloaded(object sender, RoutedEventArgs e)
+        {
+            if (sender is Control control)
+            {
+                control.GotFocus -= Control_GotFocus;
+                control.LostFocus -= Control_LostFocus;
+                control.Unloaded -= Control_Unloaded;
             }
         }
 

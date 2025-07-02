@@ -4,6 +4,7 @@ using System.Media;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
+using Photobooth.Services;
 using System.Windows.Threading;
 
 namespace Photobooth.Services
@@ -38,7 +39,7 @@ namespace Photobooth.Services
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"SoundService: Failed to load custom sounds, using system sounds: {ex.Message}");
+                LoggingService.Application.Error("Failed to load custom sounds, using system sounds", ex);
                 LoadSystemSounds();
             }
         }
@@ -50,7 +51,7 @@ namespace Photobooth.Services
         {
             var appPath = AppDomain.CurrentDomain.BaseDirectory;
             var soundsPath = Path.Combine(appPath, "Assets", "Sounds");
-            Console.WriteLine($"SoundService: Looking for sounds in: {soundsPath}");
+            LoggingService.Application.Information($"Looking for sounds in: {soundsPath}");
 
             // Camera shutter sound - check for multiple formats
             var shutterPaths = new[]
@@ -62,7 +63,7 @@ namespace Photobooth.Services
 
             foreach (var shutterPath in shutterPaths)
             {
-                Console.WriteLine($"SoundService: Checking for file: {shutterPath}");
+                LoggingService.Application.Debug($"Checking for file: {shutterPath}");
                 if (File.Exists(shutterPath))
                 {
                     try
@@ -74,17 +75,17 @@ namespace Photobooth.Services
                             _shutterMediaPlayer.Open(new Uri(shutterPath, UriKind.Absolute));
                             _shutterSoundPath = shutterPath;
                         });
-                        Console.WriteLine($"SoundService: Successfully loaded custom camera shutter sound: {Path.GetFileName(shutterPath)}");
+                        LoggingService.Application.Information($"Successfully loaded custom camera shutter sound: {Path.GetFileName(shutterPath)}");
                         break;
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"SoundService: Failed to load {shutterPath}: {ex.Message}");
+                        LoggingService.Application.Error($"Failed to load {shutterPath}", ex);
                     }
                 }
                 else
                 {
-                    Console.WriteLine($"SoundService: File not found: {shutterPath}");
+                    LoggingService.Application.Debug($"File not found: {shutterPath}");
                 }
             }
 
@@ -106,12 +107,12 @@ namespace Photobooth.Services
                             _countdownMediaPlayer = new MediaPlayer();
                             _countdownMediaPlayer.Open(new Uri(countdownPath, UriKind.Absolute));
                         });
-                        Console.WriteLine($"SoundService: Loaded custom countdown sound: {Path.GetFileName(countdownPath)}");
+                        LoggingService.Application.Information($"Loaded custom countdown sound: {Path.GetFileName(countdownPath)}");
                         break;
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"SoundService: Failed to load countdown sound {countdownPath}: {ex.Message}");
+                        LoggingService.Application.Error($"Failed to load countdown sound {countdownPath}", ex);
                     }
                 }
             }
@@ -134,12 +135,12 @@ namespace Photobooth.Services
                             _successMediaPlayer = new MediaPlayer();
                             _successMediaPlayer.Open(new Uri(successPath, UriKind.Absolute));
                         });
-                        Console.WriteLine($"SoundService: Loaded custom success sound: {Path.GetFileName(successPath)}");
+                        LoggingService.Application.Information($"Loaded custom success sound: {Path.GetFileName(successPath)}");
                         break;
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"SoundService: Failed to load success sound {successPath}: {ex.Message}");
+                        LoggingService.Application.Error($"Failed to load success sound {successPath}", ex);
                     }
                 }
             }
@@ -151,7 +152,7 @@ namespace Photobooth.Services
         private void LoadSystemSounds()
         {
             // Use system sounds as fallback
-            Console.WriteLine("SoundService: Using system sounds as fallback");
+            LoggingService.Application.Information("Using system sounds as fallback");
         }
 
         /// <summary>
@@ -163,7 +164,7 @@ namespace Photobooth.Services
             {
                 if (_shutterMediaPlayer != null)
                 {
-                    Console.WriteLine($"SoundService: Playing custom camera shutter sound from: {_shutterSoundPath}");
+                    LoggingService.Application.Debug($"Playing custom camera shutter sound from: {_shutterSoundPath}");
                     Application.Current.Dispatcher.Invoke(() =>
                     {
                         _shutterMediaPlayer.Position = TimeSpan.Zero; // Reset to beginning
@@ -172,16 +173,16 @@ namespace Photobooth.Services
                 }
                 else
                 {
-                    Console.WriteLine("SoundService: No custom shutter sound loaded, using programmatic sound");
+                    LoggingService.Application.Debug("No custom shutter sound loaded, using programmatic sound");
                     // Generate a camera shutter-like sound programmatically
                     Task.Run(() => PlayProgrammaticShutterSound());
                 }
                 
-                Console.WriteLine("SoundService: Camera shutter sound played");
+                LoggingService.Application.Debug("Camera shutter sound played");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"SoundService: Failed to play camera shutter sound: {ex.Message}");
+                LoggingService.Application.Error("Failed to play camera shutter sound", ex);
                 // Fallback to system sound
                 Task.Run(() => SystemSounds.Exclamation.Play());
             }
@@ -202,7 +203,7 @@ namespace Photobooth.Services
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"SoundService: Failed to generate programmatic shutter sound: {ex.Message}");
+                LoggingService.Application.Error("Failed to generate programmatic shutter sound", ex);
                 // Ultimate fallback
                 SystemSounds.Exclamation.Play();
             }
@@ -222,17 +223,17 @@ namespace Photobooth.Services
                         _countdownMediaPlayer.Position = TimeSpan.Zero;
                         _countdownMediaPlayer.Play();
                     });
-                    Console.WriteLine("SoundService: Custom countdown sound played");
+                    LoggingService.Application.Debug("Custom countdown sound played");
                 }
                 else
                 {
                     // Silent countdown - no sound for now
-                    Console.WriteLine("SoundService: Countdown silent (no custom sound configured)");
+                    LoggingService.Application.Debug("Countdown silent (no custom sound configured)");
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"SoundService: Failed to play countdown beep: {ex.Message}");
+                LoggingService.Application.Error("Failed to play countdown beep", ex);
             }
         }
 
@@ -257,11 +258,11 @@ namespace Photobooth.Services
                     Task.Run(() => SystemSounds.Asterisk.Play());
                 }
                 
-                Console.WriteLine("SoundService: Success sound played");
+                LoggingService.Application.Debug("Success sound played");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"SoundService: Failed to play success sound: {ex.Message}");
+                LoggingService.Application.Error("Failed to play success sound", ex);
             }
         }
 
@@ -273,11 +274,11 @@ namespace Photobooth.Services
             try
             {
                 Task.Run(() => SystemSounds.Hand.Play());
-                Console.WriteLine("SoundService: Error sound played");
+                LoggingService.Application.Debug("Error sound played");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"SoundService: Failed to play error sound: {ex.Message}");
+                LoggingService.Application.Error("Failed to play error sound", ex);
             }
         }
 
@@ -297,11 +298,11 @@ namespace Photobooth.Services
                         _successMediaPlayer?.Stop();
                     });
                 }
-                Console.WriteLine("SoundService: All sounds stopped");
+                LoggingService.Application.Debug("All sounds stopped");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"SoundService: Failed to stop sounds: {ex.Message}");
+                LoggingService.Application.Error("Failed to stop sounds", ex);
             }
         }
 
@@ -321,11 +322,11 @@ namespace Photobooth.Services
                         _successMediaPlayer?.Close();
                     });
                 }
-                Console.WriteLine("SoundService: Sound resources disposed");
+                LoggingService.Application.Debug("Sound resources disposed");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"SoundService: Failed to dispose sound resources: {ex.Message}");
+                LoggingService.Application.Error("Failed to dispose sound resources", ex);
             }
         }
     }

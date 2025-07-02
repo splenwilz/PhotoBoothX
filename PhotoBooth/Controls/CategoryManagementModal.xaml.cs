@@ -44,10 +44,9 @@ namespace Photobooth.Controls
                         PopulateDayComboBoxes();
 
                     }
-                    catch
+                    catch (Exception ex)
                     {
-
-
+                        LoggingService.Application.Error("Error initializing category modal controls", ex);
                     }
                 };
 
@@ -55,10 +54,9 @@ namespace Photobooth.Controls
 
 
             }
-            catch
+            catch (Exception ex)
             {
-
-
+                LoggingService.Application.Error("Error initializing CategoryManagementModal", ex);
                 throw;
             }
         }
@@ -103,10 +101,9 @@ namespace Photobooth.Controls
 
 
             }
-            catch
+            catch (Exception ex)
             {
-
-
+                LoggingService.Application.Error("Error populating day combo boxes", ex);
             }
         }
 
@@ -142,9 +139,9 @@ namespace Photobooth.Controls
                     }
                 }
             }
-            catch
+            catch (Exception ex)
             {
-
+                LoggingService.Application.Error("Error populating days for month", ex);
             }
         }
 
@@ -171,9 +168,9 @@ namespace Photobooth.Controls
                     UpdateSeasonPreview();
                 }
             }
-            catch
+            catch (Exception ex)
             {
-
+                LoggingService.Application.Error("Error in StartMonthComboBox selection change", ex);
             }
         }
 
@@ -188,9 +185,9 @@ namespace Photobooth.Controls
                     UpdateSeasonPreview();
                 }
             }
-            catch
+            catch (Exception ex)
             {
-
+                LoggingService.Application.Error("Error in EndMonthComboBox selection change", ex);
             }
         }
 
@@ -218,9 +215,10 @@ namespace Photobooth.Controls
                     SeasonPreviewText.Text = "Set dates to see preview";
                 }
             }
-            catch
+            catch (Exception ex)
             {
-
+                LoggingService.Application.Error("Error updating season preview", ex);
+                SeasonPreviewText.Text = "Error updating preview";
             }
         }
 
@@ -296,9 +294,9 @@ namespace Photobooth.Controls
                     }
                 }
             }
-            catch
+            catch (Exception ex)
             {
-
+                LoggingService.Application.Error("Error validating season priority input", ex);
                 e.Handled = true;
             }
         }
@@ -334,9 +332,9 @@ namespace Photobooth.Controls
                     }
                 }
             }
-            catch
+            catch (Exception ex)
             {
-
+                LoggingService.Application.Error("Error handling season priority text change", ex);
             }
         }
 

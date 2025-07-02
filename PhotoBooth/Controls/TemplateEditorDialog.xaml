@@ -213,6 +213,7 @@
                                     Padding="12,10"
                                     FontSize="14"
                                     VerticalContentAlignment="Center"
+                                    PreviewTextInput="NumericTextBox_PreviewTextInput"
                                     behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True" />
                         </Grid>
                         
@@ -234,6 +235,7 @@
                                     Padding="12,10"
                                     FontSize="14"
                                     VerticalContentAlignment="Center"
+                                    PreviewTextInput="NumericTextBox_PreviewTextInput"
                                     behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True" />
                         </Grid>
                         

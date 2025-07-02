@@ -17,7 +17,7 @@ namespace Photobooth.Controls
         private readonly TemplateManager _templateManager;
         private List<TemplateLayout> _layouts = new List<TemplateLayout>();
         
-        public new bool DialogResult { get; private set; } = false;
+        public bool UploadSucceeded { get; private set; } = false;
         public TemplateUploadResult? UploadResult { get; private set; }
 
         public TemplateUploadDialog(IDatabaseService databaseService, TemplateManager templateManager)
@@ -164,7 +164,7 @@ namespace Photobooth.Controls
                 }
 
                 UploadResult = result;
-                DialogResult = result.SuccessCount > 0;
+                UploadSucceeded = result.SuccessCount > 0;
                 Close();
             }
             catch (Exception ex)
@@ -216,7 +216,7 @@ namespace Photobooth.Controls
 
         private void CancelButton_Click(object sender, RoutedEventArgs e)
         {
-            DialogResult = false;
+            UploadSucceeded = false;
             Close();
         }
 
@@ -246,7 +246,7 @@ namespace Photobooth.Controls
                     }
 
                     dialog.ShowDialog();
-                    tcs.SetResult((dialog.DialogResult, dialog.UploadResult));
+                    tcs.SetResult((dialog.UploadSucceeded, dialog.UploadResult));
                 }
                 catch (Exception ex)
                 {

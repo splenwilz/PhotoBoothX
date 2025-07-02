@@ -37,7 +37,7 @@ namespace Photobooth.Services
             IsCapsLockOn = !IsCapsLockOn;
         }
 
-        public void UpdateKeyCase(FrameworkElement keyboard, VirtualKeyboardMode mode)
+        public void UpdateKeyCase(Control keyboard, VirtualKeyboardMode mode)
         {
             if (mode != VirtualKeyboardMode.Text && mode != VirtualKeyboardMode.Password)
                 return;
@@ -78,28 +78,38 @@ namespace Photobooth.Services
             }
         }
 
-        public void UpdateShiftButtonState(FrameworkElement keyboard)
+        public void UpdateShiftButtonState(Control keyboard)
         {
             var shiftButton = FindChildByName(keyboard, "ShiftButton") as Button;
             if (shiftButton == null) return;
 
-            if (keyboard.TryFindResource("SpecialKeyStyle") is Style normalStyle &&
-                keyboard.TryFindResource("ActionKeyStyle") is Style activeStyle)
+            var normalStyle = keyboard.TryFindResource("SpecialKeyStyle") as Style;
+            var activeStyle = keyboard.TryFindResource("ActionKeyStyle") as Style;
+            
+            if (normalStyle == null || activeStyle == null)
             {
-                shiftButton.Style = IsShiftPressed ? activeStyle : normalStyle;
+                // Log warning or use default styles
+                return;
             }
+            
+            shiftButton.Style = IsShiftPressed ? activeStyle : normalStyle;
         }
 
-        public void UpdateCapsLockButtonState(FrameworkElement keyboard)
+        public void UpdateCapsLockButtonState(Control keyboard)
         {
             var capsLockButton = FindChildByName(keyboard, "CapsLockButton") as Button;
             if (capsLockButton == null) return;
 
-            if (keyboard.TryFindResource("SpecialKeyStyle") is Style normalStyle &&
-                keyboard.TryFindResource("ActionKeyStyle") is Style activeStyle)
+            var normalStyle = keyboard.TryFindResource("SpecialKeyStyle") as Style;
+            var activeStyle = keyboard.TryFindResource("ActionKeyStyle") as Style;
+            
+            if (normalStyle == null || activeStyle == null)
             {
-                capsLockButton.Style = IsCapsLockOn ? activeStyle : normalStyle;
+                // Log warning or use default styles
+                return;
             }
+            
+            capsLockButton.Style = IsCapsLockOn ? activeStyle : normalStyle;
         }
 
         private void UpdateNumberAndPunctuationKeys(FrameworkElement textModeLayout)
@@ -149,9 +159,10 @@ namespace Photobooth.Services
                     UpdateButtonsInContainer(child, mappings);
                 }
             }
-            catch
+            catch (System.Exception ex)
             {
-                // Ignore visual tree errors
+                // Log the specific error for debugging while avoiding crashes
+                System.Diagnostics.Debug.WriteLine($"Visual tree traversal error: {ex.Message}");
             }
         }
 
