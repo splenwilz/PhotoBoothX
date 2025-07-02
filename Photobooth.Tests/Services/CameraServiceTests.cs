@@ -40,6 +40,21 @@ namespace Photobooth.Tests.Services
             }
         }
 
+        [ClassCleanup]
+        public static void ClassTeardown()
+        {
+            // Shutdown the WPF Application to prevent resource leaks in test environments
+            try
+            {
+                Application.Current?.Dispatcher.BeginInvokeShutdown(DispatcherPriority.Normal);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[TEST] Warning: Could not shutdown WPF Application cleanly: {ex.Message}");
+                // Don't throw - we don't want to fail tests due to cleanup issues
+            }
+        }
+
         [TestInitialize]
         public void Setup()
         {
