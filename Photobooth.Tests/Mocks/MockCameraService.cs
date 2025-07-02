@@ -1,0 +1,368 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Threading.Tasks;
+using System.Windows.Media.Imaging;
+using System.Windows.Media;
+using System.Windows.Threading;
+using System.Windows;
+using Photobooth.Models;
+using Photobooth.Services;
+using System.Threading;
+
+namespace Photobooth.Tests.Mocks
+{
+    /// <summary>
+    /// Mock camera service for testing that doesn't require actual camera hardware
+    /// </summary>
+    public class MockCameraService : ICameraService
+    {
+        #region Private Fields
+
+        private bool _isCapturing = false;
+        private bool _isPhotoCaptureActive = false;
+        private WriteableBitmap? _mockPreviewBitmap;
+        private bool _newFrameAvailable = false;
+        private readonly List<CameraDevice> _mockCameras;
+        private readonly string _outputDirectory;
+        private bool _disposed = false;
+        private CancellationTokenSource? _frameGenerationCts;
+        private Task? _frameGenerationTask;
+
+        #endregion
+
+        #region Events
+
+        public event EventHandler<WriteableBitmap>? PreviewFrameReady;
+        public event EventHandler<string>? CameraError;
+
+        #endregion
+
+        #region Constructor
+
+        /// <summary>
+        /// Initializes a new instance of MockCameraService for testing
+        /// </summary>
+        /// <param name="mockCameraCount">Number of mock cameras to simulate (default: 1)</param>
+        /// <param name="testBitmap">Optional pre-created WriteableBitmap for testing without WPF dependencies</param>
+        public MockCameraService(int mockCameraCount = 1, WriteableBitmap? testBitmap = null)
+        {
+            _mockCameras = new List<CameraDevice>();
+            
+            // Create mock cameras
+            for (int i = 0; i < mockCameraCount; i++)
+            {
+                _mockCameras.Add(new CameraDevice
+                {
+                    Index = i,
+                    Name = $"Mock Camera {i + 1}",
+                    MonikerString = $"mock_camera_{i}"
+                });
+            }
+
+            _outputDirectory = Path.Combine(Path.GetTempPath(), "PhotoBoothX_Mock_Photos");
+            if (!Directory.Exists(_outputDirectory))
+            {
+                Directory.CreateDirectory(_outputDirectory);
+            }
+
+            // Use provided test bitmap or create one if WPF context is available
+            if (testBitmap != null)
+            {
+                _mockPreviewBitmap = testBitmap;
+            }
+            else if (Application.Current?.Dispatcher != null)
+            {
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    _mockPreviewBitmap = new WriteableBitmap(
+                        640, 480, 96, 96, 
+                        PixelFormats.Bgr24, null);
+                });
+            }
+        }
+
+        #endregion
+
+        #region Properties
+
+        public bool IsCapturing => _isCapturing;
+        public bool IsPhotoCaptureActive => _isPhotoCaptureActive;
+
+        #endregion
+
+        #region Methods
+
+        public List<CameraDevice> GetAvailableCameras()
+        {
+            return new List<CameraDevice>(_mockCameras);
+        }
+
+        public bool StartCamera(int cameraIndex = 0)
+        {
+            // Synchronous simulation - no need for Task.Delay in non-async method
+            System.Threading.Thread.Sleep(10); // Simulate startup time
+
+            if (cameraIndex < 0 || cameraIndex >= _mockCameras.Count)
+            {
+                return false;
+            }
+
+            // Stop any existing camera operation first
+            StopCamera();
+
+            _isCapturing = true;
+            _newFrameAvailable = true;
+
+            // Simulate preview frame generation with proper task management
+            _frameGenerationCts = new CancellationTokenSource();
+            _frameGenerationTask = Task.Run(async () =>
+            {
+                try
+                {
+                    while (_isCapturing && !_disposed && !_frameGenerationCts.Token.IsCancellationRequested)
+                    {
+                        try
+                        {
+                            await Task.Delay(50, _frameGenerationCts.Token); // ~20 FPS
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            // Exit gracefully when cancelled
+                            break;
+                        }
+                        
+                        if (_mockPreviewBitmap != null && PreviewFrameReady != null)
+                        {
+                            try
+                            {
+                                // If we have a dispatcher, use it; otherwise invoke directly for tests
+                                if (Application.Current?.Dispatcher != null)
+                                {
+#pragma warning disable CS4014 // BeginInvoke is intentionally fire-and-forget
+                                    Application.Current.Dispatcher.BeginInvoke(() =>
+                                    {
+                                        PreviewFrameReady?.Invoke(this, _mockPreviewBitmap);
+                                    });
+#pragma warning restore CS4014
+                                }
+                                else
+                                {
+                                    // Direct invocation for unit tests without WPF context
+                                    PreviewFrameReady?.Invoke(this, _mockPreviewBitmap);
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                // Handle any exceptions in event invocation
+                                CameraError?.Invoke(this, $"Preview frame error: {ex.Message}");
+                            }
+                        }
+                        
+                        _newFrameAvailable = true;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Handle any unhandled exceptions in the background task
+                    CameraError?.Invoke(this, $"Background task error: {ex.Message}");
+                }
+            }, _frameGenerationCts.Token);
+
+            return true;
+        }
+
+        public void StopCamera()
+        {
+            _isCapturing = false;
+            _newFrameAvailable = false;
+
+            // Properly cancel and await the background task
+            if (_frameGenerationCts != null)
+            {
+                _frameGenerationCts.Cancel();
+                
+                if (_frameGenerationTask != null)
+                {
+                    try
+                    {
+                        // Wait for the task to complete with a reasonable timeout
+                        _frameGenerationTask.Wait(TimeSpan.FromMilliseconds(100));
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // Expected when cancellation is requested
+                    }
+                    catch (AggregateException ex) when (ex.InnerException is OperationCanceledException)
+                    {
+                        // Expected when cancellation is requested
+                    }
+                }
+                
+                _frameGenerationCts.Dispose();
+                _frameGenerationCts = null;
+                _frameGenerationTask = null;
+            }
+        }
+
+        public async Task<string?> CapturePhotoAsync(string? customFileName = null)
+        {
+            if (!_isCapturing)
+            {
+                return null;
+            }
+
+            await Task.Delay(10); // Simulate capture time
+
+            // Generate filename
+            var fileName = customFileName ?? $"photo_{DateTime.Now:yyyyMMdd_HHmmss_fff}.jpg";
+            if (!fileName.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase))
+            {
+                fileName += ".jpg";
+            }
+
+            var filePath = Path.Combine(_outputDirectory, fileName);
+
+            // Create a mock image file
+            await Task.Run(() =>
+            {
+                // Create a simple 1x1 pixel JPEG file as mock
+                var mockImageBytes = new byte[] 
+                {
+                    0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01,
+                    0x01, 0x01, 0x00, 0x48, 0x00, 0x48, 0x00, 0x00, 0xFF, 0xDB, 0x00, 0x43,
+                    0x00, 0x08, 0x06, 0x06, 0x07, 0x06, 0x05, 0x08, 0x07, 0x07, 0x07, 0x09,
+                    0x09, 0x08, 0x0A, 0x0C, 0x14, 0x0D, 0x0C, 0x0B, 0x0B, 0x0C, 0x19, 0x12,
+                    0x13, 0x0F, 0x14, 0x1D, 0x1A, 0x1F, 0x1E, 0x1D, 0x1A, 0x1C, 0x1C, 0x20,
+                    0x24, 0x2E, 0x27, 0x20, 0x22, 0x2C, 0x23, 0x1C, 0x1C, 0x28, 0x37, 0x29,
+                    0x2C, 0x30, 0x31, 0x34, 0x34, 0x34, 0x1F, 0x27, 0x39, 0x3D, 0x38, 0x32,
+                    0x3C, 0x2E, 0x33, 0x34, 0x32, 0xFF, 0xC0, 0x00, 0x11, 0x08, 0x00, 0x01,
+                    0x00, 0x01, 0x01, 0x01, 0x11, 0x00, 0x02, 0x11, 0x01, 0x03, 0x11, 0x01,
+                    0xFF, 0xC4, 0x00, 0x14, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08, 0xFF, 0xDA,
+                    0x00, 0x08, 0x01, 0x01, 0x00, 0x00, 0x3F, 0x00, 0xD2, 0xFF, 0xD9
+                };
+                
+                File.WriteAllBytes(filePath, mockImageBytes);
+            });
+
+            return filePath;
+        }
+
+        public WriteableBitmap? GetPreviewBitmap()
+        {
+            return _mockPreviewBitmap;
+        }
+
+        public bool IsNewFrameAvailable()
+        {
+            if (_newFrameAvailable)
+            {
+                _newFrameAvailable = false;
+                return true;
+            }
+            return false;
+        }
+
+        public void SetPhotoCaptureActive(bool isActive)
+        {
+            _isPhotoCaptureActive = isActive;
+        }
+
+        #endregion
+
+        #region Test Helpers
+
+        /// <summary>
+        /// Simulate a camera error for testing
+        /// </summary>
+        public void SimulateCameraError(string errorMessage)
+        {
+            CameraError?.Invoke(this, errorMessage);
+        }
+
+        /// <summary>
+        /// Set the number of mock cameras available
+        /// </summary>
+        public void SetMockCameraCount(int count)
+        {
+            _mockCameras.Clear();
+            for (int i = 0; i < count; i++)
+            {
+                _mockCameras.Add(new CameraDevice
+                {
+                    Index = i,
+                    Name = $"Mock Camera {i + 1}",
+                    MonikerString = $"mock_camera_{i}"
+                });
+            }
+        }
+
+        #endregion
+
+        #region IDisposable
+
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!_disposed && disposing)
+            {
+                // Cancel and wait for background task properly
+                _isCapturing = false;
+                _newFrameAvailable = false;
+
+                if (_frameGenerationCts != null)
+                {
+                    _frameGenerationCts.Cancel();
+                    
+                    if (_frameGenerationTask != null)
+                    {
+                        try
+                        {
+                            // Wait for the task to complete with a reasonable timeout
+                            _frameGenerationTask.Wait(TimeSpan.FromMilliseconds(100));
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            // Expected when cancellation is requested
+                        }
+                        catch (AggregateException ex) when (ex.InnerException is OperationCanceledException)
+                        {
+                            // Expected when cancellation is requested
+                        }
+                    }
+                    
+                    _frameGenerationCts.Dispose();
+                    _frameGenerationCts = null;
+                    _frameGenerationTask = null;
+                }
+                
+                // Clean up mock files
+                try
+                {
+                    if (Directory.Exists(_outputDirectory))
+                    {
+                        var mockFiles = Directory.GetFiles(_outputDirectory, "*.jpg");
+                        foreach (var file in mockFiles)
+                        {
+                            try { File.Delete(file); } catch { /* Ignore */ }
+                        }
+                    }
+                }
+                catch
+                {
+                    // Ignore cleanup errors
+                }
+
+                _disposed = true;
+            }
+        }
+
+        #endregion
+    }
+} 

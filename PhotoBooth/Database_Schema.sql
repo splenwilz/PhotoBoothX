@@ -116,6 +116,7 @@ CREATE TABLE Templates (
     TemplatePath TEXT NOT NULL, -- Path to template.png
     PreviewPath TEXT NOT NULL, -- Path to preview image
     IsActive BOOLEAN NOT NULL DEFAULT 1,
+    IsSeasonal BOOLEAN NOT NULL DEFAULT 0,
     Price DECIMAL(10,2) DEFAULT 0, -- Premium templates
     SortOrder INTEGER NOT NULL DEFAULT 0,
     FileSize INTEGER DEFAULT 0, -- In bytes
@@ -362,6 +363,8 @@ CREATE TABLE TransactionCustomers (
 -- =============================================
 -- 10. INITIAL DATA SETUP
 -- =============================================
+-- NOTE: During development, all schema changes are made directly to this file.
+-- Migrations will only be implemented after v1.0 release for production updates.
 
 -- Insert default product categories
 INSERT INTO ProductCategories (Name, Description, SortOrder) VALUES
@@ -392,48 +395,43 @@ INSERT INTO TemplateCategories (Name, Description, SortOrder, IsSeasonalCategory
 
 -- Insert template layouts (predefined photo area configurations)
 INSERT INTO TemplateLayouts (Id, LayoutKey, Name, Description, Width, Height, PhotoCount, ProductCategoryId, SortOrder) VALUES
-    ('550e8400-e29b-41d4-a716-446655440001', 'strip-614x1864', 'Classic Photo Strip', 'Standard 4-photo vertical strip layout', 614, 1864, 4, 1, 1),
-    ('550e8400-e29b-41d4-a716-446655440002', 'strip-591x1772', 'Compact Photo Strip', 'Compact 4-photo vertical strip layout', 591, 1772, 4, 1, 2),
-    ('550e8400-e29b-41d4-a716-446655440003', '4x6-1200x1800', 'Standard 4x6', 'Single photo 4x6 print layout', 1200, 1800, 1, 2, 1),
-    ('550e8400-e29b-41d4-a716-446655440004', 'square-800x800', 'Square Format', 'Square Instagram-style layout', 800, 800, 1, 2, 2),
-    ('550e8400-e29b-41d4-a716-446655440005', 'grid2x2-600x600', 'Grid 2x2', '4-photo grid layout', 600, 600, 4, 2, 3);
-
--- Insert photo areas for each layout
--- strip-614x1864 layout (4 photos in vertical strip)
-INSERT INTO TemplatePhotoAreas (LayoutId, PhotoIndex, X, Y, Width, Height) VALUES
-    ('550e8400-e29b-41d4-a716-446655440001', 1, 42, 84, 530, 362),
-    ('550e8400-e29b-41d4-a716-446655440001', 2, 42, 530, 530, 362),
-    ('550e8400-e29b-41d4-a716-446655440001', 3, 42, 976, 530, 362),
-    ('550e8400-e29b-41d4-a716-446655440001', 4, 42, 1422, 530, 362);
+    ('550e8400-e29b-41d4-a716-446655440001', 'strip-591x1772', 'Compact Photo Strip', 'Compact 4-photo vertical strip layout', 591, 1772, 4, 1, 2),
+    ('550e8400-e29b-41d4-a716-446655440002', 'strip-591x1772b', 'Compact Photo Strip', 'Compact 4-photo vertical strip layout', 591, 1772, 4, 1, 2),
+    ('550e8400-e29b-41d4-a716-446655440003', '4x6-1864x1228', 'Standard 4x6', 'Single photo 4x6 print layout', 1864, 1228, 1, 2, 1),
+    ('550e8400-e29b-41d4-a716-446655440004', 'strip-1080x1920', 'Compact Photo Strip', 'Compact 3-photo vertical strip layout', 1080, 1920, 3, 1, 2),
+    ('550e8400-e29b-41d4-a716-446655440005', 'strip-707x2000', 'Compact Photo Strip', 'Compact 4-photo vertical strip layout', 707, 2000, 4, 1, 2);
 
 -- strip-591x1772 layout (4 photos in vertical strip - compact)
-INSERT INTO TemplatePhotoAreas (LayoutId, PhotoIndex, X, Y, Width, Height) VALUES
-    ('550e8400-e29b-41d4-a716-446655440002', 1, 40, 80, 511, 349),
-    ('550e8400-e29b-41d4-a716-446655440002', 2, 40, 507, 511, 349),
-    ('550e8400-e29b-41d4-a716-446655440002', 3, 40, 934, 511, 349),
-    ('550e8400-e29b-41d4-a716-446655440002', 4, 40, 1361, 511, 349);
+INSERT INTO TemplatePhotoAreas (LayoutId, PhotoIndex, X, Y, Width, Height, Rotation) VALUES
+    ('550e8400-e29b-41d4-a716-446655440001', 1, 61, 130, 473, 354, 0),
+    ('550e8400-e29b-41d4-a716-446655440001', 2, 61, 515, 473, 354, 0),
+    ('550e8400-e29b-41d4-a716-446655440001', 3, 61, 903, 473, 354, 0),
+    ('550e8400-e29b-41d4-a716-446655440001', 4, 61, 1290, 473, 354, 0);
 
--- 4x6-1200x1800 layout (single photo)
-INSERT INTO TemplatePhotoAreas (LayoutId, PhotoIndex, X, Y, Width, Height) VALUES
-    ('550e8400-e29b-41d4-a716-446655440003', 1, 100, 150, 1000, 1500);
+-- strip-591x1772b layout (4 photos in vertical strip - compact)
+INSERT INTO TemplatePhotoAreas (LayoutId, PhotoIndex, X, Y, Width, Height, Rotation) VALUES
+    ('550e8400-e29b-41d4-a716-446655440002', 1, 72, 60, 451, 326, 0),
+    ('550e8400-e29b-41d4-a716-446655440002', 2, 72, 443, 451, 326, 0),
+    ('550e8400-e29b-41d4-a716-446655440002', 3, 72, 824, 451, 326, 0),
+    ('550e8400-e29b-41d4-a716-446655440002', 4, 72, 1204, 451, 326, 0);
 
--- square-800x800 layout (single square photo)
-INSERT INTO TemplatePhotoAreas (LayoutId, PhotoIndex, X, Y, Width, Height) VALUES
-    ('550e8400-e29b-41d4-a716-446655440004', 1, 100, 100, 600, 600);
+-- 4x6-1864x1228 layout (single photo)
+INSERT INTO TemplatePhotoAreas (LayoutId, PhotoIndex, X, Y, Width, Height, Rotation) VALUES
+    ('550e8400-e29b-41d4-a716-446655440003', 1, 433, 200, 952, 715, 0);
 
--- grid2x2-600x600 layout (4 photos in 2x2 grid)
-INSERT INTO TemplatePhotoAreas (LayoutId, PhotoIndex, X, Y, Width, Height) VALUES
-    ('550e8400-e29b-41d4-a716-446655440005', 1, 50, 50, 250, 250),
-    ('550e8400-e29b-41d4-a716-446655440005', 2, 300, 50, 250, 250),
-    ('550e8400-e29b-41d4-a716-446655440005', 3, 50, 300, 250, 250),
-    ('550e8400-e29b-41d4-a716-446655440005', 4, 300, 300, 250, 250);
+-- strip-1080x1920 layout (3 photos in vertical strip)
+INSERT INTO TemplatePhotoAreas (LayoutId, PhotoIndex, X, Y, Width, Height, Rotation) VALUES
+    ('550e8400-e29b-41d4-a716-446655440004', 1, 249, 5, 582, 459, 0),
+    ('550e8400-e29b-41d4-a716-446655440004', 2, 249, 492, 582, 459, 0),
+    ('550e8400-e29b-41d4-a716-446655440004', 3, 249, 981, 582, 459, 0);
 
--- Insert sample templates based on existing folder structure
-INSERT INTO Templates (Name, CategoryId, LayoutId, FolderPath, TemplatePath, PreviewPath, Description) VALUES
-    ('Black Film Style', 1, '550e8400-e29b-41d4-a716-446655440001', 'Templates/strip-614x1864/black-film', 'Templates/strip-614x1864/black-film/template.png', 'Templates/strip-614x1864/black-film/preview.png', 'Classic black film strip design'),
-    ('Yellow and Beige Fun', 2, '550e8400-e29b-41d4-a716-446655440001', 'Templates/strip-614x1864/yellow-and-beige-fun', 'Templates/strip-614x1864/yellow-and-beige-fun/template.png', 'Templates/strip-614x1864/yellow-and-beige-fun/preview.png', 'Bright and playful design'),
-    ('Brown and Beige Photo Studio', 5, '550e8400-e29b-41d4-a716-446655440002', 'Templates/strip-591x1772/brown-and-beige-photo-studio', 'Templates/strip-591x1772/brown-and-beige-photo-studio/template.png', 'Templates/strip-591x1772/brown-and-beige-photo-studio/preview.jpg', 'Elegant studio-style design'),
-    ('Beige and White Flower Girl', 5, '550e8400-e29b-41d4-a716-446655440002', 'Templates/strip-591x1772/beige-and-white-flower-girl', 'Templates/strip-591x1772/beige-and-white-flower-girl/template.png', 'Templates/strip-591x1772/beige-and-white-flower-girl/preview.jpg', 'Delicate floral design');
+-- strip-707x2000 layout (4 photos in vertical strip - compact)
+INSERT INTO TemplatePhotoAreas (LayoutId, PhotoIndex, X, Y, Width, Height, Rotation) VALUES
+    ('550e8400-e29b-41d4-a716-446655440005', 1, 95, 95, 523, 319, 356.945), --3.055
+    ('550e8400-e29b-41d4-a716-446655440005', 2, 101, 497, 523, 319, 1.056), --358.948
+    ('550e8400-e29b-41d4-a716-446655440005', 3, 104, 895, 523, 319, 356.955), --3.045
+    ('550e8400-e29b-41d4-a716-446655440005', 4, 89, 1291, 533, 329, 1.786); --358.214
+
 
 -- Insert default hardware components
 INSERT INTO HardwareStatus (ComponentName, Status) VALUES

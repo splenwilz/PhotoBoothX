@@ -11,10 +11,24 @@ namespace Photobooth.Services
     public class NotificationService
     {
         private static NotificationService? _instance;
+        private static readonly object _lock = new object();
         private readonly List<NotificationToast> _activeNotifications = new();
         private Panel? _notificationContainer;
 
-        public static NotificationService Instance => _instance ??= new NotificationService();
+        public static NotificationService Instance 
+        {
+            get
+            {
+                if (_instance == null)
+                {
+                    lock (_lock)
+                    {
+                        _instance ??= new NotificationService();
+                    }
+                }
+                return _instance;
+            }
+        }
 
         private NotificationService() { }
 

@@ -602,8 +602,8 @@ namespace Photobooth.Services
                     return result;
                 }
                 
-                // Find appropriate layout from database based on dimensions
-                var layoutId = await FindBestLayoutForDimensions(width, height);
+                // Find appropriate layout from database based on dimensions and folder path
+                var layoutId = await FindBestLayoutForDimensions(width, height, folderPath);
                 if (string.IsNullOrEmpty(layoutId))
                 {
                     result.IsValid = false;
@@ -623,6 +623,22 @@ namespace Photobooth.Services
                 var categoryName = DetermineCategoryFromPath(folderPath);
                 var categoryId = await GetOrCreateCategoryAsync(categoryName);
                 
+                // Get layout to determine template type
+                var layoutResult = await _databaseService.GetTemplateLayoutAsync(layoutId);
+                var templateType = TemplateType.Strip; // Default to Strip
+                
+                if (layoutResult.Success && layoutResult.Data != null)
+                {
+                    // Set template type based on layout's product category
+                    templateType = layoutResult.Data.ProductCategoryId switch
+                    {
+                        1 => TemplateType.Strip,      // Strips category
+                        2 => TemplateType.Photo4x6,   // 4x6 category  
+                        3 => TemplateType.Photo4x6,   // Smartphone prints use 4x6 templates
+                        _ => TemplateType.Strip       // Default to Strip
+                    };
+                }
+                
                 // Create template object
                 var template = new Template
                 {
@@ -637,7 +653,8 @@ namespace Photobooth.Services
                     Description = $"Template with dimensions {width}x{height}",
                     FileSize = new FileInfo(templatePath).Length,
                     HasPreview = previewPath != templatePath,
-                    ValidationWarnings = result.Warnings
+                    ValidationWarnings = result.Warnings,
+                    TemplateType = templateType // Set the correct template type
                 };
                 
                 result.Template = template;
@@ -652,9 +669,9 @@ namespace Photobooth.Services
         }
         
         /// <summary>
-        /// Find the best layout for given dimensions
+        /// Find the best layout for given dimensions and folder path
         /// </summary>
-        private async Task<string> FindBestLayoutForDimensions(int width, int height)
+        private async Task<string> FindBestLayoutForDimensions(int width, int height, string folderPath = "")
         {
             try
             {
@@ -666,7 +683,24 @@ namespace Photobooth.Services
                 
                 var layouts = layoutsResult.Data.Where(l => l.IsActive).ToList();
                 
-                // First, try to find exact match
+                // If folder path is provided, try to match by folder structure first
+                if (!string.IsNullOrEmpty(folderPath))
+                {
+                    var parentFolderName = Path.GetFileName(Path.GetDirectoryName(folderPath));
+                    if (!string.IsNullOrEmpty(parentFolderName))
+                    {
+                        var layoutByFolder = layouts.FirstOrDefault(l => 
+                            string.Equals(l.LayoutKey, parentFolderName, StringComparison.OrdinalIgnoreCase) &&
+                            l.Width == width && l.Height == height);
+                        
+                        if (layoutByFolder != null)
+                        {
+                            return layoutByFolder.Id;
+                        }
+                    }
+                }
+                
+                // First, try to find exact match (fallback for backward compatibility)
                 var exactMatch = layouts.FirstOrDefault(l => l.Width == width && l.Height == height);
                 if (exactMatch != null)
                 {
@@ -1467,6 +1501,15 @@ namespace Photobooth.Services
                 var categoryName = DetermineCategoryFromPath(folderPath);
                 var categoryId = await GetOrCreateCategoryAsync(categoryName);
                 
+                // Set template type based on layout's product category
+                var templateType = layout.ProductCategoryId switch
+                {
+                    1 => TemplateType.Strip,      // Strips category
+                    2 => TemplateType.Photo4x6,   // 4x6 category  
+                    3 => TemplateType.Photo4x6,   // Smartphone prints use 4x6 templates
+                    _ => TemplateType.Strip       // Default to Strip
+                };
+                
                 // Create template object
                 var template = new Template
                 {
@@ -1481,7 +1524,8 @@ namespace Photobooth.Services
                     Description = $"Template for {layout.Name} layout",
                     FileSize = new FileInfo(templatePath).Length,
                     HasPreview = previewPath != templatePath,
-                    ValidationWarnings = result.Warnings
+                    ValidationWarnings = result.Warnings,
+                    TemplateType = templateType // Set the correct template type
                 };
                 
                 result.Template = template;
