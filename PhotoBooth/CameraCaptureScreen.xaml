@@ -124,19 +124,19 @@
             <Ellipse Width="80" Height="80" 
                      Fill="#3B82F6" Opacity="0.25" 
                      Style="{StaticResource FloatingOrbStyle}"
-                     Canvas.Right="160" Canvas.Top="80"/>
+                     Canvas.Left="1680" Canvas.Top="80"/>
 
             <!-- Pink orb -->
             <Ellipse Width="128" Height="128" 
                      Fill="#EC4899" Opacity="0.15" 
                      Style="{StaticResource FloatingOrbStyle}"
-                     Canvas.Left="480" Canvas.Bottom="160"/>
+                     Canvas.Left="480" Canvas.Top="792"/>
 
             <!-- Cyan orb -->
             <Ellipse Width="80" Height="80" 
                      Fill="#06B6D4" Opacity="0.2" 
                      Style="{StaticResource FloatingOrbStyle}"
-                     Canvas.Right="128" Canvas.Bottom="128"/>
+                     Canvas.Left="1712" Canvas.Top="872"/>
         </Canvas>
 
         <!-- Floating Particles Canvas -->
@@ -259,6 +259,63 @@
                                Foreground="{StaticResource TemplateGradient}"/>
                 </StackPanel>
             </StackPanel>
+        </Grid>
+
+        <!-- Loading Overlay -->
+        <Grid Name="LoadingOverlay" 
+              Background="#80000000" 
+              Visibility="Collapsed">
+            <Border Background="#1F2937" 
+                    CornerRadius="16" 
+                    Padding="40,30"
+                    HorizontalAlignment="Center" 
+                    VerticalAlignment="Center"
+                    MaxWidth="400">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="20" Opacity="0.3" ShadowDepth="0"/>
+                </Border.Effect>
+                
+                <StackPanel Orientation="Horizontal" 
+                            HorizontalAlignment="Center">
+                    <!-- Loading Spinner -->
+                    <Ellipse Width="24" Height="24" 
+                             Stroke="White" 
+                             StrokeThickness="3" 
+                             Margin="0,0,15,0"
+                             Opacity="0.8">
+                        <Ellipse.Style>
+                            <Style TargetType="Ellipse">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ElementName=LoadingOverlay, Path=Visibility}" Value="Visible">
+                                        <DataTrigger.EnterActions>
+                                            <BeginStoryboard>
+                                                <Storyboard RepeatBehavior="Forever">
+                                                    <DoubleAnimation Storyboard.TargetProperty="RenderTransform.(RotateTransform.Angle)"
+                                                                   From="0" To="360" Duration="0:0:1"/>
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </DataTrigger.EnterActions>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Ellipse.Style>
+                        <Ellipse.RenderTransform>
+                            <RotateTransform CenterX="12" CenterY="12"/>
+                        </Ellipse.RenderTransform>
+                        <Ellipse.StrokeDashArray>
+                            <DoubleCollection>4,2</DoubleCollection>
+                        </Ellipse.StrokeDashArray>
+                    </Ellipse>
+                    
+                    <!-- Loading Text -->
+                    <TextBlock Name="LoadingText" 
+                               Text="Composing your photos..." 
+                               FontSize="18" 
+                               FontWeight="Medium" 
+                               Foreground="White" 
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+            </Border>
         </Grid>
 
         <!-- Error Message Overlay -->

@@ -45,6 +45,9 @@ namespace Photobooth
         
         // Template conversion service
         private readonly ITemplateConversionService _templateConversionService;
+        
+        // Image composition service
+        private readonly IImageCompositionService _imageCompositionService;
 
         #endregion
 
@@ -75,6 +78,9 @@ namespace Photobooth
             
             // Initialize template conversion service
             _templateConversionService = new TemplateConversionService();
+            
+            // Initialize image composition service
+            _imageCompositionService = new ImageCompositionService(_databaseService);
             
             InitializeComponent();
             
@@ -586,7 +592,99 @@ namespace Photobooth
         }
 
         /// <summary>
-        /// Navigates to photo preview screen to show composed images
+        /// Navigate to photo preview screen with background composition for smooth UX
+        /// Composes photos while camera screen is still visible, then transitions smoothly
+        /// </summary>
+        public async Task NavigateToPhotoPreviewWithComposition(Template template, List<string> capturedPhotosPaths)
+        {
+            try
+            {
+                LoggingService.Application.Information("Starting background photo composition", 
+                    ("TemplateName", template.Name),
+                    ("PhotoCount", capturedPhotosPaths.Count));
+
+                // Compose photos in background while camera screen shows loading
+                var compositionResult = await _imageCompositionService.ComposePhotosAsync(template, capturedPhotosPaths);
+
+                if (compositionResult.Success && compositionResult.OutputPath != null)
+                {
+                    LoggingService.Application.Information("Photo composition completed successfully", 
+                        ("OutputPath", compositionResult.OutputPath));
+
+                    // Hide camera loading overlay
+                    if (cameraCaptureScreen != null)
+                    {
+                        cameraCaptureScreen.HideLoading();
+                    }
+
+                    // Now navigate to photo preview with pre-composed photos
+                    await NavigateToPhotoPreviewWithComposedResult(template, capturedPhotosPaths, compositionResult);
+                }
+                else
+                {
+                    // Hide camera loading overlay
+                    if (cameraCaptureScreen != null)
+                    {
+                        cameraCaptureScreen.HideLoading();
+                    }
+
+                    LoggingService.Application.Error("Photo composition failed during background processing", null,
+                        ("ErrorMessage", compositionResult.Message ?? "Unknown error"));
+                    
+                    NotificationService.Instance.ShowError("Composition Error", $"Failed to compose photos: {compositionResult.Message}");
+                }
+            }
+            catch (Exception ex)
+            {
+                // Hide camera loading overlay
+                if (cameraCaptureScreen != null)
+                {
+                    cameraCaptureScreen.HideLoading();
+                }
+
+                LoggingService.Application.Error("Background photo composition failed", ex);
+                NotificationService.Instance.ShowError("Preview Error", $"Failed to process photos: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Navigate to photo preview screen with pre-composed results
+        /// Used after background composition is complete for smooth transition
+        /// </summary>
+        private async Task NavigateToPhotoPreviewWithComposedResult(Template template, List<string> capturedPhotosPaths, CompositionResult compositionResult)
+        {
+            try
+            {
+                LoggingService.Application.Information("Navigating to photo preview with pre-composed result", 
+                    ("TemplateName", template.Name),
+                    ("PhotoCount", capturedPhotosPaths.Count));
+
+                if (photoPreviewScreen == null)
+                {
+                    photoPreviewScreen = new PhotoPreviewScreen(_databaseService, _imageCompositionService);
+                    
+                    // Subscribe to photo preview events
+                    photoPreviewScreen.RetakePhotosRequested += PhotoPreviewScreen_RetakePhotosRequested;
+                    photoPreviewScreen.PhotosApproved += PhotoPreviewScreen_PhotosApproved;
+                    photoPreviewScreen.BackButtonClicked += PhotoPreviewScreen_BackButtonClicked;
+                }
+
+                CurrentScreenContainer.Content = photoPreviewScreen;
+
+                // Initialize with pre-composed result (no loading overlay needed)
+                await photoPreviewScreen.InitializeWithComposedResultAsync(template, capturedPhotosPaths, compositionResult);
+                
+                LoggingService.Application.Information("Photo preview screen loaded successfully with pre-composed result");
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Photo preview navigation with composed result failed", ex);
+                NotificationService.Instance.ShowError("Preview Error", $"Failed to show photo preview: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Navigates to photo preview screen to show composed images (legacy method)
         /// </summary>
         public async Task NavigateToPhotoPreview(Template template, List<string> capturedPhotosPaths)
         {
@@ -598,7 +696,7 @@ namespace Photobooth
 
                 if (photoPreviewScreen == null)
                 {
-                    photoPreviewScreen = new PhotoPreviewScreen(_databaseService);
+                    photoPreviewScreen = new PhotoPreviewScreen(_databaseService, _imageCompositionService);
                     
                     // Subscribe to photo preview events
                     photoPreviewScreen.RetakePhotosRequested += PhotoPreviewScreen_RetakePhotosRequested;
@@ -1223,13 +1321,19 @@ namespace Photobooth
                     ("TemplateName", e.Template.Name),
                     ("PhotoCount", e.CapturedPhotosPaths.Count));
 
-                // Navigate to photo preview
-                await NavigateToPhotoPreview(e.Template, e.CapturedPhotosPaths);
+                // Compose photos in background while keeping camera screen visible
+                await NavigateToPhotoPreviewWithComposition(e.Template, e.CapturedPhotosPaths);
             }
             catch (Exception ex)
             {
                 LoggingService.Application.Error("Photos captured navigation failed", ex);
                 NotificationService.Instance.ShowError("Navigation Error", "Failed to show photo preview.");
+                
+                // Hide camera loading overlay on error
+                if (cameraCaptureScreen != null)
+                {
+                    cameraCaptureScreen.HideLoading();
+                }
             }
         }
 

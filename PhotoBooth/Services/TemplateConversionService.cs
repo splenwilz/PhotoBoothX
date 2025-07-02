@@ -34,40 +34,37 @@ namespace Photobooth.Services
         {
             try
             {
-                Console.WriteLine("🔄 CONVERTING DATABASE TEMPLATE TO TEMPLATE INFO");
-                Console.WriteLine($"Template ID: {dbTemplate.Id}");
-                Console.WriteLine($"Template Name: {dbTemplate.Name}");
-                Console.WriteLine($"Template Path: {dbTemplate.TemplatePath}");
-                Console.WriteLine($"Preview Path: {dbTemplate.PreviewPath}");
-                Console.WriteLine($"Layout is null: {dbTemplate.Layout == null}");
-                if (dbTemplate.Layout != null)
-                {
-                    Console.WriteLine($"Layout ID: {dbTemplate.Layout.Id}");
-                    Console.WriteLine($"Layout PhotoCount: {dbTemplate.Layout.PhotoCount}");
-                    Console.WriteLine($"Layout PhotoAreas count: {dbTemplate.Layout.PhotoAreas?.Count ?? 0}");
-                }
-                Console.WriteLine($"PhotoAreas direct access count: {dbTemplate.PhotoAreas?.Count ?? 0}");
+                LoggingService.Application.Debug("Converting database template to template info",
+                    ("TemplateId", (object)dbTemplate.Id),
+                    ("TemplateName", dbTemplate.Name ?? "Unknown"),
+                    ("TemplatePath", dbTemplate.TemplatePath ?? "Unknown"),
+                    ("PreviewPath", dbTemplate.PreviewPath ?? "Unknown"),
+                    ("HasLayout", dbTemplate.Layout != null),
+                    ("LayoutId", (object?)dbTemplate.Layout?.Id ?? "None"),
+                    ("LayoutPhotoCount", (object?)dbTemplate.Layout?.PhotoCount ?? 0),
+                    ("LayoutPhotoAreasCount", dbTemplate.Layout?.PhotoAreas?.Count ?? 0),
+                    ("DirectPhotoAreasCount", dbTemplate.PhotoAreas?.Count ?? 0));
                 
                 LoggingService.Application.Debug("Converting template: {TemplateName}",
-                    ("TemplateName", dbTemplate.Name),
-                    ("PreviewPath", dbTemplate.PreviewPath),
-                    ("TemplatePath", dbTemplate.TemplatePath),
+                    ("TemplateName", dbTemplate.Name ?? "Unknown"),
+                    ("PreviewPath", dbTemplate.PreviewPath ?? "Unknown"),
+                    ("TemplatePath", dbTemplate.TemplatePath ?? "Unknown"),
                     ("Layout", dbTemplate.Layout?.Name ?? "NULL"));
 
                 // Check if required files exist
                 if (!File.Exists(dbTemplate.PreviewPath))
                 {
                     LoggingService.Application.Warning("Preview image missing for template {TemplateName}",
-                        ("TemplateName", dbTemplate.Name),
-                        ("PreviewPath", dbTemplate.PreviewPath));
+                        ("TemplateName", dbTemplate.Name ?? "Unknown"),
+                        ("PreviewPath", dbTemplate.PreviewPath ?? "Unknown"));
                     return null;
                 }
 
                 if (!File.Exists(dbTemplate.TemplatePath))
                 {
                     LoggingService.Application.Warning("Template image missing for template {TemplateName}",
-                        ("TemplateName", dbTemplate.Name),
-                        ("TemplatePath", dbTemplate.TemplatePath));
+                        ("TemplateName", dbTemplate.Name ?? "Unknown"),
+                        ("TemplatePath", dbTemplate.TemplatePath ?? "Unknown"));
                     return null;
                 }
 
@@ -79,7 +76,7 @@ namespace Photobooth.Services
                 if (width == 0 || height == 0)
                 {
                     LoggingService.Application.Warning("Invalid template dimensions for template {TemplateName}",
-                        ("TemplateName", dbTemplate.Name),
+                        ("TemplateName", dbTemplate.Name ?? "Unknown"),
                         ("Width", width),
                         ("Height", height));
                     return null;
@@ -95,7 +92,9 @@ namespace Photobooth.Services
                 // Try to get photo areas from Layout first, then from direct PhotoAreas property
                 if (dbTemplate.Layout?.PhotoAreas != null && dbTemplate.Layout.PhotoAreas.Any())
                 {
-                    Console.WriteLine($"✅ Using Layout PhotoAreas: {dbTemplate.Layout.PhotoAreas.Count}");
+                    LoggingService.Application.Debug("Using layout photo areas for template conversion",
+                        ("TemplateName", dbTemplate.Name ?? "Unknown"),
+                        ("PhotoAreasCount", dbTemplate.Layout.PhotoAreas.Count));
                     photoAreas = dbTemplate.Layout.PhotoAreas.Select(pa => new PhotoArea
                     {
                         Id = pa.PhotoIndex.ToString(),
@@ -107,7 +106,9 @@ namespace Photobooth.Services
                 }
                 else if (dbTemplate.PhotoAreas != null && dbTemplate.PhotoAreas.Any())
                 {
-                    Console.WriteLine($"✅ Using direct PhotoAreas: {dbTemplate.PhotoAreas.Count}");
+                    LoggingService.Application.Debug("Using direct photo areas for template conversion",
+                        ("TemplateName", dbTemplate.Name ?? "Unknown"),
+                        ("PhotoAreasCount", dbTemplate.PhotoAreas.Count));
                     photoAreas = dbTemplate.PhotoAreas.Select(pa => new PhotoArea
                     {
                         Id = pa.Id,
@@ -119,22 +120,32 @@ namespace Photobooth.Services
                 }
                 else
                 {
-                    Console.WriteLine("❌ NO PHOTO AREAS FOUND - will use empty list");
+                    LoggingService.Application.Warning("No photo areas found for template - using empty list",
+                        ("TemplateName", dbTemplate.Name ?? "Unknown"),
+                        ("TemplateId", dbTemplate.Id));
                 }
                 
-                // Log each photo area
-                for (int i = 0; i < photoAreas.Count; i++)
+                // Log photo area details for debugging
+                if (photoAreas.Any())
                 {
-                    var pa = photoAreas[i];
-                    Console.WriteLine($"Config Photo Area {i + 1}: X={pa.X}, Y={pa.Y}, W={pa.Width}, H={pa.Height}");
+                    LoggingService.Application.Debug("Template photo areas configured",
+                        ("TemplateName", dbTemplate.Name ?? "Unknown"),
+                        ("PhotoAreasCount", photoAreas.Count),
+                        ("PhotoAreas", photoAreas.Select((pa, i) => new { 
+                            Index = i + 1, 
+                            X = pa.X, 
+                            Y = pa.Y, 
+                            Width = pa.Width, 
+                            Height = pa.Height 
+                        })));
                 }
                 
                 var config = new TemplateConfig
                 {
-                    TemplateName = dbTemplate.Name,
+                    TemplateName = dbTemplate.Name ?? "Unknown Template",
                     TemplateId = dbTemplate.Id.ToString(),
-                    Category = dbTemplate.CategoryName,
-                    Description = dbTemplate.Description,
+                    Category = dbTemplate.CategoryName ?? "Unknown",
+                    Description = dbTemplate.Description ?? "No description available",
                     PhotoCount = photoCount,
                     Dimensions = new TemplateDimensions
                     {
@@ -147,12 +158,12 @@ namespace Photobooth.Services
                 var templateInfo = new TemplateInfo
                 {
                     Config = config,
-                    PreviewImagePath = dbTemplate.PreviewPath,
-                    TemplateImagePath = dbTemplate.TemplatePath,
-                    FolderPath = dbTemplate.FolderPath,
-                    TemplateName = dbTemplate.Name,
-                    Category = dbTemplate.CategoryName.ToLowerInvariant(),
-                    Description = dbTemplate.Description,
+                    PreviewImagePath = dbTemplate.PreviewPath ?? string.Empty,
+                    TemplateImagePath = dbTemplate.TemplatePath ?? string.Empty,
+                    FolderPath = dbTemplate.FolderPath ?? string.Empty,
+                    TemplateName = dbTemplate.Name ?? "Unknown Template",
+                    Category = (dbTemplate.CategoryName ?? "Unknown").ToLowerInvariant(),
+                    Description = dbTemplate.Description ?? "No description available",
                     IsSeasonalTemplate = dbTemplate.Category?.IsSeasonalCategory ?? false,
                     SeasonPriority = dbTemplate.Category?.SeasonalPriority ?? 0,
 
@@ -166,20 +177,20 @@ namespace Photobooth.Services
                 };
 
                 LoggingService.Application.Debug("Successfully converted template: {TemplateName}",
-                    ("TemplateName", templateInfo.TemplateName));
+                    ("TemplateName", templateInfo.TemplateName ?? "Unknown"));
                 return templateInfo;
             }
             catch (FileNotFoundException ex)
             {
                 LoggingService.Application.Warning("Template files not found for {TemplateName}",
-                    ("TemplateName", dbTemplate.Name),
+                    ("TemplateName", dbTemplate.Name ?? "Unknown"),
                     ("MissingFile", ex.FileName ?? "Unknown"));
                 return null;
             }
             catch (Exception ex)
             {
                 LoggingService.Application.Error("Error converting template {TemplateName}", ex,
-                    ("TemplateName", dbTemplate.Name));
+                    ("TemplateName", dbTemplate.Name ?? "Unknown"));
                 return null;
             }
         }
@@ -253,7 +264,7 @@ namespace Photobooth.Services
         public bool IsTemplateValidForProduct(TemplateInfo template, ProductInfo? product)
         {
             LoggingService.Application.Debug("Validating template for product",
-                ("TemplateName", template.TemplateName),
+                ("TemplateName", template.TemplateName ?? "Unknown"),
                 ("TemplateCategory", template.Category),
                 ("ProductType", product?.Type ?? "NULL"));
 
@@ -271,7 +282,7 @@ namespace Photobooth.Services
             var aspectRatio = template.AspectRatio;
             
             LoggingService.Application.Debug("Template validation - allowing (database filtering is primary)",
-                ("TemplateName", template.TemplateName),
+                ("TemplateName", template.TemplateName ?? "Unknown"),
                 ("AspectRatio", aspectRatio.ToString("F2")),
                 ("ProductType", productType ?? "NULL"));
             

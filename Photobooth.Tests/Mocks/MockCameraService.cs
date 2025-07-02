@@ -6,7 +6,9 @@ using System.Windows.Media.Imaging;
 using System.Windows.Media;
 using System.Windows.Threading;
 using System.Windows;
+using Photobooth.Models;
 using Photobooth.Services;
+using System.Threading;
 
 namespace Photobooth.Tests.Mocks
 {
@@ -24,6 +26,8 @@ namespace Photobooth.Tests.Mocks
         private readonly List<CameraDevice> _mockCameras;
         private readonly string _outputDirectory;
         private bool _disposed = false;
+        private CancellationTokenSource? _frameGenerationCts;
+        private Task? _frameGenerationTask;
 
         #endregion
 
@@ -36,7 +40,12 @@ namespace Photobooth.Tests.Mocks
 
         #region Constructor
 
-        public MockCameraService(int mockCameraCount = 1)
+        /// <summary>
+        /// Initializes a new instance of MockCameraService for testing
+        /// </summary>
+        /// <param name="mockCameraCount">Number of mock cameras to simulate (default: 1)</param>
+        /// <param name="testBitmap">Optional pre-created WriteableBitmap for testing without WPF dependencies</param>
+        public MockCameraService(int mockCameraCount = 1, WriteableBitmap? testBitmap = null)
         {
             _mockCameras = new List<CameraDevice>();
             
@@ -57,8 +66,12 @@ namespace Photobooth.Tests.Mocks
                 Directory.CreateDirectory(_outputDirectory);
             }
 
-            // Create a mock preview bitmap if we have a dispatcher
-            if (Application.Current?.Dispatcher != null)
+            // Use provided test bitmap or create one if WPF context is available
+            if (testBitmap != null)
+            {
+                _mockPreviewBitmap = testBitmap;
+            }
+            else if (Application.Current?.Dispatcher != null)
             {
                 Application.Current.Dispatcher.Invoke(() =>
                 {
@@ -94,27 +107,66 @@ namespace Photobooth.Tests.Mocks
                 return false;
             }
 
+            // Stop any existing camera operation first
+            StopCamera();
+
             _isCapturing = true;
             _newFrameAvailable = true;
 
-            // Simulate preview frame generation
-            _ = Task.Run(async () =>
+            // Simulate preview frame generation with proper task management
+            _frameGenerationCts = new CancellationTokenSource();
+            _frameGenerationTask = Task.Run(async () =>
             {
-                while (_isCapturing && !_disposed)
+                try
                 {
-                    await Task.Delay(50); // ~20 FPS
-                    
-                    if (_mockPreviewBitmap != null && PreviewFrameReady != null)
+                    while (_isCapturing && !_disposed && !_frameGenerationCts.Token.IsCancellationRequested)
                     {
-                        Application.Current?.Dispatcher?.BeginInvoke(() =>
+                        try
                         {
-                            PreviewFrameReady?.Invoke(this, _mockPreviewBitmap);
-                        });
+                            await Task.Delay(50, _frameGenerationCts.Token); // ~20 FPS
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            // Exit gracefully when cancelled
+                            break;
+                        }
+                        
+                        if (_mockPreviewBitmap != null && PreviewFrameReady != null)
+                        {
+                            try
+                            {
+                                // If we have a dispatcher, use it; otherwise invoke directly for tests
+                                if (Application.Current?.Dispatcher != null)
+                                {
+#pragma warning disable CS4014 // BeginInvoke is intentionally fire-and-forget
+                                    Application.Current.Dispatcher.BeginInvoke(() =>
+                                    {
+                                        PreviewFrameReady?.Invoke(this, _mockPreviewBitmap);
+                                    });
+#pragma warning restore CS4014
+                                }
+                                else
+                                {
+                                    // Direct invocation for unit tests without WPF context
+                                    PreviewFrameReady?.Invoke(this, _mockPreviewBitmap);
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                // Handle any exceptions in event invocation
+                                CameraError?.Invoke(this, $"Preview frame error: {ex.Message}");
+                            }
+                        }
+                        
+                        _newFrameAvailable = true;
                     }
-                    
-                    _newFrameAvailable = true;
                 }
-            });
+                catch (Exception ex)
+                {
+                    // Handle any unhandled exceptions in the background task
+                    CameraError?.Invoke(this, $"Background task error: {ex.Message}");
+                }
+            }, _frameGenerationCts.Token);
 
             return true;
         }
@@ -123,6 +175,33 @@ namespace Photobooth.Tests.Mocks
         {
             _isCapturing = false;
             _newFrameAvailable = false;
+
+            // Properly cancel and await the background task
+            if (_frameGenerationCts != null)
+            {
+                _frameGenerationCts.Cancel();
+                
+                if (_frameGenerationTask != null)
+                {
+                    try
+                    {
+                        // Wait for the task to complete with a reasonable timeout
+                        _frameGenerationTask.Wait(TimeSpan.FromMilliseconds(100));
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // Expected when cancellation is requested
+                    }
+                    catch (AggregateException ex) when (ex.InnerException is OperationCanceledException)
+                    {
+                        // Expected when cancellation is requested
+                    }
+                }
+                
+                _frameGenerationCts.Dispose();
+                _frameGenerationCts = null;
+                _frameGenerationTask = null;
+            }
         }
 
         public async Task<string?> CapturePhotoAsync(string? customFileName = null)
@@ -232,7 +311,35 @@ namespace Photobooth.Tests.Mocks
         {
             if (!_disposed && disposing)
             {
-                StopCamera();
+                // Cancel and wait for background task properly
+                _isCapturing = false;
+                _newFrameAvailable = false;
+
+                if (_frameGenerationCts != null)
+                {
+                    _frameGenerationCts.Cancel();
+                    
+                    if (_frameGenerationTask != null)
+                    {
+                        try
+                        {
+                            // Wait for the task to complete with a reasonable timeout
+                            _frameGenerationTask.Wait(TimeSpan.FromMilliseconds(100));
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            // Expected when cancellation is requested
+                        }
+                        catch (AggregateException ex) when (ex.InnerException is OperationCanceledException)
+                        {
+                            // Expected when cancellation is requested
+                        }
+                    }
+                    
+                    _frameGenerationCts.Dispose();
+                    _frameGenerationCts = null;
+                    _frameGenerationTask = null;
+                }
                 
                 // Clean up mock files
                 try

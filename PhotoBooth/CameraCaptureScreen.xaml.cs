@@ -42,6 +42,7 @@ namespace Photobooth
         private DispatcherTimer? _previewTimer;
         private DispatcherTimer? _autoTriggerTimer;
         private DispatcherTimer? _animationTimer;
+        private DispatcherTimer? _errorHideTimer;
         private int _countdownValue;
         private int _currentPhotoIndex;
         private List<string> _capturedPhotos;
@@ -120,7 +121,7 @@ namespace Photobooth
                 }
 
                 // Start optimized preview updates
-                _previewTimer.Start();
+                _previewTimer?.Start();
                 
                 // Start automatic photo sequence after a short delay
                 StartAutoPhotoSequence();
@@ -227,6 +228,10 @@ namespace Photobooth
 
             _animationTimer.Tick += (s, e) =>
             {
+                // Check if control is disposed before accessing UI elements
+                if (_disposed)
+                    return;
+                    
                 foreach (Ellipse particle in ParticlesCanvas.Children)
                 {
                     var currentTop = Canvas.GetTop(particle);
@@ -323,6 +328,23 @@ namespace Photobooth
         }
 
         /// <summary>
+        /// Show loading overlay with message
+        /// </summary>
+        private void ShowLoading(string message)
+        {
+            LoadingText.Text = message;
+            LoadingOverlay.Visibility = Visibility.Visible;
+        }
+
+        /// <summary>
+        /// Hide loading overlay
+        /// </summary>
+        public void HideLoading()
+        {
+            LoadingOverlay.Visibility = Visibility.Collapsed;
+        }
+
+        /// <summary>
         /// Show error message
         /// </summary>
         private void ShowErrorMessage(string message)
@@ -330,17 +352,25 @@ namespace Photobooth
             ErrorMessageText.Text = message;
             ErrorMessageBorder.Visibility = Visibility.Visible;
             
+            // Stop and dispose previous timer if exists
+            if (_errorHideTimer != null)
+            {
+                _errorHideTimer.Stop();
+                _errorHideTimer = null;
+            }
+            
             // Auto-hide after 5 seconds
-            var hideTimer = new DispatcherTimer
+            _errorHideTimer = new DispatcherTimer
             {
                 Interval = TimeSpan.FromSeconds(5)
             };
-            hideTimer.Tick += (s, e) =>
+            _errorHideTimer.Tick += (s, e) =>
             {
                 ErrorMessageBorder.Visibility = Visibility.Collapsed;
-                hideTimer.Stop();
+                _errorHideTimer.Stop();
+                _errorHideTimer = null;
             };
-            hideTimer.Start();
+            _errorHideTimer.Start();
         }
 
         /// <summary>
@@ -501,17 +531,19 @@ namespace Photobooth
         {
             try
             {
-                UpdateStatusText("All photos captured! Processing...");
+                UpdateStatusText("All photos captured! Composing your photos...");
                 
-                // Stop camera preview
+                // Stop camera preview but keep the last captured photo visible
                 _previewTimer?.Stop();
                 _cameraService.StopCamera();
                 
+                // Show loading overlay on camera screen instead of immediate transition
+                ShowLoading("Composing your photos...");
+                
                 Console.WriteLine($"Photo session completed - {_capturedPhotos.Count} photos captured");
                 
-                // Fire event with captured photos
+                // Fire event with captured photos - now includes composition request
                 PhotosCaptured?.Invoke(this, new PhotosCapturedEventArgs(_currentTemplate!, _capturedPhotos));
-                
                 return Task.CompletedTask;
             }
             catch (Exception ex)
@@ -639,6 +671,13 @@ namespace Photobooth
                         _animationTimer.Stop();
                         _animationTimer = null;
                         Console.WriteLine("CameraCaptureScreen: Animation timer stopped");
+                    }
+                    
+                    if (_errorHideTimer != null)
+                    {
+                        _errorHideTimer.Stop();
+                        _errorHideTimer = null;
+                        Console.WriteLine("CameraCaptureScreen: Error hide timer stopped");
                     }
                     
                     // Unsubscribe from events and dispose camera service

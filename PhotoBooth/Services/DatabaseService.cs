@@ -53,6 +53,7 @@ namespace Photobooth.Services
         Task<DatabaseResult<TemplateLayout?>> GetTemplateLayoutAsync(string layoutId);
         Task<DatabaseResult<TemplateLayout?>> GetTemplateLayoutByKeyAsync(string layoutKey);
         Task<DatabaseResult<List<TemplatePhotoArea>>> GetTemplatePhotoAreasAsync(string layoutId);
+        Task<DatabaseResult<Dictionary<string, List<TemplatePhotoArea>>>> GetPhotoAreasByLayoutIdsAsync(List<string> layoutIds);
         Task<DatabaseResult<List<HardwareStatusDto>>> GetHardwareStatusAsync();
         Task<DatabaseResult<PrintSupply?>> GetPrintSupplyAsync(SupplyType supplyType);
         Task<DatabaseResult> UpdatePrintSupplyAsync(SupplyType supplyType, int newCount);
@@ -998,15 +999,20 @@ namespace Photobooth.Services
                     }
                 }
 
-                // Now load photo areas for all templates with layouts
-                foreach (var template in templates)
+                // Load all photo areas for templates with layouts in a single query (N+1 optimization)
+                var layoutIds = templates.Where(t => t.Layout != null).Select(t => t.LayoutId).Distinct().ToList();
+                if (layoutIds.Any())
                 {
-                    if (template.Layout != null)
+                    var photoAreasResult = await GetPhotoAreasByLayoutIdsAsync(layoutIds);
+                    if (photoAreasResult.Success && photoAreasResult.Data != null)
                     {
-                        var photoAreasResult = await GetTemplatePhotoAreasAsync(template.LayoutId);
-                        if (photoAreasResult.Success && photoAreasResult.Data != null)
+                        // Map photo areas to templates
+                        foreach (var template in templates)
                         {
-                            template.Layout.PhotoAreas = photoAreasResult.Data;
+                            if (template.Layout != null && photoAreasResult.Data.ContainsKey(template.LayoutId))
+                            {
+                                template.Layout.PhotoAreas = photoAreasResult.Data[template.LayoutId];
+                            }
                         }
                     }
                 }
@@ -1155,15 +1161,20 @@ namespace Photobooth.Services
                     }
                 }
 
-                // Now load photo areas for all templates with layouts
-                foreach (var template in templates)
+                // Load all photo areas for templates with layouts in a single query (N+1 optimization)
+                var layoutIds = templates.Where(t => t.Layout != null).Select(t => t.LayoutId).Distinct().ToList();
+                if (layoutIds.Any())
                 {
-                    if (template.Layout != null)
+                    var photoAreasResult = await GetPhotoAreasByLayoutIdsAsync(layoutIds);
+                    if (photoAreasResult.Success && photoAreasResult.Data != null)
                     {
-                        var photoAreasResult = await GetTemplatePhotoAreasAsync(template.LayoutId);
-                        if (photoAreasResult.Success && photoAreasResult.Data != null)
+                        // Map photo areas to templates
+                        foreach (var template in templates)
                         {
-                            template.Layout.PhotoAreas = photoAreasResult.Data;
+                            if (template.Layout != null && photoAreasResult.Data.ContainsKey(template.LayoutId))
+                            {
+                                template.Layout.PhotoAreas = photoAreasResult.Data[template.LayoutId];
+                            }
                         }
                     }
                 }
@@ -2072,6 +2083,65 @@ namespace Photobooth.Services
             catch (Exception ex)
             {
                 return DatabaseResult<List<TemplatePhotoArea>>.ErrorResult($"Failed to get template photo areas: {ex.Message}", ex);
+            }
+        }
+
+        public async Task<DatabaseResult<Dictionary<string, List<TemplatePhotoArea>>>> GetPhotoAreasByLayoutIdsAsync(List<string> layoutIds)
+        {
+            try
+            {
+                if (!layoutIds.Any())
+                {
+                    return DatabaseResult<Dictionary<string, List<TemplatePhotoArea>>>.SuccessResult(new Dictionary<string, List<TemplatePhotoArea>>());
+                }
+
+                var photoAreasByLayout = new Dictionary<string, List<TemplatePhotoArea>>();
+                
+                // Create parameter placeholders for IN clause
+                var placeholders = string.Join(",", layoutIds.Select((_, i) => $"@layoutId{i}"));
+                var query = $@"
+                    SELECT Id, LayoutId, PhotoIndex, X, Y, Width, Height, Rotation
+                    FROM TemplatePhotoAreas
+                    WHERE LayoutId IN ({placeholders})
+                    ORDER BY LayoutId, PhotoIndex";
+
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+                using var command = new SqliteCommand(query, connection);
+                
+                // Add parameters for each layout ID
+                for (int i = 0; i < layoutIds.Count; i++)
+                {
+                    command.Parameters.AddWithValue($"@layoutId{i}", layoutIds[i]);
+                }
+                
+                using var reader = await command.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    var photoArea = new TemplatePhotoArea
+                    {
+                        Id = GetIntValue(reader, "Id"),
+                        LayoutId = GetStringValue(reader, "LayoutId"),
+                        PhotoIndex = GetIntValue(reader, "PhotoIndex"),
+                        X = GetIntValue(reader, "X"),
+                        Y = GetIntValue(reader, "Y"),
+                        Width = GetIntValue(reader, "Width"),
+                        Height = GetIntValue(reader, "Height"),
+                        Rotation = Convert.ToDouble(reader["Rotation"])
+                    };
+
+                    if (!photoAreasByLayout.ContainsKey(photoArea.LayoutId))
+                    {
+                        photoAreasByLayout[photoArea.LayoutId] = new List<TemplatePhotoArea>();
+                    }
+                    photoAreasByLayout[photoArea.LayoutId].Add(photoArea);
+                }
+
+                return DatabaseResult<Dictionary<string, List<TemplatePhotoArea>>>.SuccessResult(photoAreasByLayout);
+            }
+            catch (Exception ex)
+            {
+                return DatabaseResult<Dictionary<string, List<TemplatePhotoArea>>>.ErrorResult($"Failed to get photo areas by layout IDs: {ex.Message}", ex);
             }
         }
 
@@ -3128,119 +3198,6 @@ It contains no important application files.
             }
         }
 
-        private async Task<DatabaseResult> InitializeDatabaseSchema(SqliteConnection connection)
-        {
-            Console.WriteLine("📝 Initializing database schema...");
 
-            try
-            {
-                var schemaPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Database_Schema.sql");
-                Console.WriteLine($"🔍 Looking for schema file at: {schemaPath}");
-                
-                if (!File.Exists(schemaPath))
-                {
-                    Console.WriteLine($"❌ Schema file not found at {schemaPath}");
-                    return DatabaseResult.ErrorResult("Schema file not found");
-                }
-                
-                Console.WriteLine($"✅ Schema file found, reading content...");
-                var schemaContent = await File.ReadAllTextAsync(schemaPath);
-                Console.WriteLine($"📄 Schema file size: {schemaContent.Length} characters");
-                
-                // Split into individual commands (by semicolon)
-                var commands = schemaContent.Split(';', StringSplitOptions.RemoveEmptyEntries);
-                Console.WriteLine($"📋 Found {commands.Length} SQL commands to execute");
-
-                if (commands.Length == 0)
-                {
-                    Console.WriteLine("❌ No SQL commands found in schema file");
-                    return DatabaseResult.ErrorResult("No SQL commands found in schema file");
-                }
-
-                using var transaction = connection.BeginTransaction();
-                try
-                {
-                    int commandIndex = 0;
-                    foreach (var commandText in commands)
-                    {
-                        commandIndex++;
-                        Console.WriteLine($"Executing database command {commandIndex}/{commands.Length}");
-
-                        // Clean up the command - remove comments and whitespace
-                        var lines = commandText.Split('\n');
-                        var cleanLines = new List<string>();
-                        
-                        foreach (var line in lines)
-                        {
-                            var trimmedLine = line.Trim();
-                            // Skip empty lines
-                            if (string.IsNullOrEmpty(trimmedLine))
-                                continue;
-                                
-                            // Skip full comment lines
-                            if (trimmedLine.StartsWith("--"))
-                                continue;
-                                
-                            // Remove inline comments
-                            var commentIndex = trimmedLine.IndexOf("--");
-                            if (commentIndex >= 0)
-                            {
-                                trimmedLine = trimmedLine.Substring(0, commentIndex).Trim();
-                            }
-                            
-                            // Add non-empty lines
-                            if (!string.IsNullOrEmpty(trimmedLine))
-                            {
-                                cleanLines.Add(trimmedLine);
-                            }
-                        }
-                        
-                        if (cleanLines.Count == 0)
-                        {
-                            Console.WriteLine($"Skipping empty command {commandIndex}");
-                            continue;
-                        }
-                        
-                        var trimmedCommand = string.Join(" ", cleanLines);
-                        Console.WriteLine($"Executing: {trimmedCommand.Substring(0, Math.Min(50, trimmedCommand.Length))}...");
-
-                        using var command = new SqliteCommand(trimmedCommand, connection, transaction);
-                        await command.ExecuteNonQueryAsync();
-                        Console.WriteLine($"✅ Command {commandIndex} executed successfully");
-                    }
-
-                    Console.WriteLine("🔄 Committing transaction...");
-                    await transaction.CommitAsync();
-                    Console.WriteLine("✅ Transaction committed successfully");
-
-                    // Create default admin users (only for new database)
-                    Console.WriteLine("🔑 Creating default admin users...");
-                    await CreateDefaultAdminUserDirect(connection);
-                    Console.WriteLine("✅ Default admin users created");
-
-                    // Create default system settings (only for new database)
-                    Console.WriteLine("⚙️ Creating default settings...");
-                    await CreateDefaultSettingsDirect(connection);
-                    Console.WriteLine("✅ Default settings created");
-
-                    Console.WriteLine("🎉 Database initialization completed successfully!");
-                    return DatabaseResult.SuccessResult();
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"❌ Database initialization error: {ex.Message}");
-                    Console.WriteLine($"❌ Stack trace: {ex.StackTrace}");
-                    await transaction.RollbackAsync();
-                    throw;
-                }
-            }
-            catch (Exception ex)
-            {
-                var errorMsg = $"Database initialization failed: {ex.Message}";
-
-
-                return DatabaseResult.ErrorResult(errorMsg, ex);
-            }
-        }
     }
 } 

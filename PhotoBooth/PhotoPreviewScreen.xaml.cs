@@ -40,7 +40,7 @@ namespace Photobooth
 
         #region Private Fields
 
-        private readonly ImageCompositionService _compositionService;
+        private readonly IImageCompositionService _compositionService;
         private readonly IDatabaseService _databaseService;
         private Template? _currentTemplate;
         private List<string>? _capturedPhotosPaths;
@@ -49,17 +49,18 @@ namespace Photobooth
         
         // Animation fields
         private DispatcherTimer? animationTimer;
+        private DispatcherTimer? errorHideTimer;
         private Random random = new Random();
 
         #endregion
 
         #region Constructor
 
-        public PhotoPreviewScreen(IDatabaseService databaseService)
+        public PhotoPreviewScreen(IDatabaseService databaseService, IImageCompositionService compositionService)
         {
             InitializeComponent();
             _databaseService = databaseService;
-            _compositionService = new ImageCompositionService(databaseService);
+            _compositionService = compositionService;
             
             // Initialize animations
             InitializeAnimatedBackground();
@@ -70,7 +71,51 @@ namespace Photobooth
         #region Public Methods
 
         /// <summary>
-        /// Initialize and compose photos for preview
+        /// Initialize with pre-composed photos for smooth UX (no loading overlay needed)
+        /// </summary>
+        public async Task InitializeWithComposedResultAsync(Template template, List<string> capturedPhotosPaths, CompositionResult compositionResult)
+        {
+            try
+            {
+                _currentTemplate = template;
+                _capturedPhotosPaths = new List<string>(capturedPhotosPaths);
+                _composedImagePath = compositionResult.OutputPath;
+
+                // Update UI with template info
+                TemplateNameText.Text = template.Name ?? "Template";
+                PhotoCountText.Text = $"{template.PhotoCount} Photo{(template.PhotoCount > 1 ? "s" : "")} • Ready to print";
+
+                // No loading overlay - composition is already done!
+                LoggingService.Application.Information("Displaying pre-composed photos in preview", 
+                    ("TemplateName", template.Name ?? "Unknown"),
+                    ("PhotoCount", capturedPhotosPaths.Count));
+
+                // Display composed image directly
+                if (compositionResult.PreviewImage != null)
+                {
+                    ComposedPhotoImage.Source = compositionResult.PreviewImage;
+                }
+                else if (compositionResult.OutputPath != null)
+                {
+                    // Fallback: load image from file
+                    await LoadComposedImageAsync(compositionResult.OutputPath);
+                }
+                else
+                {
+                    ShowErrorMessage("Composition result is missing both preview image and output path.");
+                }
+
+                LoggingService.Application.Information("Photo preview displayed successfully with pre-composed result");
+            }
+            catch (Exception ex)
+            {
+                ShowErrorMessage($"An error occurred: {ex.Message}");
+                LoggingService.Application.Error("Photo preview initialization with composed result failed", ex);
+            }
+        }
+
+        /// <summary>
+        /// Initialize and compose photos for preview (legacy method for backwards compatibility)
         /// </summary>
         public async Task InitializeWithPhotosAsync(Template template, List<string> capturedPhotosPaths)
         {
@@ -147,16 +192,19 @@ namespace Photobooth
                     return;
                 }
 
-                var bitmapImage = await Task.Run(() =>
+                // Load image bytes in background thread
+                var imageBytes = await Task.Run(() => File.ReadAllBytes(imagePath));
+
+                // Create BitmapImage on UI thread
+                var bitmapImage = new BitmapImage();
+                using (var stream = new MemoryStream(imageBytes))
                 {
-                    var bitmap = new BitmapImage();
-                    bitmap.BeginInit();
-                    bitmap.UriSource = new Uri(imagePath, UriKind.Absolute);
-                    bitmap.CacheOption = BitmapCacheOption.OnLoad;
-                    bitmap.EndInit();
-                    bitmap.Freeze();
-                    return bitmap;
-                });
+                    bitmapImage.BeginInit();
+                    bitmapImage.StreamSource = stream;
+                    bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
+                    bitmapImage.EndInit();
+                    bitmapImage.Freeze();
+                }
 
                 ComposedPhotoImage.Source = bitmapImage;
             }
@@ -192,17 +240,25 @@ namespace Photobooth
             ErrorMessageText.Text = message;
             ErrorMessageBorder.Visibility = Visibility.Visible;
 
+            // Stop and dispose previous timer if exists
+            if (errorHideTimer != null)
+            {
+                errorHideTimer.Stop();
+                errorHideTimer = null;
+            }
+
             // Auto-hide after 8 seconds
-            var hideTimer = new DispatcherTimer
+            errorHideTimer = new DispatcherTimer
             {
                 Interval = TimeSpan.FromSeconds(8)
             };
-            hideTimer.Tick += (s, e) =>
+            errorHideTimer.Tick += (s, e) =>
             {
                 ErrorMessageBorder.Visibility = Visibility.Collapsed;
-                hideTimer.Stop();
+                errorHideTimer.Stop();
+                errorHideTimer = null;
             };
-            hideTimer.Start();
+            errorHideTimer.Start();
         }
 
         /// <summary>
@@ -227,18 +283,19 @@ namespace Photobooth
         {
             try
             {
-                Console.WriteLine("=== RETAKE BUTTON CLICKED ===");
-                Console.WriteLine($"Current template is null: {_currentTemplate == null}");
+                LoggingService.Application.Information("Retake button clicked", 
+                    ("CurrentTemplateIsNull", _currentTemplate == null));
                 
                 if (_currentTemplate == null)
                 {
-                    Console.WriteLine("ERROR: Retake requested but no current template");
+                    LoggingService.Application.Warning("Retake requested but no current template available");
                     ShowErrorMessage("No template available for retake.");
                     return;
                 }
 
-                Console.WriteLine($"Template Name: {_currentTemplate.Name ?? "NULL"}");
-                Console.WriteLine($"Template PhotoCount: {_currentTemplate.PhotoCount}");
+                LoggingService.Application.Information("Processing retake request", 
+                    ("TemplateName", _currentTemplate.Name ?? "Unknown"),
+                    ("TemplatePhotoCount", _currentTemplate.PhotoCount));
 
                 // Save template reference before clearing content
                 var templateForRetake = _currentTemplate;
@@ -247,14 +304,13 @@ namespace Photobooth
                 ClearContent();
 
                 // Fire retake event with saved template
-                Console.WriteLine("Firing RetakePhotosRequested event");
+                LoggingService.Application.Debug("Firing RetakePhotosRequested event");
                 RetakePhotosRequested?.Invoke(this, new RetakePhotosEventArgs(templateForRetake));
-                Console.WriteLine("RetakePhotosRequested event fired successfully");
+                LoggingService.Application.Information("RetakePhotosRequested event fired successfully");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR in RetakeButton_Click: {ex.Message}");
-                Console.WriteLine($"ERROR stack trace: {ex.StackTrace}");
+                LoggingService.Application.Error("Retake button click failed", ex);
                 ShowErrorMessage("Failed to process retake request.");
             }
         }
@@ -400,6 +456,10 @@ namespace Photobooth
 
             animationTimer.Tick += (s, e) =>
             {
+                // Check if control is disposed before accessing UI elements
+                if (_disposed)
+                    return;
+                    
                 foreach (Ellipse particle in ParticlesCanvas.Children)
                 {
                     var currentTop = Canvas.GetTop(particle);
@@ -440,6 +500,13 @@ namespace Photobooth
                 {
                     animationTimer.Stop();
                     animationTimer = null;
+                }
+                
+                // Stop and dispose error hide timer
+                if (errorHideTimer != null)
+                {
+                    errorHideTimer.Stop();
+                    errorHideTimer = null;
                 }
                 
                 ClearContent();

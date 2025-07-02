@@ -1,5 +1,6 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using FluentAssertions;
+using Photobooth.Models;
 using Photobooth.Services;
 using System;
 using System.Collections.Generic;

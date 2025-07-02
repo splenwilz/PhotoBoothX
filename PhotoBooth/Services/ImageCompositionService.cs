@@ -12,9 +12,18 @@ using Photobooth.Models;
 namespace Photobooth.Services
 {
     /// <summary>
+    /// Interface for compositing captured photos onto template backgrounds
+    /// </summary>
+    public interface IImageCompositionService
+    {
+        Task<CompositionResult> ComposePhotosAsync(Template template, List<string> capturedPhotosPaths);
+        Task<BitmapImage?> CreatePreviewImageAsync(string imagePath);
+    }
+
+    /// <summary>
     /// Service for compositing captured photos onto template backgrounds
     /// </summary>
-    public class ImageCompositionService
+    public class ImageCompositionService : IImageCompositionService
     {
         #region Private Fields
 
