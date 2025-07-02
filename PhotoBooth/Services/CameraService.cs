@@ -60,17 +60,52 @@ namespace Photobooth.Services
         {
             _dispatcher = Application.Current.Dispatcher;
             
-            // Create output directory on desktop
-            var desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
-            _outputDirectory = Path.Combine(desktopPath, "PhotoBoothX_Photos");
-            
-            if (!Directory.Exists(_outputDirectory))
-            {
-                Directory.CreateDirectory(_outputDirectory);
-            }
+            // Output directory should be configured via DI or app settings
+            _outputDirectory = GetConfiguredOutputDirectory();
+            EnsureOutputDirectoryExists();
 
             LoggingService.Hardware.Information("Camera", "CameraService initialized", 
                 ("OutputDirectory", _outputDirectory));
+        }
+
+        /// <summary>
+        /// Get the configured output directory from app settings or use default
+        /// </summary>
+        private string GetConfiguredOutputDirectory()
+        {
+            // Try to get from app configuration first
+            var configuredPath = System.Configuration.ConfigurationManager.AppSettings["CameraOutputDirectory"];
+            
+            if (!string.IsNullOrEmpty(configuredPath))
+            {
+                return configuredPath;
+            }
+            
+            // Fallback to desktop for backward compatibility
+            var desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+            return Path.Combine(desktopPath, "PhotoBoothX_Photos");
+        }
+
+        /// <summary>
+        /// Ensure output directory exists with proper error handling
+        /// </summary>
+        private void EnsureOutputDirectoryExists()
+        {
+            try
+            {
+                if (!Directory.Exists(_outputDirectory))
+                {
+                    Directory.CreateDirectory(_outputDirectory);
+                    LoggingService.Hardware.Information("Camera", "Created output directory", 
+                        ("Path", _outputDirectory));
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Hardware.Error("Camera", "Failed to create output directory", ex,
+                    ("Path", _outputDirectory));
+                throw new InvalidOperationException($"Cannot create camera output directory: {_outputDirectory}", ex);
+            }
         }
 
         #endregion
@@ -112,7 +147,7 @@ namespace Photobooth.Services
         /// <summary>
         /// Start camera capture with optimized settings
         /// </summary>
-        public Task<bool> StartCameraAsync(int cameraIndex = 0)
+        public bool StartCamera(int cameraIndex = 0)
         {
             try
             {
@@ -127,7 +162,7 @@ namespace Photobooth.Services
                     Console.WriteLine($"[CAMERA] ❌ No cameras available or invalid index {cameraIndex}");
                     LoggingService.Hardware.Warning("Camera", "No cameras available or invalid index", 
                         ("RequestedIndex", cameraIndex), ("AvailableCameras", cameras.Count));
-                    return Task.FromResult(false);
+                    return false;
                 }
 
                 var selectedCamera = cameras[cameraIndex];
@@ -194,7 +229,7 @@ namespace Photobooth.Services
                     ("OptimizedResolution", $"{_previewWidth}x{_previewHeight}"),
                     ("StartupTime", $"{totalStartTime.TotalMilliseconds:F1}ms"));
 
-                return Task.FromResult(true);
+                return true;
             }
             catch (Exception ex)
             {
@@ -202,7 +237,7 @@ namespace Photobooth.Services
                 LoggingService.Hardware.Error("Camera", "Failed to start camera", ex,
                     ("CameraIndex", cameraIndex));
                 CameraError?.Invoke(this, $"Failed to start camera: {ex.Message}");
-                return Task.FromResult(false);
+                return false;
             }
         }
 

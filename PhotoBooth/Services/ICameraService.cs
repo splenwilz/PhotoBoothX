@@ -49,7 +49,7 @@ namespace Photobooth.Services
         /// <summary>
         /// Start camera capture with optimized settings
         /// </summary>
-        Task<bool> StartCameraAsync(int cameraIndex = 0);
+        bool StartCamera(int cameraIndex = 0);
 
         /// <summary>
         /// Stop camera capture

@@ -84,7 +84,7 @@ namespace Photobooth
         /// <summary>
         /// Initialize camera session with template
         /// </summary>
-        public async Task<bool> InitializeSessionAsync(Template template)
+        public bool InitializeSession(Template template)
         {
             try
             {
@@ -113,7 +113,7 @@ namespace Photobooth
                 UpdateStatusText($"Photo 1 of {template.PhotoCount} - Get ready!");
                 
                 // Start camera with optimized settings
-                var cameraStarted = await _cameraService.StartCameraAsync();
+                var cameraStarted = _cameraService.StartCamera();
                 if (!cameraStarted)
                 {
                     ShowErrorMessage("Failed to start camera. Please check your camera connection.");

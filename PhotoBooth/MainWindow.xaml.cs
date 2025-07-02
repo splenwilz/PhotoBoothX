@@ -562,7 +562,7 @@ namespace Photobooth
 
                 // Initialize camera session
                 Console.WriteLine("Starting camera initialization");
-                var initialized = await cameraCaptureScreen.InitializeSessionAsync(template);
+                var initialized = cameraCaptureScreen.InitializeSession(template);
                 Console.WriteLine($"Camera initialization result: {initialized}");
                 
                 if (!initialized)
@@ -1344,45 +1344,38 @@ namespace Photobooth
         {
             try
             {
-                Console.WriteLine("=== RETAKE PHOTOS REQUESTED ===");
+                LoggingService.Application.Information("Retake photos requested");
                 
                 // Add null checks to prevent NullReferenceException
                 if (e == null)
                 {
-                    Console.WriteLine("ERROR: RetakePhotosEventArgs is null");
+                    LoggingService.Application.Error("RetakePhotosEventArgs is null", null);
                     NotificationService.Instance.ShowError("Navigation Error", "Invalid retake request - missing event data.");
                     return;
                 }
                 
                 if (e.Template == null)
                 {
-                    Console.WriteLine("ERROR: Template is null in RetakePhotosEventArgs");
+                    LoggingService.Application.Error("Template is null in RetakePhotosEventArgs", null);
                     NotificationService.Instance.ShowError("Navigation Error", "Invalid retake request - missing template data.");
                     return;
                 }
                 
-                Console.WriteLine($"Template Name: {e.Template.Name ?? "NULL"}");
-                Console.WriteLine($"Template PhotoCount: {e.Template.PhotoCount}");
-                Console.WriteLine($"Current Screen: {CurrentScreenContainer.Content?.GetType().Name ?? "None"}");
-                Console.WriteLine($"CameraCaptureScreen Exists: {cameraCaptureScreen != null}");
+                LoggingService.Application.Debug("Retake navigation details", 
+                    ("TemplateName", e.Template.Name ?? "NULL"),
+                    ("PhotoCount", e.Template.PhotoCount),
+                    ("CurrentScreen", CurrentScreenContainer.Content?.GetType().Name ?? "None"),
+                    ("CameraCaptureScreenExists", cameraCaptureScreen != null));
 
                 // Navigate back to camera capture for retake
-                Console.WriteLine("Calling NavigateToCameraCapture...");
+                LoggingService.Application.Debug("Starting camera capture navigation for retake");
                 await NavigateToCameraCapture(e.Template);
                 
-                Console.WriteLine("=== RETAKE NAVIGATION COMPLETED ===");
+                LoggingService.Application.Information("Retake navigation completed successfully");
             }
             catch (Exception ex)
             {
-                Console.WriteLine("=== RETAKE NAVIGATION FAILED ===");
-                Console.WriteLine($"Exception Type: {ex.GetType().Name}");
-                Console.WriteLine($"Exception Message: {ex.Message}");
-                Console.WriteLine($"Exception StackTrace: {ex.StackTrace}");
-                if (ex.InnerException != null)
-                {
-                    Console.WriteLine($"Inner Exception: {ex.InnerException.Message}");
-                    Console.WriteLine($"Inner Exception StackTrace: {ex.InnerException.StackTrace}");
-                }
+                LoggingService.Application.Error("Retake navigation failed", ex);
                 NotificationService.Instance.ShowError("Navigation Error", $"Failed to restart camera for retake: {ex.Message}");
             }
         }
