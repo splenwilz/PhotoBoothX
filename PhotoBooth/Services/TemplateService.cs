@@ -123,13 +123,57 @@ namespace Photobooth.Services
 
         private BitmapImage CreatePlaceholderImage()
         {
-            // Create a simple placeholder image
-            var bitmap = new BitmapImage();
-            bitmap.BeginInit();
-            bitmap.UriSource = new Uri("pack://application:,,,/Resources/template-placeholder.png");
-            bitmap.EndInit();
-            bitmap.Freeze();
-            return bitmap;
+            try
+            {
+                // Create a simple placeholder image programmatically
+                var width = 200;
+                var height = 200;
+                
+                var bitmap = new WriteableBitmap(width, height, 96, 96, System.Windows.Media.PixelFormats.Bgr24, null);
+                
+                // Fill with a light gray background
+                var backgroundColor = System.Windows.Media.Color.FromRgb(240, 240, 240);
+                var stride = (width * bitmap.Format.BitsPerPixel + 7) / 8;
+                var pixels = new byte[height * stride];
+                
+                // Fill the pixel array with light gray
+                for (int i = 0; i < pixels.Length; i += 3)
+                {
+                    pixels[i] = backgroundColor.B;     // Blue
+                    pixels[i + 1] = backgroundColor.G; // Green
+                    pixels[i + 2] = backgroundColor.R; // Red
+                }
+                
+                bitmap.WritePixels(new System.Windows.Int32Rect(0, 0, width, height), pixels, stride, 0);
+                bitmap.Freeze(); // Make thread-safe
+                
+                // Convert WriteableBitmap to BitmapImage
+                var encoder = new PngBitmapEncoder();
+                encoder.Frames.Add(BitmapFrame.Create(bitmap));
+                
+                var memoryStream = new MemoryStream();
+                encoder.Save(memoryStream);
+                memoryStream.Seek(0, SeekOrigin.Begin);
+                
+                var bitmapImage = new BitmapImage();
+                bitmapImage.BeginInit();
+                bitmapImage.StreamSource = memoryStream;
+                bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
+                bitmapImage.EndInit();
+                bitmapImage.Freeze();
+                
+                return bitmapImage;
+            }
+            catch
+            {
+                // Ultimate fallback - return a minimal 1x1 pixel image
+                var fallbackBitmap = new BitmapImage();
+                fallbackBitmap.BeginInit();
+                fallbackBitmap.UriSource = new Uri("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==");
+                fallbackBitmap.EndInit();
+                fallbackBitmap.Freeze();
+                return fallbackBitmap;
+            }
         }
 
         public bool IsValidImageFile(string filePath)

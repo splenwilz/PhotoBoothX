@@ -92,6 +92,7 @@ namespace Photobooth.Models
         public string Name { get; set; } = string.Empty;
         public string? Description { get; set; }
         public bool IsActive { get; set; } = true;
+        public bool IsPremium { get; set; } = false; // Premium badge determination
         public int SortOrder { get; set; } = 0;
         
         // Seasonal functionality
@@ -144,14 +145,32 @@ namespace Photobooth.Models
                 var today = DateTime.Now;
                 var currentDate = $"{today.Month:D2}-{today.Day:D2}";
                 
-                // Handle cross-year seasons (e.g., Christmas: 12-01 to 01-15)
-                if (string.Compare(SeasonStartDate, SeasonEndDate) > 0)
+                // Parse start and end dates
+                var startParts = SeasonStartDate.Split('-');
+                var endParts = SeasonEndDate.Split('-');
+                
+                if (startParts.Length != 2 || endParts.Length != 2 ||
+                    !int.TryParse(startParts[0], out int startMonth) || !int.TryParse(startParts[1], out int startDay) ||
+                    !int.TryParse(endParts[0], out int endMonth) || !int.TryParse(endParts[1], out int endDay))
                 {
-                    return string.Compare(currentDate, SeasonStartDate) >= 0 || string.Compare(currentDate, SeasonEndDate) <= 0;
+                    return false;
+                }
+                
+                var currentMonth = today.Month;
+                var currentDay = today.Day;
+                
+                // Handle cross-year seasons (e.g., Christmas: 12-01 to 01-15)
+                if (startMonth > endMonth || (startMonth == endMonth && startDay > endDay))
+                {
+                    // Season spans across years
+                    return (currentMonth > startMonth || (currentMonth == startMonth && currentDay >= startDay)) ||
+                           (currentMonth < endMonth || (currentMonth == endMonth && currentDay <= endDay));
                 }
                 else
                 {
-                    return string.Compare(currentDate, SeasonStartDate) >= 0 && string.Compare(currentDate, SeasonEndDate) <= 0;
+                    // Season within same year
+                    return (currentMonth > startMonth || (currentMonth == startMonth && currentDay >= startDay)) &&
+                           (currentMonth < endMonth || (currentMonth == endMonth && currentDay <= endDay));
                 }
             }
         }

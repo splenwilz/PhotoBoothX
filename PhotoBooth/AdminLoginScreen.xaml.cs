@@ -31,6 +31,7 @@ namespace Photobooth
         #region Private Fields
 
         private readonly IDatabaseService _databaseService;
+        private bool _isPasswordVisible = false;
 
         #endregion
 
@@ -78,9 +79,64 @@ namespace Photobooth
             }
         }
 
+        /// <summary>
+        /// Handle password visibility toggle
+        /// </summary>
+        private void PasswordToggleButton_Click(object sender, RoutedEventArgs e)
+        {
+            TogglePasswordVisibility();
+        }
+
         #endregion
 
         #region Authentication Logic
+
+        /// <summary>
+        /// Toggle password visibility between hidden and visible
+        /// </summary>
+        private void TogglePasswordVisibility()
+        {
+            _isPasswordVisible = !_isPasswordVisible;
+
+            if (_isPasswordVisible)
+            {
+                // Show password as text
+                PasswordTextInput.Text = PasswordInput.Password;
+                PasswordInput.Visibility = Visibility.Collapsed;
+                PasswordTextInput.Visibility = Visibility.Visible;
+                PasswordToggleButton.Content = "🙈"; // Closed eye
+                PasswordToggleButton.ToolTip = "Hide Password";
+                PasswordTextInput.Focus();
+                PasswordTextInput.CaretIndex = PasswordTextInput.Text.Length;
+            }
+            else
+            {
+                // Hide password
+                PasswordInput.Password = PasswordTextInput.Text;
+                PasswordTextInput.Visibility = Visibility.Collapsed;
+                PasswordInput.Visibility = Visibility.Visible;
+                PasswordToggleButton.Content = "👁"; // Open eye
+                PasswordToggleButton.ToolTip = "Show Password";
+                PasswordInput.Focus();
+            }
+        }
+
+        /// <summary>
+        /// Get the current password value from the active control
+        /// </summary>
+        private string GetCurrentPassword()
+        {
+            return _isPasswordVisible ? PasswordTextInput.Text : PasswordInput.Password;
+        }
+
+        /// <summary>
+        /// Clear the password from both controls
+        /// </summary>
+        private void ClearPassword()
+        {
+            PasswordInput.Password = "";
+            PasswordTextInput.Text = "";
+        }
 
         /// <summary>
         /// Attempt to authenticate the user
@@ -92,7 +148,7 @@ namespace Photobooth
                 var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
                 var username = UsernameInput.Text.Trim();
-                var password = PasswordInput.Password.Trim();
+                var password = GetCurrentPassword().Trim();
 
                 System.Diagnostics.Debug.WriteLine($"Login attempt for username: '{username}' - Started");
 
@@ -176,7 +232,7 @@ namespace Photobooth
                 {
                     System.Diagnostics.Debug.WriteLine($"Authentication failed ({stopwatch.ElapsedMilliseconds}ms)");
                     ShowError("Invalid username or password. Please try again.");
-                    PasswordInput.Password = "";
+                    ClearPassword();
                     UsernameInput.Focus();
                 }
             }
@@ -216,8 +272,18 @@ namespace Photobooth
             VirtualKeyboardService.Instance.HideKeyboard();
             
             UsernameInput.Text = "";
-            PasswordInput.Password = "";
+            ClearPassword();
             ErrorMessage.Visibility = Visibility.Collapsed;
+
+            // Reset password visibility to hidden state
+            if (_isPasswordVisible)
+            {
+                _isPasswordVisible = false;
+                PasswordTextInput.Visibility = Visibility.Collapsed;
+                PasswordInput.Visibility = Visibility.Visible;
+                PasswordToggleButton.Content = "👁"; // Open eye
+                PasswordToggleButton.ToolTip = "Show Password";
+            }
 
             // Reset any error states
             LoginButton.IsEnabled = true;

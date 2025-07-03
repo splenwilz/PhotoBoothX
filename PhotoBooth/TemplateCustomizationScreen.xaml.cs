@@ -323,37 +323,43 @@ namespace Photobooth
                         var viewbox = this.FindName("TemplatePreviewContainer") as Viewbox;
                         if (viewbox != null && bitmap.PixelWidth > 0 && bitmap.PixelHeight > 0)
                         {
-                            Console.WriteLine($"Original template dimensions: {bitmap.PixelWidth}x{bitmap.PixelHeight}");
+                            LoggingService.Application.Debug("Original template dimensions",
+                                ("PixelWidth", bitmap.PixelWidth),
+                                ("PixelHeight", bitmap.PixelHeight));
+
+                            // Define maximum preview dimensions
+                            const int maxWidth = 800;
+                            const int maxHeight = 600;
+
+                            // Calculate scale factor for large templates to fit in preview while maintaining high quality
+                            double scaleFactor = Math.Min((double)maxWidth / bitmap.PixelWidth, (double)maxHeight / bitmap.PixelHeight);
                             
-                            if (bitmap.PixelWidth < 3000)
+                            // Only scale down templates that are too large
+                            if (scaleFactor < 1.0)
                             {
-                                // Calculate scale factor to bring width to at least 3000 pixels
-                                var scaleFactor = 3000.0 / bitmap.PixelWidth;
-                                var newWidth = 3000;
-                                var newHeight = (int)(bitmap.PixelHeight * scaleFactor);
+                                int newWidth = (int)(bitmap.PixelWidth * scaleFactor);
+                                int newHeight = (int)(bitmap.PixelHeight * scaleFactor);
                                 
-                                Console.WriteLine($"Scaling UP template by {scaleFactor:F2}x to {newWidth}x{newHeight}");
-                                
-                                // Apply the scaled dimensions to the viewbox with larger display scale
-                                viewbox.Width = Math.Min(newWidth * 0.3, 900); // Increased max size and reduced scale for bigger display
-                                viewbox.Height = Math.Min(newHeight * 0.3, 900);
-                                viewbox.MaxWidth = double.PositiveInfinity;
-                                viewbox.MaxHeight = double.PositiveInfinity;
+                                LoggingService.Application.Debug("Scaling down template to fit preview",
+                                    ("ScaleFactor", scaleFactor),
+                                    ("NewWidth", newWidth),
+                                    ("NewHeight", newHeight));
+
+                                TemplatePreviewImage.Width = newWidth;
+                                TemplatePreviewImage.Height = newHeight;
                             }
                             else
                             {
-                                Console.WriteLine("Template width >= 3000, using standard sizing");
-                                // Use standard sizing for large templates
-                                viewbox.MaxHeight = 700;
-                                viewbox.MaxWidth = 500;
-                                viewbox.Width = double.NaN;
-                                viewbox.Height = double.NaN;
+                                // For smaller templates, use original size for crisp display
+                                LoggingService.Application.Debug("Using original template size for preview");
+                                TemplatePreviewImage.Width = bitmap.PixelWidth;
+                                TemplatePreviewImage.Height = bitmap.PixelHeight;
                             }
+
+                            // Update template dimensions display via data binding
+                            TemplateDimensionsText = $"Dimensions: {bitmap.PixelWidth}x{bitmap.PixelHeight}";
                         }
                     }));
-
-                    // Update template dimensions display via data binding
-                    TemplateDimensionsText = $"Dimensions: {bitmap.PixelWidth}x{bitmap.PixelHeight}";
                 }
                 else
                 {

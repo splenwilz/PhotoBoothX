@@ -244,7 +244,7 @@ namespace Photobooth
 
                 if (categorySelectionScreen == null)
                 {
-                    categorySelectionScreen = new CategorySelectionScreen();
+                    categorySelectionScreen = new CategorySelectionScreen(_databaseService);
                     // Subscribe to category selection events
                     categorySelectionScreen.BackButtonClicked += CategorySelectionScreen_BackButtonClicked;
                     categorySelectionScreen.CategorySelected += CategorySelectionScreen_CategorySelected;
@@ -356,32 +356,22 @@ namespace Photobooth
 
 
         /// <summary>
-        /// Navigate to template customization with a specific template selected
+        /// Navigate to template customization screen with specific template
         /// </summary>
-        public void NavigateToTemplateCustomizationWithTemplate(TemplateInfo? template)
+        public async void NavigateToTemplateCustomizationWithTemplate(TemplateInfo? template)
         {
             try
             {
-                LoggingService.Application.Debug("Navigating to template customization",
-                    ("TemplateName", template?.TemplateName ?? "NULL"),
-                    ("CurrentProduct", currentProduct?.Name ?? "NULL"));
-                
-                if (template == null)
+                if (template == null || currentProduct == null)
                 {
-                    LoggingService.Application.Warning("Template is null, cannot navigate to customization - falling back");
-                    // Fallback to template selection if template is null
-                    if (currentProduct != null)
-                    {
-                        NavigateToTemplateSelectionWithCategories(currentProduct);
-                    }
-                    else
-                    {
+                    LoggingService.Application.Warning("Attempted to navigate to template customization with null template or product");
                         NavigateToProductSelection();
-                    }
                     return;
                 }
                 
-                LoggingService.Application.Information("Navigating to template customization with template",
+                currentTemplate = template;
+
+                LoggingService.Application.Information("Navigating to template customization with specific template",
                     ("TemplateName", template.TemplateName ?? "Unknown"),
                     ("Category", template.Category ?? "Unknown"));
 
@@ -403,7 +393,7 @@ namespace Photobooth
 
                 // Convert TemplateInfo to Template for customization screen
                 LoggingService.Application.Debug("Converting TemplateInfo to Template");
-                var dbTemplate = ConvertTemplateInfoToTemplate(template);
+                var dbTemplate = await ConvertTemplateInfoToTemplateAsync(template);
                 LoggingService.Application.Debug("Template converted successfully",
                     ("ConvertedName", dbTemplate.Name),
                     ("ConvertedId", dbTemplate.Id));
@@ -489,11 +479,11 @@ namespace Photobooth
                 currentTemplate = template;
 
                 // Convert TemplateInfo to Template for camera capture
-                var dbTemplate = ConvertTemplateInfoToTemplate(template);
+                var dbTemplate = await ConvertTemplateInfoToTemplateAsync(template);
                 if (dbTemplate == null)
                 {
-                                    LoggingService.Application.Error("Failed to convert template for camera capture", null,
-                    ("TemplateName", template.TemplateName));
+                    LoggingService.Application.Error("Failed to convert template for camera capture", null,
+                        ("TemplateName", template.TemplateName));
                     NotificationService.Instance.ShowError("Template Error", "Unable to load template for photo capture.");
                     return;
                 }
@@ -514,79 +504,67 @@ namespace Photobooth
         {
             try
             {
-                Console.WriteLine($"=== STARTING CAMERA CAPTURE NAVIGATION ===");
-                Console.WriteLine($"Template Name: {template.Name}");
-                Console.WriteLine($"Template PhotoCount: {template.PhotoCount}");
+                LoggingService.Application.Information("Starting camera capture navigation",
+                    ("TemplateName", template.Name),
+                    ("PhotoCount", template.PhotoCount));
 
                 // Always dispose and recreate camera screen to ensure clean state
                 // This is especially important for retakes to avoid camera conflicts
                 if (cameraCaptureScreen != null)
                 {
-                    Console.WriteLine("DISPOSING existing camera capture screen for retake");
+                    LoggingService.Application.Debug("Disposing existing camera capture screen for retake");
                     
                     // Unsubscribe from events
                     cameraCaptureScreen.BackButtonClicked -= CameraCaptureScreen_BackButtonClicked;
                     cameraCaptureScreen.PhotosCaptured -= CameraCaptureScreen_PhotosCaptured;
-                    Console.WriteLine("Event handlers unsubscribed");
+                    LoggingService.Application.Debug("Camera capture event handlers unsubscribed");
                     
                     // Dispose to release camera resources
-                    Console.WriteLine("Calling cameraCaptureScreen.Dispose()");
+                    LoggingService.Application.Debug("Disposing camera capture screen");
                     cameraCaptureScreen.Dispose();
                     cameraCaptureScreen = null;
-                    Console.WriteLine("cameraCaptureScreen disposed and set to null");
-                    
-                    // Force garbage collection to ensure camera resources are fully released
-                    Console.WriteLine("Starting garbage collection");
-                    GC.Collect();
-                    GC.WaitForPendingFinalizers();
-                    GC.Collect();
-                    Console.WriteLine("Garbage collection completed");
+                    LoggingService.Application.Debug("Camera capture screen disposed and cleared");
                     
                     // Add small delay to ensure camera resources are fully released
                     // This is crucial for retakes to prevent camera access conflicts
-                    Console.WriteLine("Waiting 500ms for camera resources to be released");
+                    LoggingService.Application.Debug("Waiting for camera resources to be released");
                     await Task.Delay(500);
-                    Console.WriteLine("Camera resources released, proceeding with restart");
+                    LoggingService.Application.Debug("Camera resources released, proceeding with restart");
                 }
 
                 // Create fresh camera capture screen
-                Console.WriteLine("Creating new CameraCaptureScreen");
+                LoggingService.Application.Debug("Creating new CameraCaptureScreen");
                 cameraCaptureScreen = new CameraCaptureScreen(_databaseService);
-                Console.WriteLine("New CameraCaptureScreen created");
+                LoggingService.Application.Debug("New CameraCaptureScreen created");
                 
                 // Subscribe to camera capture events
-                Console.WriteLine("Subscribing to camera capture events");
+                LoggingService.Application.Debug("Subscribing to camera capture events");
                 cameraCaptureScreen.BackButtonClicked += CameraCaptureScreen_BackButtonClicked;
                 cameraCaptureScreen.PhotosCaptured += CameraCaptureScreen_PhotosCaptured;
-                Console.WriteLine("Event handlers subscribed");
+                LoggingService.Application.Debug("Camera capture event handlers subscribed");
 
                 // Initialize camera session
-                Console.WriteLine("Starting camera initialization");
+                LoggingService.Application.Debug("Starting camera initialization");
                 var initialized = cameraCaptureScreen.InitializeSession(template);
-                Console.WriteLine($"Camera initialization result: {initialized}");
+                LoggingService.Application.Debug("Camera initialization completed",
+                    ("Success", initialized));
                 
                 if (!initialized)
                 {
-                    Console.WriteLine("ERROR: Failed to initialize camera capture session");
+                    LoggingService.Application.Error("Failed to initialize camera capture session", null);
                     NotificationService.Instance.ShowError("Camera Error", "Unable to start camera. Please check your camera connection and try again.");
                     return;
                 }
 
-                Console.WriteLine("Setting CurrentScreenContainer.Content");
+                LoggingService.Application.Debug("Setting camera capture screen as current content");
                 CurrentScreenContainer.Content = cameraCaptureScreen;
-                Console.WriteLine("=== CAMERA CAPTURE NAVIGATION COMPLETED SUCCESSFULLY ===");
+                LoggingService.Application.Information("Camera capture navigation completed successfully");
             }
             catch (Exception ex)
             {
-                Console.WriteLine("=== CAMERA CAPTURE NAVIGATION FAILED ===");
-                Console.WriteLine($"Exception Type: {ex.GetType().Name}");
-                Console.WriteLine($"Exception Message: {ex.Message}");
-                Console.WriteLine($"Exception StackTrace: {ex.StackTrace}");
-                if (ex.InnerException != null)
-                {
-                    Console.WriteLine($"Inner Exception: {ex.InnerException.Message}");
-                    Console.WriteLine($"Inner Exception StackTrace: {ex.InnerException.StackTrace}");
-                }
+                LoggingService.Application.Error("Camera capture navigation failed", ex,
+                    ("TemplateName", template?.Name ?? "Unknown"),
+                    ("ExceptionType", ex.GetType().Name));
                 NotificationService.Instance.ShowError("Navigation Error", $"Failed to restart camera for retake: {ex.Message}");
             }
         }
@@ -1030,138 +1008,129 @@ namespace Photobooth
         /// <summary>
         /// Converts TemplateInfo to Template for compatibility
         /// </summary>
-        private Template ConvertTemplateInfoToTemplate(TemplateInfo templateInfo)
+        private async Task<Template> ConvertTemplateInfoToTemplateAsync(TemplateInfo templateInfo)
         {
-            Console.WriteLine("=== CONVERTING TEMPLATE INFO TO TEMPLATE ===");
-            Console.WriteLine($"Template Name: {templateInfo.TemplateName}");
-            Console.WriteLine($"Template Image Path: {templateInfo.TemplateImagePath}");
-            Console.WriteLine($"Template Config is null: {templateInfo.Config == null}");
+            LoggingService.Application.Debug("Converting TemplateInfo to Template",
+                ("TemplateName", templateInfo.TemplateName),
+                ("TemplateImagePath", templateInfo.TemplateImagePath),
+                ("ConfigIsNull", templateInfo.Config == null));
             
             if (templateInfo.Config != null)
             {
-                Console.WriteLine($"Config PhotoCount: {templateInfo.Config.PhotoCount}");
-                Console.WriteLine($"Config Dimensions: {templateInfo.Config.Dimensions?.Width}x{templateInfo.Config.Dimensions?.Height}");
-                Console.WriteLine($"Config PhotoAreas count: {templateInfo.Config.PhotoAreas?.Count ?? 0}");
+                LoggingService.Application.Debug("Template config details",
+                    ("PhotoCount", templateInfo.Config.PhotoCount),
+                    ("Dimensions", $"{templateInfo.Config.Dimensions?.Width}x{templateInfo.Config.Dimensions?.Height}"),
+                    ("PhotoAreasCount", templateInfo.Config.PhotoAreas?.Count ?? 0));
             }
             
             // FIRST: Try to find existing template in database
-            Console.WriteLine("🔍 CHECKING DATABASE FOR EXISTING TEMPLATE...");
+            LoggingService.Application.Debug("Checking database for existing template");
             try
             {
-                var existingTemplatesTask = _databaseService.GetAllTemplatesAsync();
-                existingTemplatesTask.Wait();
+                var existingTemplatesResult = await _databaseService.GetAllTemplatesAsync();
                 
-                if (existingTemplatesTask.Result.Success && existingTemplatesTask.Result.Data != null)
+                if (existingTemplatesResult.Success && existingTemplatesResult.Data != null)
                 {
-                    var existingTemplate = existingTemplatesTask.Result.Data
+                    var existingTemplate = existingTemplatesResult.Data
                         .FirstOrDefault(t => t.Name == templateInfo.TemplateName || 
                                            t.TemplatePath == templateInfo.TemplateImagePath);
                     
                     if (existingTemplate != null)
                     {
-                        Console.WriteLine($"✅ FOUND EXISTING TEMPLATE IN DATABASE!");
-                        Console.WriteLine($"Database Template ID: {existingTemplate.Id}");
-                        Console.WriteLine($"Database Template LayoutId: {existingTemplate.LayoutId}");
-                        Console.WriteLine($"Database Template PhotoCount: {existingTemplate.PhotoCount}");
+                        LoggingService.Application.Debug("Found existing template in database",
+                            ("DatabaseTemplateId", existingTemplate.Id),
+                            ("DatabaseTemplateLayoutId", existingTemplate.LayoutId),
+                            ("DatabaseTemplatePhotoCount", existingTemplate.PhotoCount));
                         
                         // Load the layout and photo areas from database
-                        var layoutTask = _databaseService.GetTemplateLayoutAsync(existingTemplate.LayoutId);
-                        layoutTask.Wait();
+                        var layoutResult = await _databaseService.GetTemplateLayoutAsync(existingTemplate.LayoutId);
                         
-                        if (layoutTask.Result.Success && layoutTask.Result.Data != null)
+                        if (layoutResult.Success && layoutResult.Data != null)
                         {
-                            existingTemplate.Layout = layoutTask.Result.Data;
-                            Console.WriteLine($"✅ LOADED LAYOUT FROM DATABASE!");
-                            Console.WriteLine($"Layout PhotoCount: {existingTemplate.Layout.PhotoCount}");
-                            Console.WriteLine($"Layout PhotoAreas count: {existingTemplate.Layout.PhotoAreas?.Count ?? 0}");
+                            existingTemplate.Layout = layoutResult.Data;
                             
-                            if (existingTemplate.Layout.PhotoAreas != null)
+                            // Load photo areas for the layout
+                            var photoAreasResult = await _databaseService.GetTemplatePhotoAreasAsync(existingTemplate.LayoutId);
+                            if (photoAreasResult.Success && photoAreasResult.Data != null)
                             {
-                                for (int i = 0; i < existingTemplate.Layout.PhotoAreas.Count; i++)
-                                {
-                                    var area = existingTemplate.Layout.PhotoAreas[i];
-                                    Console.WriteLine($"DB Photo Area {i + 1}: X={area.X}, Y={area.Y}, W={area.Width}, H={area.Height}");
-                                }
+                                existingTemplate.Layout.PhotoAreas = photoAreasResult.Data.ToList();
+                                
+                                LoggingService.Application.Debug("Loaded template with complete layout data",
+                                    ("TemplateName", existingTemplate.Name),
+                                    ("LayoutPhotoCount", existingTemplate.Layout.PhotoCount),
+                                    ("PhotoAreasCount", existingTemplate.Layout.PhotoAreas.Count));
+                                
+                                return existingTemplate;
                             }
-                            
-                            Console.WriteLine("🎯 USING DATABASE TEMPLATE WITH REAL PHOTO AREAS!");
-                            Console.WriteLine("=== END TEMPLATE CONVERSION (FROM DATABASE) ===");
-                            return existingTemplate;
-                        }
-                        else
-                        {
-                            Console.WriteLine($"⚠️ Failed to load layout from database: {layoutTask.Result.ErrorMessage}");
                         }
                     }
                     else
                     {
-                        Console.WriteLine($"❌ NO EXISTING TEMPLATE FOUND IN DATABASE");
-                        Console.WriteLine($"Searched for name: '{templateInfo.TemplateName}'");
-                        Console.WriteLine($"Searched for path: '{templateInfo.TemplateImagePath}'");
-                        Console.WriteLine($"Available templates: {existingTemplatesTask.Result.Data.Count}");
-                        foreach (var t in existingTemplatesTask.Result.Data.Take(5))
-                        {
-                            Console.WriteLine($"  - {t.Name} | {t.TemplatePath}");
-                        }
+                        LoggingService.Application.Debug("No existing template found in database",
+                            ("SearchedName", templateInfo.TemplateName),
+                            ("SearchedPath", templateInfo.TemplateImagePath),
+                            ("AvailableTemplatesCount", existingTemplatesResult.Data.Count));
                     }
                 }
                 else
                 {
-                    Console.WriteLine($"❌ Failed to get templates from database: {existingTemplatesTask.Result.ErrorMessage}");
+                    LoggingService.Application.Warning("Failed to get templates from database",
+                        ("ErrorMessage", existingTemplatesResult.ErrorMessage ?? "Unknown error"));
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ ERROR checking database: {ex.Message}");
+                LoggingService.Application.Error("Error checking database for existing template", ex);
             }
             
-            Console.WriteLine("🔧 FALLBACK: Creating new template with generated photo areas...");
+            LoggingService.Application.Debug("Creating new template with generated photo areas");
             
             // Create a default layout with proper photo count for the template
             var defaultLayout = new TemplateLayout
             {
                 Id = Guid.NewGuid().ToString(),
-                Name = $"Layout for {templateInfo.TemplateName}",
-                Width = templateInfo.Config?.Dimensions?.Width ?? 614,
-                Height = templateInfo.Config?.Dimensions?.Height ?? 1864,
-                PhotoCount = templateInfo.Config?.PhotoCount ?? 4, // Default to 4 photos for strips
+                LayoutKey = $"generated-{templateInfo.TemplateName}",
+                Name = $"Generated Layout for {templateInfo.TemplateName}",
+                Width = templateInfo.Config?.Dimensions?.Width ?? 1864,
+                Height = templateInfo.Config?.Dimensions?.Height ?? 1240,
+                PhotoCount = templateInfo.Config?.PhotoCount ?? 1,
                 ProductCategoryId = 1,
                 IsActive = true,
-                PhotoAreas = CreateDefaultPhotoAreas(templateInfo.Config?.PhotoCount ?? 4, 
-                                                   templateInfo.Config?.Dimensions?.Width ?? 614,
-                                                   templateInfo.Config?.Dimensions?.Height ?? 1864)
+                SortOrder = 0,
+                CreatedAt = DateTime.Now
             };
 
-            Console.WriteLine($"Created Layout - ID: {defaultLayout.Id}");
-            Console.WriteLine($"Layout Dimensions: {defaultLayout.Width}x{defaultLayout.Height}");
-            Console.WriteLine($"Layout PhotoCount: {defaultLayout.PhotoCount}");
-            Console.WriteLine($"Layout PhotoAreas count: {defaultLayout.PhotoAreas.Count}");
+            // Generate photo areas for the layout
+            defaultLayout.PhotoAreas = CreateDefaultPhotoAreas(
+                defaultLayout.PhotoCount,
+                defaultLayout.Width,
+                defaultLayout.Height);
 
+            // Create template object
             var template = new Template
             {
-                Id = templateInfo.Config?.TemplateId != null ? 
-                    int.TryParse(templateInfo.Config.TemplateId, out var id) ? id : Guid.NewGuid().GetHashCode() :
-                    Guid.NewGuid().GetHashCode(),
-                Name = templateInfo.TemplateName ?? "Unknown Template",
-                Description = templateInfo.Description ?? "",
-                TemplatePath = templateInfo.TemplateImagePath ?? "", // Use TemplatePath instead of FilePath
-                PreviewPath = templateInfo.PreviewImagePath ?? "",
+                Id = int.TryParse(templateInfo.Config?.TemplateId ?? "0", out var id) ? id : 0,
+                Name = templateInfo.TemplateName,
+                TemplatePath = templateInfo.TemplateImagePath,
+                PreviewPath = templateInfo.PreviewImagePath,
+                CategoryId = 1,
                 LayoutId = defaultLayout.Id,
                 Layout = defaultLayout,
-                IsActive = true
+                IsActive = true,
+                Price = 0,
+                SortOrder = 0,
+                Description = templateInfo.Description ?? "Generated from template info",
+                TemplateType = TemplateType.Strip
             };
 
-            Console.WriteLine($"Final Template - ID: {template.Id}");
-            Console.WriteLine($"Template Name: {template.Name}");
-            Console.WriteLine($"Template Path: {template.TemplatePath}");
-            Console.WriteLine($"Template PhotoCount: {template.PhotoCount}");
-            Console.WriteLine($"Template Layout is null: {template.Layout == null}");
-            if (template.Layout != null)
-            {
-                Console.WriteLine($"Template Layout PhotoCount: {template.Layout.PhotoCount}");
-                Console.WriteLine($"Template Layout PhotoAreas count: {template.Layout.PhotoAreas?.Count ?? 0}");
-            }
-            Console.WriteLine("=== END TEMPLATE CONVERSION ===");
+            LoggingService.Application.Debug("Final template created",
+                ("TemplateId", template.Id),
+                ("TemplateName", template.Name),
+                ("TemplatePath", template.TemplatePath),
+                ("PhotoCount", template.PhotoCount),
+                ("LayoutIsNull", template.Layout == null),
+                ("LayoutPhotoCount", template.Layout?.PhotoCount ?? 0),
+                ("LayoutPhotoAreasCount", template.Layout?.PhotoAreas?.Count ?? 0));
 
             return template;
         }
@@ -1171,7 +1140,10 @@ namespace Photobooth
         /// </summary>
         private List<TemplatePhotoArea> CreateDefaultPhotoAreas(int photoCount, int templateWidth, int templateHeight)
         {
-            Console.WriteLine($"Creating photo areas - PhotoCount: {photoCount}, Template: {templateWidth}x{templateHeight}");
+            LoggingService.Application.Debug("Creating photo areas",
+                ("PhotoCount", photoCount),
+                ("TemplateWidth", templateWidth),
+                ("TemplateHeight", templateHeight));
             
             var photoAreas = new List<TemplatePhotoArea>();
             
@@ -1184,8 +1156,12 @@ namespace Photobooth
             var availableHeight = templateHeight - (2 * verticalMargin);
             var photoHeight = (availableHeight - ((photoCount - 1) * photoSpacing)) / photoCount;
             
-            Console.WriteLine($"Balanced dimensions - PhotoWidth: {photoWidth}, PhotoHeight: {photoHeight}");
-            Console.WriteLine($"Margins - Horizontal: {horizontalMargin}, Vertical: {verticalMargin}, Spacing: {photoSpacing}");
+            LoggingService.Application.Debug("Calculated photo dimensions",
+                ("PhotoWidth", photoWidth),
+                ("PhotoHeight", photoHeight),
+                ("HorizontalMargin", horizontalMargin),
+                ("VerticalMargin", verticalMargin),
+                ("PhotoSpacing", photoSpacing));
             
             for (int i = 0; i < photoCount; i++)
             {
@@ -1200,11 +1176,17 @@ namespace Photobooth
                     Rotation = 0
                 };
                 
-                Console.WriteLine($"Photo Area {i + 1}: X={photoArea.X}, Y={photoArea.Y}, W={photoArea.Width}, H={photoArea.Height}");
+                LoggingService.Application.Debug("Created photo area {PhotoIndex}",
+                    ("PhotoIndex", i + 1),
+                    ("X", photoArea.X),
+                    ("Y", photoArea.Y),
+                    ("Width", photoArea.Width),
+                    ("Height", photoArea.Height));
                 photoAreas.Add(photoArea);
             }
             
-            Console.WriteLine($"Created {photoAreas.Count} balanced photo areas");
+            LoggingService.Application.Debug("Photo areas creation completed",
+                ("TotalAreasCreated", photoAreas.Count));
             return photoAreas;
         }
 

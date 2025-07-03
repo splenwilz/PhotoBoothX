@@ -134,20 +134,27 @@ namespace Photobooth.Views
 
                 if (shouldSync)
                 {
-                    Console.WriteLine($"Performing full sync - ForceSync: {forceSync}, InitialLoad: {_isInitialLoad}, DataLoaded: {_isDataLoaded}, LastSync: {_lastSyncTime}, CacheTimeout: {_syncCooldown.TotalMinutes}min");
+                    LoggingService.Application.Information("Performing full sync",
+                        ("ForceSync", forceSync),
+                        ("InitialLoad", _isInitialLoad),
+                        ("DataLoaded", _isDataLoaded),
+                        ("LastSync", _lastSyncTime),
+                        ("CacheTimeoutMinutes", _syncCooldown.TotalMinutes));
                     
                     // Step 1: Synchronize database with file system (file system is source of truth)
                     var syncStopwatch = System.Diagnostics.Stopwatch.StartNew();
                     await SynchronizeTemplatesWithFileSystemAsync();
                     syncStopwatch.Stop();
-                    Console.WriteLine($"File system sync completed in {syncStopwatch.ElapsedMilliseconds}ms");
+                    LoggingService.Application.Information("File system sync completed",
+                        ("SyncTimeMs", syncStopwatch.ElapsedMilliseconds));
                     
                     _lastSyncTime = DateTime.Now;
                     _isInitialLoad = false;
                 }
                 else
                 {
-                    Console.WriteLine($"Skipping sync - using cached data (last sync: {(DateTime.Now - _lastSyncTime).TotalMinutes:F1}min ago)");
+                    LoggingService.Application.Information("Skipping sync - using cached data",
+                        ("LastSyncMinutesAgo", (DateTime.Now - _lastSyncTime).TotalMinutes));
                 }
 
                 // Step 2: Load all templates from database (always fresh for accurate data)
@@ -172,12 +179,15 @@ namespace Photobooth.Views
                 UpdateTemplateCount();
                 
                 _performanceStopwatch.Stop();
-                Console.WriteLine($"Template loading completed in {_performanceStopwatch.ElapsedMilliseconds}ms (Sync: {(shouldSync ? "Yes" : "No")})");
+                LoggingService.Application.Information("Template loading completed",
+                    ("LoadingTimeMs", _performanceStopwatch.ElapsedMilliseconds),
+                    ("SyncPerformed", shouldSync ? "Yes" : "No"));
             }
             catch (Exception ex)
             {
                 _performanceStopwatch.Stop();
-                Console.WriteLine($"Error in optimized template loading after {_performanceStopwatch.ElapsedMilliseconds}ms: {ex.Message}");
+                LoggingService.Application.Error("Error in optimized template loading", ex,
+                    ("LoadingTimeMs", _performanceStopwatch.ElapsedMilliseconds));
                 MessageBox.Show($"Error loading templates: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 _allTemplates.Clear();
                 EmptyStatePanel.Visibility = Visibility.Visible;
@@ -205,7 +215,7 @@ namespace Photobooth.Views
         {
             _isDataLoaded = false;
             _lastSyncTime = DateTime.MinValue;
-            Console.WriteLine("Template cache invalidated - next load will perform full sync");
+            LoggingService.Application.Information("Template cache invalidated - next load will perform full sync");
         }
 
         private async void UploadTemplatesButton_Click(object sender, RoutedEventArgs e)
@@ -1983,7 +1993,7 @@ namespace Photobooth.Views
         /// </summary>
         public async Task ManualLoadTemplatesAsync()
         {
-            Console.WriteLine("=== MANUAL LOAD TEMPLATES TRIGGERED ===");
+            LoggingService.Application.Information("Manual load templates triggered");
             
             // Use optimized loading for faster tab switching
             await LoadTemplatesOptimizedAsync();

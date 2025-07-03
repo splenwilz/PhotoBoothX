@@ -42,15 +42,25 @@ namespace Photobooth
 
         #region Constructor
 
-        public CategorySelectionScreen()
+        /// <summary>
+        /// Constructor with dependency injection
+        /// </summary>
+        public CategorySelectionScreen(IDatabaseService databaseService)
         {
-            _databaseService = new DatabaseService();
+            _databaseService = databaseService ?? throw new ArgumentNullException(nameof(databaseService));
             _availableCategories = new List<TemplateCategory>();
             
             InitializeComponent();
             
             // Load categories when the control is loaded
             Loaded += async (s, e) => await LoadCategoriesAsync();
+        }
+
+        /// <summary>
+        /// Parameterless constructor for design-time support
+        /// </summary>
+        public CategorySelectionScreen() : this(new DatabaseService())
+        {
         }
 
         #endregion
@@ -88,7 +98,7 @@ namespace Photobooth
              }
             
             // Reload categories for the specific product type
-            _ = Task.Run(async () => await LoadCategoriesAsync());
+            LoadCategoriesWithErrorHandling();
         }
 
         #endregion
@@ -238,7 +248,7 @@ namespace Photobooth
             var cardContent = new Grid();
 
             // Load first template preview as background
-            _ = LoadCategoryPreviewImageAsync(cardContent, category);
+            LoadPreviewImageWithErrorHandling(cardContent, category);
 
             // Semi-transparent overlay for text readability
             var overlay = new Border
@@ -297,6 +307,25 @@ namespace Photobooth
             card.Click += (s, e) => OnCategorySelected(category);
 
             return card;
+        }
+
+        /// <summary>
+        /// Safely load preview image with error handling
+        /// </summary>
+        private async void LoadPreviewImageWithErrorHandling(Grid cardContent, TemplateCategory category)
+        {
+            try
+            {
+                await LoadCategoryPreviewImageAsync(cardContent, category);
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Warning("Failed to load category preview image", 
+                    ("CategoryName", category.Name),
+                    ("CategoryId", category.Id),
+                    ("ErrorMessage", ex.Message));
+                // Image loading failure is non-critical, category card will still show with gradient background
+            }
         }
 
         /// <summary>
@@ -406,18 +435,11 @@ namespace Photobooth
         }
 
         /// <summary>
-        /// Get badge text for category (Free or Premium)
+        /// Get badge text for category (Free or Premium) - now data-driven
         /// </summary>
         private string GetCategoryBadgeText(TemplateCategory category)
         {
-            // For now, mark Premium categories based on name, but this could be database-driven
-            return category.Name.ToLowerInvariant() switch
-            {
-                "premium" => "PREMIUM",
-                "elegant" => "PREMIUM", 
-                "wedding" => "PREMIUM",
-                _ => "FREE"
-            };
+            return category.IsPremium ? "PREMIUM" : "FREE";
         }
 
         /// <summary>
@@ -539,6 +561,26 @@ namespace Photobooth
                 LoggingService.Application.Error("Error handling category selection", ex,
                     ("CategoryId", category.Id),
                     ("CategoryName", category.Name));
+            }
+        }
+
+        /// <summary>
+        /// Safely load categories with proper error handling
+        /// </summary>
+        private async void LoadCategoriesWithErrorHandling()
+        {
+            try
+            {
+                await LoadCategoriesAsync();
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to load categories for product type", ex,
+                    ("ProductType", _currentProduct?.Type ?? "Unknown"),
+                    ("ErrorMessage", ex.Message));
+                
+                // Show user-friendly error message
+                ShowEmptyState();
             }
         }
 

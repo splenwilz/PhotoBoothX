@@ -43,9 +43,9 @@ namespace Photobooth.Services
         Task<DatabaseResult<List<TemplateCategory>>> GetTemplateCategoriesAsync();
         Task<DatabaseResult<List<TemplateCategory>>> GetAllTemplateCategoriesAsync();
         Task<DatabaseResult<TemplateCategory>> CreateTemplateCategoryAsync(string name, string description = "", 
-            bool isSeasonalCategory = false, string? seasonStartDate = null, string? seasonEndDate = null, int seasonalPriority = 0);
+            bool isSeasonalCategory = false, string? seasonStartDate = null, string? seasonEndDate = null, int seasonalPriority = 0, bool isPremium = false);
         Task<DatabaseResult<TemplateCategory>> UpdateTemplateCategoryAsync(int categoryId, string name, string description = "",
-            bool isSeasonalCategory = false, string? seasonStartDate = null, string? seasonEndDate = null, int seasonalPriority = 0);
+            bool isSeasonalCategory = false, string? seasonStartDate = null, string? seasonEndDate = null, int seasonalPriority = 0, bool isPremium = false);
         Task<DatabaseResult> UpdateTemplateCategoryStatusAsync(int categoryId, bool isActive);
         Task<DatabaseResult> DeleteTemplateCategoryAsync(int categoryId);
         Task<DatabaseResult<List<Template>>> GetTemplatesByCategoryAsync(int categoryId);
@@ -146,7 +146,9 @@ namespace Photobooth.Services
                     foreach (var commandText in commands)
                     {
                         commandIndex++;
-                        Console.WriteLine($"Executing database command {commandIndex}/{commands.Length}");
+                        LoggingService.Application.Information("Executing database command",
+                            ("CommandIndex", commandIndex),
+                            ("CommandLength", commands.Length));
 
                         // Clean up the command - remove comments and whitespace
                         var lines = commandText.Split('\n');
@@ -179,40 +181,46 @@ namespace Photobooth.Services
                         
                         if (cleanLines.Count == 0)
                         {
-                            Console.WriteLine($"Skipping empty command {commandIndex}");
+                            LoggingService.Application.Information("Skipping empty command",
+                                ("CommandIndex", commandIndex));
                             continue;
                         }
                         
                         var trimmedCommand = string.Join(" ", cleanLines);
-                        Console.WriteLine($"Executing: {trimmedCommand.Substring(0, Math.Min(50, trimmedCommand.Length))}...");
+                        LoggingService.Application.Information("Executing",
+                            ("Command", trimmedCommand.Substring(0, Math.Min(50, trimmedCommand.Length))));
 
                         using var command = new SqliteCommand(trimmedCommand, connection, transaction);
                         await command.ExecuteNonQueryAsync();
-                        Console.WriteLine($"✅ Command {commandIndex} executed successfully");
+                        LoggingService.Application.Information("Command executed successfully",
+                            ("CommandIndex", commandIndex));
                     }
 
-                    Console.WriteLine("🔄 Committing transaction...");
+                    LoggingService.Application.Information("Committing transaction...");
                     await transaction.CommitAsync();
-                    Console.WriteLine("✅ Transaction committed successfully");
+                    LoggingService.Application.Information("Transaction committed successfully");
 
                     // Create default admin users (only for new database)
-                    Console.WriteLine("🔑 Creating default admin users...");
+                    LoggingService.Application.Information("Creating default admin users...");
                     await CreateDefaultAdminUserDirect(connection);
-                    Console.WriteLine("✅ Default admin users created");
+                    LoggingService.Application.Information("Default admin users created");
 
                     // Create default system settings (only for new database)
-                    Console.WriteLine("⚙️ Creating default settings...");
+                    LoggingService.Application.Information("Creating default settings...");
                     await CreateDefaultSettingsDirect(connection);
-                    Console.WriteLine("✅ Default settings created");
+                    LoggingService.Application.Information("Default settings created");
 
-                    Console.WriteLine("🎉 Database initialization completed successfully!");
+                    LoggingService.Application.Information("Database initialization completed successfully!");
                     return DatabaseResult.SuccessResult();
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"❌ Database initialization error: {ex.Message}");
-                    Console.WriteLine($"❌ Stack trace: {ex.StackTrace}");
+                    LoggingService.Application.Error("Database initialization error", ex,
+                        ("ErrorMessage", ex.Message),
+                        ("StackTrace", ex.StackTrace ?? "No stack trace available"));
+                    LoggingService.Application.Error("Rolling back transaction");
                     await transaction.RollbackAsync();
+                    LoggingService.Application.Error("Transaction rolled back");
                     throw;
                 }
             }
@@ -1074,7 +1082,7 @@ namespace Photobooth.Services
                     LEFT JOIN TemplateCategories tc ON t.CategoryId = tc.Id
                     LEFT JOIN TemplateLayouts tl ON t.LayoutId = tl.Id
                     LEFT JOIN ProductCategories pc ON tl.ProductCategoryId = pc.Id
-                    WHERE t.TemplateType = @TemplateType
+                    WHERE t.TemplateType = @TemplateType AND t.IsActive = 1
                     ORDER BY 
                         -- First: Active seasonal categories by their priority (highest first)
                         CASE 
@@ -1499,6 +1507,7 @@ namespace Photobooth.Services
                         Name = reader["Name"].ToString() ?? "",
                         Description = reader["Description"]?.ToString(),
                         IsActive = Convert.ToBoolean(reader["IsActive"]),
+                        IsPremium = GetBoolValue(reader, "IsPremium", false),
                         SortOrder = Convert.ToInt32(reader["SortOrder"]),
                         IsSeasonalCategory = Convert.ToBoolean(reader["IsSeasonalCategory"]),
                         SeasonStartDate = reader["SeasonStartDate"]?.ToString(),
@@ -1533,10 +1542,16 @@ namespace Photobooth.Services
                 var categories = new List<TemplateCategory>();
                 
                 var query = @"
-                    SELECT Id, Name, Description, IsActive, SortOrder, 
+                    SELECT Id, Name, Description, IsActive, IsPremium, SortOrder, 
                            IsSeasonalCategory, SeasonStartDate, SeasonEndDate, SeasonalPriority, CreatedAt
                     FROM TemplateCategories
-                    ORDER BY SortOrder, Name";
+                    WHERE IsActive = 1
+                    ORDER BY 
+                        CASE 
+                            WHEN IsSeasonalCategory = 1 THEN SeasonalPriority 
+                            ELSE 0 
+                        END DESC,
+                        SortOrder, Name";
 
                 using var connection = new SqliteConnection(_connectionString);
                 await connection.OpenAsync();
@@ -1551,6 +1566,7 @@ namespace Photobooth.Services
                         Name = reader["Name"].ToString() ?? "",
                         Description = reader["Description"]?.ToString(),
                         IsActive = Convert.ToBoolean(reader["IsActive"]),
+                        IsPremium = GetBoolValue(reader, "IsPremium", false),
                         SortOrder = Convert.ToInt32(reader["SortOrder"]),
                         IsSeasonalCategory = Convert.ToBoolean(reader["IsSeasonalCategory"]),
                         SeasonStartDate = reader["SeasonStartDate"]?.ToString(),
@@ -1569,7 +1585,7 @@ namespace Photobooth.Services
         }
 
         public async Task<DatabaseResult<TemplateCategory>> CreateTemplateCategoryAsync(string name, string description = "", 
-            bool isSeasonalCategory = false, string? seasonStartDate = null, string? seasonEndDate = null, int seasonalPriority = 0)
+            bool isSeasonalCategory = false, string? seasonStartDate = null, string? seasonEndDate = null, int seasonalPriority = 0, bool isPremium = false)
         {
             try
             {
@@ -1587,9 +1603,9 @@ namespace Photobooth.Services
                     }
                 }
                 var query = @"
-                    INSERT INTO TemplateCategories (Name, Description, IsActive, SortOrder, 
+                    INSERT INTO TemplateCategories (Name, Description, IsActive, IsPremium, SortOrder, 
                                                     IsSeasonalCategory, SeasonStartDate, SeasonEndDate, SeasonalPriority, CreatedAt)
-                    VALUES (@Name, @Description, 1, 0, @IsSeasonalCategory, @SeasonStartDate, @SeasonEndDate, @SeasonalPriority, @CreatedAt);
+                    VALUES (@Name, @Description, 1, @IsPremium, 0, @IsSeasonalCategory, @SeasonStartDate, @SeasonEndDate, @SeasonalPriority, @CreatedAt);
                     SELECT * FROM TemplateCategories WHERE Id = last_insert_rowid();";
 
                 using var connection = new SqliteConnection(_connectionString);
@@ -1597,6 +1613,7 @@ namespace Photobooth.Services
                 using var command = new SqliteCommand(query, connection);
                 command.Parameters.AddWithValue("@Name", name);
                 command.Parameters.AddWithValue("@Description", description);
+                command.Parameters.AddWithValue("@IsPremium", isPremium);
                 command.Parameters.AddWithValue("@IsSeasonalCategory", isSeasonalCategory);
                 command.Parameters.AddWithValue("@SeasonStartDate", seasonStartDate ?? (object)DBNull.Value);
                 command.Parameters.AddWithValue("@SeasonEndDate", seasonEndDate ?? (object)DBNull.Value);
@@ -1613,6 +1630,7 @@ namespace Photobooth.Services
                         Name = reader["Name"].ToString() ?? "",
                         Description = reader["Description"]?.ToString() ?? "",
                         IsActive = Convert.ToBoolean(reader["IsActive"]),
+                        IsPremium = GetBoolValue(reader, "IsPremium", false),
                         SortOrder = Convert.ToInt32(reader["SortOrder"]),
                         IsSeasonalCategory = Convert.ToBoolean(reader["IsSeasonalCategory"]),
                         SeasonStartDate = reader["SeasonStartDate"]?.ToString(),
@@ -1639,7 +1657,7 @@ namespace Photobooth.Services
         }
 
         public async Task<DatabaseResult<TemplateCategory>> UpdateTemplateCategoryAsync(int categoryId, string name, string description = "",
-            bool isSeasonalCategory = false, string? seasonStartDate = null, string? seasonEndDate = null, int seasonalPriority = 0)
+            bool isSeasonalCategory = false, string? seasonStartDate = null, string? seasonEndDate = null, int seasonalPriority = 0, bool isPremium = false)
         {
             try
             {
@@ -1658,7 +1676,7 @@ namespace Photobooth.Services
                 }
                 var query = @"
                     UPDATE TemplateCategories 
-                    SET Name = @name, Description = @description, 
+                    SET Name = @name, Description = @description, IsPremium = @isPremium,
                         IsSeasonalCategory = @isSeasonalCategory, SeasonStartDate = @seasonStartDate, SeasonEndDate = @seasonEndDate, SeasonalPriority = @seasonalPriority
                     WHERE Id = @id";
 
@@ -1667,6 +1685,7 @@ namespace Photobooth.Services
                 using var command = new SqliteCommand(query, connection);
                 command.Parameters.AddWithValue("@name", name);
                 command.Parameters.AddWithValue("@description", description);
+                command.Parameters.AddWithValue("@isPremium", isPremium);
                 command.Parameters.AddWithValue("@id", categoryId);
                 command.Parameters.AddWithValue("@isSeasonalCategory", isSeasonalCategory);
                 command.Parameters.AddWithValue("@seasonStartDate", seasonStartDate ?? (object)DBNull.Value);
@@ -1681,7 +1700,7 @@ namespace Photobooth.Services
 
                 // Get the updated category
                 var selectQuery = @"
-                    SELECT Id, Name, Description, IsActive, SortOrder, CreatedAt, 
+                    SELECT Id, Name, Description, IsActive, IsPremium, SortOrder, CreatedAt, 
                            IsSeasonalCategory, SeasonStartDate, SeasonEndDate, SeasonalPriority
                     FROM TemplateCategories 
                     WHERE Id = @id";
@@ -1699,6 +1718,7 @@ namespace Photobooth.Services
                         Name = reader["Name"].ToString() ?? "",
                         Description = reader["Description"]?.ToString() ?? "",
                         IsActive = Convert.ToBoolean(reader["IsActive"]),
+                        IsPremium = GetBoolValue(reader, "IsPremium", false),
                         SortOrder = Convert.ToInt32(reader["SortOrder"]),
                         CreatedAt = Convert.ToDateTime(reader["CreatedAt"]),
                         IsSeasonalCategory = GetBoolValue(reader, "IsSeasonalCategory", false),

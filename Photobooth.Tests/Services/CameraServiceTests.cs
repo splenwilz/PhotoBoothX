@@ -15,9 +15,13 @@ using System.Threading;
 namespace Photobooth.Tests.Services
 {
     [TestClass]
-    public class CameraServiceTests
+    public class CameraServiceTests : IDisposable
     {
-        private CameraService _cameraService = null!;
+        // Test execution framework support  
+        public TestContext? TestContext { get; set; }
+        
+        private CameraService? _cameraService;
+        private bool _disposed = false;
         private string _testOutputDirectory = null!;
 
         [ClassInitialize]
@@ -50,7 +54,8 @@ namespace Photobooth.Tests.Services
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[TEST] Warning: Could not shutdown WPF Application cleanly: {ex.Message}");
+                // Note: In cleanup methods, we can't use TestContext.WriteLine since it's static
+                System.Diagnostics.Debug.WriteLine($"[TEST] Warning: Could not shutdown WPF Application cleanly: {ex.Message}");
                 // Don't throw - we don't want to fail tests due to cleanup issues
             }
         }
@@ -60,13 +65,13 @@ namespace Photobooth.Tests.Services
         {
             // Check thread apartment state but be more flexible
             var currentState = Thread.CurrentThread.GetApartmentState();
-            Console.WriteLine($"[TEST] Current thread apartment state: {currentState}");
+            TestContext?.WriteLine($"[TEST] Current thread apartment state: {currentState}");
             
             // For now, we'll try to proceed even if not STA, but log the state
             // The Application.Current created in ClassInitialize should handle WPF requirements
             if (currentState != ApartmentState.STA)
             {
-                Console.WriteLine($"[TEST] Warning: Not on STA thread, but proceeding with test. Application.Current: {Application.Current != null}");
+                TestContext?.WriteLine($"[TEST] Warning: Not on STA thread, but proceeding with test. Application.Current: {Application.Current != null}");
             }
 
             _testOutputDirectory = Path.Combine(Path.GetTempPath(), "PhotoBoothX_Test_Photos");
@@ -151,7 +156,7 @@ namespace Photobooth.Tests.Services
         public void GetAvailableCameras_ReturnsListOfCameras()
         {
             // Act
-            var cameras = _cameraService.GetAvailableCameras();
+            var cameras = _cameraService?.GetAvailableCameras();
 
             // Assert
             cameras.Should().NotBeNull();
@@ -159,11 +164,14 @@ namespace Photobooth.Tests.Services
             
             // Note: We can't assert exact count as it depends on test environment
             // But we can verify the structure of returned items
-            foreach (var camera in cameras)
+            if (cameras != null)
             {
-                camera.Index.Should().BeGreaterOrEqualTo(0);
-                camera.Name.Should().NotBeNullOrEmpty();
-                camera.MonikerString.Should().NotBeNullOrEmpty();
+                foreach (var camera in cameras)
+                {
+                    camera.Index.Should().BeGreaterOrEqualTo(0);
+                    camera.Name.Should().NotBeNullOrEmpty();
+                    camera.MonikerString.Should().NotBeNullOrEmpty();
+                }
             }
         }
 
@@ -172,7 +180,7 @@ namespace Photobooth.Tests.Services
         {
             // This test verifies the method doesn't crash when no cameras are available
             // Act
-            var cameras = _cameraService.GetAvailableCameras();
+            var cameras = _cameraService?.GetAvailableCameras();
 
             // Assert
             cameras.Should().NotBeNull();
@@ -187,17 +195,17 @@ namespace Photobooth.Tests.Services
         public void StartCamera_WithNoCameras_ReturnsFalse()
         {
             // Arrange
-            var cameras = _cameraService.GetAvailableCameras();
+            var cameras = _cameraService?.GetAvailableCameras();
             
             // If no cameras available, test the behavior
-            if (cameras.Count == 0)
+            if (cameras?.Count == 0)
             {
                 // Act
-                var result = _cameraService.StartCamera(0);
+                var result = _cameraService?.StartCamera(0);
 
                 // Assert
                 result.Should().BeFalse();
-                _cameraService.IsCapturing.Should().BeFalse();
+                _cameraService?.IsCapturing.Should().BeFalse();
             }
             else
             {
@@ -209,34 +217,34 @@ namespace Photobooth.Tests.Services
         public void StartCamera_WithInvalidIndex_ReturnsFalse()
         {
             // Arrange
-            var cameras = _cameraService.GetAvailableCameras();
-            var invalidIndex = cameras.Count + 10; // Well beyond available cameras
+            var cameras = _cameraService?.GetAvailableCameras();
+            var invalidIndex = (cameras?.Count ?? 0) + 10; // Well beyond available cameras
 
             // Act
-            var result = _cameraService.StartCamera(invalidIndex);
+            var result = _cameraService?.StartCamera(invalidIndex);
 
             // Assert
             result.Should().BeFalse();
-            _cameraService.IsCapturing.Should().BeFalse();
+            _cameraService?.IsCapturing.Should().BeFalse();
         }
 
         [TestMethod]
         public void StartCamera_WithValidIndex_ReturnsTrue()
         {
             // Arrange
-            var cameras = _cameraService.GetAvailableCameras();
+            var cameras = _cameraService?.GetAvailableCameras();
             
-            if (cameras.Count > 0)
+            if (cameras?.Count > 0)
             {
                 // Act
-                var result = _cameraService.StartCamera(0);
+                var result = _cameraService?.StartCamera(0);
 
                 // Assert
                 result.Should().BeTrue();
-                _cameraService.IsCapturing.Should().BeTrue();
+                _cameraService?.IsCapturing.Should().BeTrue();
                 
                 // Cleanup
-                _cameraService.StopCamera();
+                _cameraService?.StopCamera();
             }
             else
             {
@@ -248,21 +256,21 @@ namespace Photobooth.Tests.Services
         public void StartCamera_CalledMultipleTimes_HandlesGracefully()
         {
             // Arrange
-            var cameras = _cameraService.GetAvailableCameras();
+            var cameras = _cameraService?.GetAvailableCameras();
             
-            if (cameras.Count > 0)
+            if (cameras?.Count > 0)
             {
                 // Act
-                var result1 = _cameraService.StartCamera(0);
-                var result2 = _cameraService.StartCamera(0);
+                var result1 = _cameraService?.StartCamera(0);
+                var result2 = _cameraService?.StartCamera(0);
 
                 // Assert
                 result1.Should().BeTrue();
                 result2.Should().BeTrue();
-                _cameraService.IsCapturing.Should().BeTrue();
+                _cameraService?.IsCapturing.Should().BeTrue();
                 
                 // Cleanup
-                _cameraService.StopCamera();
+                _cameraService?.StopCamera();
             }
             else
             {
@@ -278,26 +286,26 @@ namespace Photobooth.Tests.Services
         public void StopCamera_WhenNotRunning_HandlesGracefully()
         {
             // Act & Assert (should not throw)
-            _cameraService.StopCamera();
-            _cameraService.IsCapturing.Should().BeFalse();
+            _cameraService?.StopCamera();
+            _cameraService?.IsCapturing.Should().BeFalse();
         }
 
         [TestMethod]
         public void StopCamera_WhenRunning_StopsSuccessfully()
         {
             // Arrange
-            var cameras = _cameraService.GetAvailableCameras();
+            var cameras = _cameraService?.GetAvailableCameras();
             
-            if (cameras.Count > 0)
+            if (cameras?.Count > 0)
             {
-                _cameraService.StartCamera(0);
-                _cameraService.IsCapturing.Should().BeTrue();
+                _cameraService?.StartCamera(0);
+                _cameraService?.IsCapturing.Should().BeTrue();
 
                 // Act
-                _cameraService.StopCamera();
+                _cameraService?.StopCamera();
 
                 // Assert
-                _cameraService.IsCapturing.Should().BeFalse();
+                _cameraService?.IsCapturing.Should().BeFalse();
             }
             else
             {
@@ -309,11 +317,11 @@ namespace Photobooth.Tests.Services
         public void StopCamera_CalledMultipleTimes_HandlesGracefully()
         {
             // Act & Assert (should not throw)
-            _cameraService.StopCamera();
-            _cameraService.StopCamera();
-            _cameraService.StopCamera();
+            _cameraService?.StopCamera();
+            _cameraService?.StopCamera();
+            _cameraService?.StopCamera();
             
-            _cameraService.IsCapturing.Should().BeFalse();
+            _cameraService?.IsCapturing.Should().BeFalse();
         }
 
         #endregion
@@ -324,7 +332,7 @@ namespace Photobooth.Tests.Services
         public async Task CapturePhotoAsync_WhenCameraNotRunning_ReturnsNull()
         {
             // Act
-            var result = await _cameraService.CapturePhotoAsync();
+            var result = await (_cameraService?.CapturePhotoAsync() ?? Task.FromResult<string?>(null));
 
             // Assert
             result.Should().BeNull();
@@ -334,9 +342,9 @@ namespace Photobooth.Tests.Services
         public async Task CapturePhotoAsync_WithCustomFileName_UsesFileName()
         {
             // Arrange
-            var cameras = _cameraService.GetAvailableCameras();
+            var cameras = _cameraService?.GetAvailableCameras();
             
-            if (cameras.Count > 0)
+            if (cameras?.Count > 0 && _cameraService != null)
             {
                 _cameraService.StartCamera(0);
                 
@@ -371,9 +379,9 @@ namespace Photobooth.Tests.Services
         public async Task CapturePhotoAsync_WithoutCustomFileName_GeneratesFileName()
         {
             // Arrange
-            var cameras = _cameraService.GetAvailableCameras();
+            var cameras = _cameraService?.GetAvailableCameras();
             
-            if (cameras.Count > 0)
+            if (cameras?.Count > 0 && _cameraService != null)
             {
                 _cameraService.StartCamera(0);
                 
@@ -406,9 +414,9 @@ namespace Photobooth.Tests.Services
         public async Task CapturePhotoAsync_FileNameWithoutExtension_AddsJpgExtension()
         {
             // Arrange
-            var cameras = _cameraService.GetAvailableCameras();
+            var cameras = _cameraService?.GetAvailableCameras();
             
-            if (cameras.Count > 0)
+            if (cameras?.Count > 0 && _cameraService != null)
             {
                 _cameraService.StartCamera(0);
                 
@@ -439,215 +447,13 @@ namespace Photobooth.Tests.Services
             }
         }
 
-        #endregion
-
-        #region Preview and Frame Management Tests
-
-        [TestMethod]
-        public void GetPreviewBitmap_WhenCameraNotStarted_ReturnsNull()
-        {
-            // Act
-            var result = _cameraService.GetPreviewBitmap();
-
-            // Assert
-            result.Should().BeNull();
-        }
-
-        [TestMethod]
-        public void IsNewFrameAvailable_InitialState_ReturnsFalse()
-        {
-            // Act
-            var result = _cameraService.IsNewFrameAvailable();
-
-            // Assert
-            result.Should().BeFalse();
-        }
-
-        [TestMethod]
-        public void IsNewFrameAvailable_CalledTwice_ReturnsFalseSecondTime()
-        {
-            // Act
-            var result1 = _cameraService.IsNewFrameAvailable();
-            var result2 = _cameraService.IsNewFrameAvailable();
-
-            // Assert
-            result1.Should().BeFalse();
-            result2.Should().BeFalse();
-        }
-
-        #endregion
-
-        #region Photo Capture State Tests
-
-        [TestMethod]
-        public void SetPhotoCaptureActive_SetsStateCorrectly()
-        {
-            // Initial state
-            _cameraService.IsPhotoCaptureActive.Should().BeFalse();
-
-            // Act
-            _cameraService.SetPhotoCaptureActive(true);
-
-            // Assert
-            _cameraService.IsPhotoCaptureActive.Should().BeTrue();
-
-            // Act
-            _cameraService.SetPhotoCaptureActive(false);
-
-            // Assert
-            _cameraService.IsPhotoCaptureActive.Should().BeFalse();
-        }
-
-        [TestMethod]
-        public void SetPhotoCaptureActive_CalledMultipleTimes_HandlesGracefully()
-        {
-            // Act
-            _cameraService.SetPhotoCaptureActive(true);
-            _cameraService.SetPhotoCaptureActive(true);
-            _cameraService.SetPhotoCaptureActive(true);
-
-            // Assert
-            _cameraService.IsPhotoCaptureActive.Should().BeTrue();
-
-            // Act
-            _cameraService.SetPhotoCaptureActive(false);
-            _cameraService.SetPhotoCaptureActive(false);
-
-            // Assert
-            _cameraService.IsPhotoCaptureActive.Should().BeFalse();
-        }
-
-        #endregion
-
-        #region IsCapturing Property Tests
-
-        [TestMethod]
-        public void IsCapturing_InitialState_ReturnsFalse()
-        {
-            // Act & Assert
-            _cameraService.IsCapturing.Should().BeFalse();
-        }
-
-        [TestMethod]
-        public void IsCapturing_WhenCameraRunning_ReturnsTrue()
-        {
-            // Arrange
-            var cameras = _cameraService.GetAvailableCameras();
-            
-            if (cameras.Count > 0)
-            {
-                // Act
-                _cameraService.StartCamera(0);
-
-                // Assert
-                _cameraService.IsCapturing.Should().BeTrue();
-                
-                // Cleanup
-                _cameraService.StopCamera();
-            }
-            else
-            {
-                Assert.Inconclusive("Test requires at least one camera to be available");
-            }
-        }
-
-        [TestMethod]
-        public void IsCapturing_AfterStopping_ReturnsFalse()
-        {
-            // Arrange
-            var cameras = _cameraService.GetAvailableCameras();
-            
-            if (cameras.Count > 0)
-            {
-                _cameraService.StartCamera(0);
-                _cameraService.IsCapturing.Should().BeTrue();
-
-                // Act
-                _cameraService.StopCamera();
-
-                // Assert
-                _cameraService.IsCapturing.Should().BeFalse();
-            }
-            else
-            {
-                Assert.Inconclusive("Test requires at least one camera to be available");
-            }
-        }
-
-        #endregion
-
-        #region Event Tests
-
-        [TestMethod]
-        public void PreviewFrameReady_EventCanBeSubscribed()
-        {
-            // Arrange
-            bool eventHandlerCalled = false;
-            WriteableBitmap? receivedBitmap = null;
-
-            // Act - Subscribe to event
-            _cameraService.PreviewFrameReady += (sender, bitmap) =>
-            {
-                eventHandlerCalled = true;
-                receivedBitmap = bitmap;
-            };
-
-            // Assert - Verify subscription works without errors
-            _cameraService.Should().NotBeNull();
-            
-            // Verify the event handler is properly attached by checking it doesn't throw
-            eventHandlerCalled.Should().BeFalse(); // Initially false
-            receivedBitmap.Should().BeNull(); // Initially null
-            
-            // Note: We don't test actual event firing as it requires hardware
-            // That functionality is covered by the MockCameraService tests
-        }
-
-        [TestMethod]
-        public void CameraError_EventCanBeSubscribed()
-        {
-            // Arrange
-            bool eventHandlerCalled = false;
-            string? errorMessage = null;
-
-            // Act
-            _cameraService.CameraError += (sender, message) =>
-            {
-                eventHandlerCalled = true;
-                errorMessage = message;
-            };
-
-            // Assert - just verify subscription works without errors
-            // (We can't easily trigger camera errors in unit tests)
-            _cameraService.Should().NotBeNull();
-            
-            // Verify the event handler is properly attached by checking it doesn't throw
-            eventHandlerCalled.Should().BeFalse(); // Initially false
-            errorMessage.Should().BeNull(); // Initially null
-        }
-
-        #endregion
-
-        #region Error Handling Tests
-
-        [TestMethod]
-        public void StartCamera_WithNegativeIndex_ReturnsFalse()
-        {
-            // Act
-            var result = _cameraService.StartCamera(-1);
-
-            // Assert
-            result.Should().BeFalse();
-            _cameraService.IsCapturing.Should().BeFalse();
-        }
-
         [TestMethod]
         public async Task CapturePhotoAsync_WithInvalidFileName_HandlesGracefully()
         {
             // Arrange
-            var cameras = _cameraService.GetAvailableCameras();
+            var cameras = _cameraService?.GetAvailableCameras();
             
-            if (cameras.Count > 0)
+            if (cameras?.Count > 0 && _cameraService != null)
             {
                 _cameraService.StartCamera(0);
                 
@@ -679,6 +485,214 @@ namespace Photobooth.Tests.Services
 
         #endregion
 
+        #region Preview and Frame Management Tests
+
+        [TestMethod]
+        public void GetPreviewBitmap_WhenCameraNotStarted_ReturnsNull()
+        {
+            // Act
+            var result = _cameraService?.GetPreviewBitmap();
+
+            // Assert
+            result.Should().BeNull();
+        }
+
+        [TestMethod]
+        public void IsNewFrameAvailable_InitialState_ReturnsFalse()
+        {
+            // Act
+            var result = _cameraService?.IsNewFrameAvailable();
+
+            // Assert
+            result.Should().BeFalse();
+        }
+
+        [TestMethod]
+        public void IsNewFrameAvailable_CalledTwice_ReturnsFalseSecondTime()
+        {
+            // Act
+            var result1 = _cameraService?.IsNewFrameAvailable();
+            var result2 = _cameraService?.IsNewFrameAvailable();
+
+            // Assert
+            result1.Should().BeFalse();
+            result2.Should().BeFalse();
+        }
+
+        #endregion
+
+        #region Photo Capture State Tests
+
+        [TestMethod]
+        public void SetPhotoCaptureActive_SetsStateCorrectly()
+        {
+            // Initial state
+            _cameraService?.IsPhotoCaptureActive.Should().BeFalse();
+
+            // Act
+            _cameraService?.SetPhotoCaptureActive(true);
+
+            // Assert
+            _cameraService?.IsPhotoCaptureActive.Should().BeTrue();
+
+            // Act
+            _cameraService?.SetPhotoCaptureActive(false);
+
+            // Assert
+            _cameraService?.IsPhotoCaptureActive.Should().BeFalse();
+        }
+
+        [TestMethod]
+        public void SetPhotoCaptureActive_CalledMultipleTimes_HandlesGracefully()
+        {
+            // Act
+            _cameraService?.SetPhotoCaptureActive(true);
+            _cameraService?.SetPhotoCaptureActive(true);
+            _cameraService?.SetPhotoCaptureActive(true);
+
+            // Assert
+            _cameraService?.IsPhotoCaptureActive.Should().BeTrue();
+
+            // Act
+            _cameraService?.SetPhotoCaptureActive(false);
+            _cameraService?.SetPhotoCaptureActive(false);
+
+            // Assert
+            _cameraService?.IsPhotoCaptureActive.Should().BeFalse();
+        }
+
+        #endregion
+
+        #region IsCapturing Property Tests
+
+        [TestMethod]
+        public void IsCapturing_InitialState_ReturnsFalse()
+        {
+            // Act & Assert
+            _cameraService?.IsCapturing.Should().BeFalse();
+        }
+
+        [TestMethod]
+        public void IsCapturing_WhenCameraRunning_ReturnsTrue()
+        {
+            // Arrange
+            var cameras = _cameraService?.GetAvailableCameras();
+            
+            if (cameras?.Count > 0)
+            {
+                // Act
+                _cameraService?.StartCamera(0);
+
+                // Assert
+                _cameraService?.IsCapturing.Should().BeTrue();
+                
+                // Cleanup
+                _cameraService?.StopCamera();
+            }
+            else
+            {
+                Assert.Inconclusive("Test requires at least one camera to be available");
+            }
+        }
+
+        [TestMethod]
+        public void IsCapturing_AfterStopping_ReturnsFalse()
+        {
+            // Arrange
+            var cameras = _cameraService?.GetAvailableCameras();
+            
+            if (cameras?.Count > 0)
+            {
+                _cameraService?.StartCamera(0);
+                _cameraService?.IsCapturing.Should().BeTrue();
+
+                // Act
+                _cameraService?.StopCamera();
+
+                // Assert
+                _cameraService?.IsCapturing.Should().BeFalse();
+            }
+            else
+            {
+                Assert.Inconclusive("Test requires at least one camera to be available");
+            }
+        }
+
+        #endregion
+
+        #region Event Tests
+
+        [TestMethod]
+        public void PreviewFrameReady_EventCanBeSubscribed()
+        {
+            // Arrange
+            bool eventHandlerCalled = false;
+            WriteableBitmap? receivedBitmap = null;
+
+            // Act - Subscribe to event
+            if (_cameraService != null)
+            {
+                _cameraService.PreviewFrameReady += (sender, bitmap) =>
+                {
+                    eventHandlerCalled = true;
+                    receivedBitmap = bitmap;
+                };
+            }
+
+            // Assert - Verify subscription works without errors
+            _cameraService.Should().NotBeNull();
+            
+            // Verify the event handler is properly attached by checking it doesn't throw
+            eventHandlerCalled.Should().BeFalse(); // Initially false
+            receivedBitmap.Should().BeNull(); // Initially null
+            
+            // Note: We don't test actual event firing as it requires hardware
+            // That functionality is covered by the MockCameraService tests
+        }
+
+        [TestMethod]
+        public void CameraError_EventCanBeSubscribed()
+        {
+            // Arrange
+            bool eventHandlerCalled = false;
+            string? errorMessage = null;
+
+            // Act
+            if (_cameraService != null)
+            {
+                _cameraService.CameraError += (sender, message) =>
+                {
+                    eventHandlerCalled = true;
+                    errorMessage = message;
+                };
+            }
+
+            // Assert - just verify subscription works without errors
+            // (We can't easily trigger camera errors in unit tests)
+            _cameraService.Should().NotBeNull();
+            
+            // Verify the event handler is properly attached by checking it doesn't throw
+            eventHandlerCalled.Should().BeFalse(); // Initially false
+            errorMessage.Should().BeNull(); // Initially null
+        }
+
+        #endregion
+
+        #region Error Handling Tests
+
+        [TestMethod]
+        public void StartCamera_WithNegativeIndex_ReturnsFalse()
+        {
+            // Act
+            var result = _cameraService?.StartCamera(-1);
+
+            // Assert
+            result.Should().BeFalse();
+            _cameraService?.IsCapturing.Should().BeFalse();
+        }
+
+        #endregion
+
         #region Performance Tests
 
         [TestMethod]
@@ -686,14 +700,14 @@ namespace Photobooth.Tests.Services
         public void StartCamera_CompletesWithinReasonableTime()
         {
             // Arrange
-            var cameras = _cameraService.GetAvailableCameras();
+            var cameras = _cameraService?.GetAvailableCameras();
             
-            if (cameras.Count > 0)
+            if (cameras?.Count > 0)
             {
                 var startTime = DateTime.Now;
 
                 // Act
-                var result = _cameraService.StartCamera(0);
+                var result = _cameraService?.StartCamera(0);
 
                 // Assert
                 var elapsed = DateTime.Now - startTime;
@@ -701,7 +715,7 @@ namespace Photobooth.Tests.Services
                 elapsed.TotalSeconds.Should().BeLessThan(5); // Should start within 5 seconds
                 
                 // Cleanup
-                _cameraService.StopCamera();
+                _cameraService?.StopCamera();
             }
             else
             {
@@ -714,20 +728,20 @@ namespace Photobooth.Tests.Services
         public void StopCamera_CompletesWithinReasonableTime()
         {
             // Arrange
-            var cameras = _cameraService.GetAvailableCameras();
+            var cameras = _cameraService?.GetAvailableCameras();
             
-            if (cameras.Count > 0)
+            if (cameras?.Count > 0)
             {
-                _cameraService.StartCamera(0);
+                _cameraService?.StartCamera(0);
                 var startTime = DateTime.Now;
 
                 // Act
-                _cameraService.StopCamera();
+                _cameraService?.StopCamera();
 
                 // Assert
                 var elapsed = DateTime.Now - startTime;
                 elapsed.TotalSeconds.Should().BeLessThan(3); // Should stop within 3 seconds
-                _cameraService.IsCapturing.Should().BeFalse();
+                _cameraService?.IsCapturing.Should().BeFalse();
             }
             else
             {
@@ -743,28 +757,28 @@ namespace Photobooth.Tests.Services
             // the state changes correctly
             
             // Arrange
-            var cameras = _cameraService.GetAvailableCameras();
+            var cameras = _cameraService?.GetAvailableCameras();
             
-            if (cameras.Count > 0)
+            if (cameras?.Count > 0)
             {
-                _cameraService.StartCamera(0);
+                _cameraService?.StartCamera(0);
                 
                 // Normal state
-                _cameraService.IsPhotoCaptureActive.Should().BeFalse();
+                _cameraService?.IsPhotoCaptureActive.Should().BeFalse();
                 
                 // Act - Enter photo capture mode
-                _cameraService.SetPhotoCaptureActive(true);
-                _cameraService.IsPhotoCaptureActive.Should().BeTrue();
+                _cameraService?.SetPhotoCaptureActive(true);
+                _cameraService?.IsPhotoCaptureActive.Should().BeTrue();
                 
                 // Wait for some frame processing
                 await Task.Delay(1000);
                 
                 // Act - Exit photo capture mode
-                _cameraService.SetPhotoCaptureActive(false);
-                _cameraService.IsPhotoCaptureActive.Should().BeFalse();
+                _cameraService?.SetPhotoCaptureActive(false);
+                _cameraService?.IsPhotoCaptureActive.Should().BeFalse();
                 
                 // Cleanup
-                _cameraService.StopCamera();
+                _cameraService?.StopCamera();
             }
             else
             {
@@ -780,26 +794,26 @@ namespace Photobooth.Tests.Services
         public void Dispose_WhenCameraNotRunning_HandlesGracefully()
         {
             // Act & Assert (should not throw)
-            _cameraService.Dispose();
-            _cameraService.IsCapturing.Should().BeFalse();
+            _cameraService?.Dispose();
+            _cameraService?.IsCapturing.Should().BeFalse();
         }
 
         [TestMethod]
         public void Dispose_WhenCameraRunning_StopsCameraAndDisposesResources()
         {
             // Arrange
-            var cameras = _cameraService.GetAvailableCameras();
+            var cameras = _cameraService?.GetAvailableCameras();
             
-            if (cameras.Count > 0)
+            if (cameras?.Count > 0)
             {
-                _cameraService.StartCamera(0);
-                _cameraService.IsCapturing.Should().BeTrue();
+                _cameraService?.StartCamera(0);
+                _cameraService?.IsCapturing.Should().BeTrue();
 
                 // Act
-                _cameraService.Dispose();
+                _cameraService?.Dispose();
 
                 // Assert
-                _cameraService.IsCapturing.Should().BeFalse();
+                _cameraService?.IsCapturing.Should().BeFalse();
             }
             else
             {
@@ -811,27 +825,27 @@ namespace Photobooth.Tests.Services
         public void Dispose_CalledMultipleTimes_HandlesGracefully()
         {
             // Act & Assert (should not throw)
-            _cameraService.Dispose();
-            _cameraService.Dispose();
-            _cameraService.Dispose();
+            _cameraService?.Dispose();
+            _cameraService?.Dispose();
+            _cameraService?.Dispose();
         }
 
         [TestMethod]
         public async Task Dispose_AfterMethodCalls_PreventsOperations()
         {
             // Arrange
-            _cameraService.Dispose();
+            _cameraService?.Dispose();
 
             // Act & Assert - operations should handle disposed state gracefully
-            var cameras = _cameraService.GetAvailableCameras();
+            var cameras = _cameraService?.GetAvailableCameras();
             cameras.Should().NotBeNull(); // This method should still work
 
             // Note: CameraService doesn't prevent operations after disposal, it just cleans up resources
             // This is actually acceptable behavior - the service continues to work but starts fresh
-            var captureResult = await _cameraService.CapturePhotoAsync();
+            var captureResult = await (_cameraService?.CapturePhotoAsync() ?? Task.FromResult<string?>(null));
             captureResult.Should().BeNull(); // Should return null when camera not started
 
-            var previewBitmap = _cameraService.GetPreviewBitmap();
+            var previewBitmap = _cameraService?.GetPreviewBitmap();
             previewBitmap.Should().BeNull(); // Should return null
         }
 
@@ -843,9 +857,9 @@ namespace Photobooth.Tests.Services
         public async Task CompleteWorkflow_StartCaptureStop_WorksCorrectly()
         {
             // Arrange
-            var cameras = _cameraService.GetAvailableCameras();
+            var cameras = _cameraService?.GetAvailableCameras();
             
-            if (cameras.Count > 0)
+            if (cameras?.Count > 0 && _cameraService != null)
             {
                 // Act & Assert - Complete workflow
                 
@@ -892,9 +906,9 @@ namespace Photobooth.Tests.Services
         public async Task MultipleCaptureSequence_WorksCorrectly()
         {
             // Arrange
-            var cameras = _cameraService.GetAvailableCameras();
+            var cameras = _cameraService?.GetAvailableCameras();
             
-            if (cameras.Count > 0)
+            if (cameras?.Count > 0 && _cameraService != null)
             {
                 var capturedPhotos = new List<string>();
 
@@ -984,9 +998,9 @@ namespace Photobooth.Tests.Services
         public async Task CapturePhotoAsync_ConcurrentCalls_HandlesGracefully()
         {
             // Arrange
-            var cameras = _cameraService.GetAvailableCameras();
+            var cameras = _cameraService?.GetAvailableCameras();
             
-            if (cameras.Count > 0)
+            if (cameras?.Count > 0 && _cameraService != null)
             {
                 _cameraService.StartCamera(0);
                 await Task.Delay(2000); // Wait for camera to stabilize
@@ -1025,9 +1039,9 @@ namespace Photobooth.Tests.Services
         public void GetAvailableCameras_CalledMultipleTimes_ReturnsConsistentResults()
         {
             // Act
-            var cameras1 = _cameraService.GetAvailableCameras();
-            var cameras2 = _cameraService.GetAvailableCameras();
-            var cameras3 = _cameraService.GetAvailableCameras();
+            var cameras1 = _cameraService?.GetAvailableCameras();
+            var cameras2 = _cameraService?.GetAvailableCameras();
+            var cameras3 = _cameraService?.GetAvailableCameras();
 
             // Assert
             cameras1.Should().NotBeNull();
@@ -1035,17 +1049,17 @@ namespace Photobooth.Tests.Services
             cameras3.Should().NotBeNull();
             
             // Results should be consistent (same count)
-            cameras1.Count.Should().Be(cameras2.Count);
-            cameras2.Count.Should().Be(cameras3.Count);
+            cameras1!.Count.Should().Be(cameras2!.Count);
+            cameras2.Count.Should().Be(cameras3!.Count);
         }
 
         [TestMethod]
         public async Task CapturePhotoAsync_EmptyFileName_HandlesGracefully()
         {
             // Arrange
-            var cameras = _cameraService.GetAvailableCameras();
+            var cameras = _cameraService?.GetAvailableCameras();
             
-            if (cameras.Count > 0)
+            if (cameras?.Count > 0 && _cameraService != null)
             {
                 _cameraService.StartCamera(0);
                 await Task.Delay(2000);
@@ -1073,9 +1087,9 @@ namespace Photobooth.Tests.Services
         public async Task CapturePhotoAsync_NullFileName_HandlesGracefully()
         {
             // Arrange
-            var cameras = _cameraService.GetAvailableCameras();
+            var cameras = _cameraService?.GetAvailableCameras();
             
-            if (cameras.Count > 0)
+            if (cameras?.Count > 0 && _cameraService != null)
             {
                 _cameraService.StartCamera(0);
                 await Task.Delay(2000);
@@ -1103,23 +1117,23 @@ namespace Photobooth.Tests.Services
         public async Task StartStopCycle_MultipleIterations_HandlesGracefully()
         {
             // This test verifies that starting and stopping the camera multiple times works correctly
-            var cameras = _cameraService.GetAvailableCameras();
+            var cameras = _cameraService?.GetAvailableCameras();
             
-            if (cameras.Count > 0)
+            if (cameras?.Count > 0)
             {
                 for (int i = 0; i < 3; i++)
                 {
                     // Start
-                    var startResult = _cameraService.StartCamera(0);
+                    var startResult = _cameraService?.StartCamera(0);
                     startResult.Should().BeTrue();
-                    _cameraService.IsCapturing.Should().BeTrue();
+                    _cameraService?.IsCapturing.Should().BeTrue();
                     
                     // Wait briefly
                     await Task.Delay(500);
                     
                     // Stop
-                    _cameraService.StopCamera();
-                    _cameraService.IsCapturing.Should().BeFalse();
+                    _cameraService?.StopCamera();
+                    _cameraService?.IsCapturing.Should().BeFalse();
                 }
             }
             else
@@ -1132,34 +1146,34 @@ namespace Photobooth.Tests.Services
         public void CameraService_StateConsistency_MaintainedThroughOperations()
         {
             // This test verifies that the camera service maintains consistent state through various operations
-            var cameras = _cameraService.GetAvailableCameras();
+            var cameras = _cameraService?.GetAvailableCameras();
             
-            if (cameras.Count > 0)
+            if (cameras?.Count > 0)
             {
                 // Initial state
-                _cameraService.IsCapturing.Should().BeFalse();
-                _cameraService.IsPhotoCaptureActive.Should().BeFalse();
-                _cameraService.GetPreviewBitmap().Should().BeNull();
+                _cameraService?.IsCapturing.Should().BeFalse();
+                _cameraService?.IsPhotoCaptureActive.Should().BeFalse();
+                _cameraService?.GetPreviewBitmap().Should().BeNull();
                 
                 // Start camera
-                _cameraService.StartCamera(0);
-                _cameraService.IsCapturing.Should().BeTrue();
-                _cameraService.IsPhotoCaptureActive.Should().BeFalse(); // Should still be false
+                _cameraService?.StartCamera(0);
+                _cameraService?.IsCapturing.Should().BeTrue();
+                _cameraService?.IsPhotoCaptureActive.Should().BeFalse(); // Should still be false
                 
                 // Set photo capture active
-                _cameraService.SetPhotoCaptureActive(true);
-                _cameraService.IsCapturing.Should().BeTrue(); // Should still be true
-                _cameraService.IsPhotoCaptureActive.Should().BeTrue();
+                _cameraService?.SetPhotoCaptureActive(true);
+                _cameraService?.IsCapturing.Should().BeTrue(); // Should still be true
+                _cameraService?.IsPhotoCaptureActive.Should().BeTrue();
                 
                 // Reset photo capture
-                _cameraService.SetPhotoCaptureActive(false);
-                _cameraService.IsCapturing.Should().BeTrue(); // Should still be true
-                _cameraService.IsPhotoCaptureActive.Should().BeFalse();
+                _cameraService?.SetPhotoCaptureActive(false);
+                _cameraService?.IsCapturing.Should().BeTrue(); // Should still be true
+                _cameraService?.IsPhotoCaptureActive.Should().BeFalse();
                 
                 // Stop camera
-                _cameraService.StopCamera();
-                _cameraService.IsCapturing.Should().BeFalse();
-                _cameraService.IsPhotoCaptureActive.Should().BeFalse(); // Should still be false
+                _cameraService?.StopCamera();
+                _cameraService?.IsCapturing.Should().BeFalse();
+                _cameraService?.IsPhotoCaptureActive.Should().BeFalse(); // Should still be false
             }
             else
             {
@@ -1171,17 +1185,17 @@ namespace Photobooth.Tests.Services
         public async Task GetPreviewBitmap_AfterCameraStart_ReturnsValidBitmap()
         {
             // Arrange
-            var cameras = _cameraService.GetAvailableCameras();
+            var cameras = _cameraService?.GetAvailableCameras();
             
-            if (cameras.Count > 0)
+            if (cameras?.Count > 0)
             {
                 // Act
-                _cameraService.StartCamera(0);
+                _cameraService?.StartCamera(0);
                 
                 // Wait for frames to be processed
                 await Task.Delay(2000);
                 
-                var previewBitmap = _cameraService.GetPreviewBitmap();
+                var previewBitmap = _cameraService?.GetPreviewBitmap();
 
                 // Assert
                 previewBitmap.Should().NotBeNull();
@@ -1196,11 +1210,24 @@ namespace Photobooth.Tests.Services
                 }
                 
                 // Cleanup
-                _cameraService.StopCamera();
+                _cameraService?.StopCamera();
             }
             else
             {
                 Assert.Inconclusive("Test requires at least one camera to be available");
+            }
+        }
+
+        #endregion
+
+        #region IDisposable Implementation
+
+        public void Dispose()
+        {
+            if (!_disposed)
+            {
+                _disposed = true;
+                Cleanup();
             }
         }
 

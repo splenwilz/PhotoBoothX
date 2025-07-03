@@ -159,7 +159,6 @@ namespace Photobooth.Services
                 
                 if (cameras.Count == 0 || cameraIndex >= cameras.Count)
                 {
-                    Console.WriteLine($"[CAMERA] ❌ No cameras available or invalid index {cameraIndex}");
                     LoggingService.Hardware.Warning("Camera", "No cameras available or invalid index", 
                         ("RequestedIndex", cameraIndex), ("AvailableCameras", cameras.Count));
                     return false;
@@ -217,11 +216,8 @@ namespace Photobooth.Services
                 var totalStartTime = DateTime.Now - startTime;
                 if (totalStartTime.TotalMilliseconds > 1000)
                 {
-                    Console.WriteLine($"[CAMERA] ⚠️ SLOW START: {totalStartTime.TotalMilliseconds:F0}ms");
-                }
-                else
-                {
-                    Console.WriteLine($"[CAMERA] ✅ Started successfully");
+                    LoggingService.Hardware.Warning("Camera", "Slow camera start detected", 
+                        ("StartupTimeMs", totalStartTime.TotalMilliseconds));
                 }
                 
                 LoggingService.Hardware.Information("Camera", "Camera started successfully", 
@@ -233,7 +229,6 @@ namespace Photobooth.Services
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[CAMERA] ❌ START ERROR: {ex.Message}");
                 LoggingService.Hardware.Error("Camera", "Failed to start camera", ex,
                     ("CameraIndex", cameraIndex));
                 CameraError?.Invoke(this, $"Failed to start camera: {ex.Message}");
@@ -260,7 +255,8 @@ namespace Photobooth.Services
                         
                         if (signalDuration.TotalMilliseconds > 500)
                         {
-                            Console.WriteLine($"[CAMERA] ⚠️ SLOW SIGNAL: {signalDuration.TotalMilliseconds:F0}ms");
+                            LoggingService.Hardware.Warning("Camera", "Slow camera signal to stop", 
+                                ("SignalDurationMs", signalDuration.TotalMilliseconds));
                         }
                         
                         var waitTime = DateTime.Now;
@@ -269,7 +265,8 @@ namespace Photobooth.Services
                         
                         if (waitDuration.TotalMilliseconds > 1000)
                         {
-                            Console.WriteLine($"[CAMERA] ⚠️ SLOW STOP: {waitDuration.TotalMilliseconds:F0}ms");
+                            LoggingService.Hardware.Warning("Camera", "Slow camera wait for stop", 
+                                ("WaitDurationMs", waitDuration.TotalMilliseconds));
                         }
                     }
 
@@ -295,12 +292,13 @@ namespace Photobooth.Services
                 var totalStopTime = DateTime.Now - stopStart;
                 if (totalStopTime.TotalMilliseconds > 2000)
                 {
-                    Console.WriteLine($"[CAMERA] ⚠️ VERY SLOW STOP: {totalStopTime.TotalMilliseconds:F0}ms");
+                    LoggingService.Hardware.Warning("Camera", "Slow camera stop detected", 
+                        ("StopTimeMs", totalStopTime.TotalMilliseconds));
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[CAMERA] ❌ STOP ERROR: {ex.Message}");
+                LoggingService.Hardware.Error("Camera", "Failed to stop camera", ex);
                 
                 // Force cleanup even if there was an error
                 _isCapturing = false;
@@ -404,11 +402,11 @@ namespace Photobooth.Services
             _isPhotoCaptureActive = isActive;
             if (isActive)
             {
-                Console.WriteLine("[CAMERA] 📸 Photo capture started - reducing preview updates");
+                LoggingService.Hardware.Information("Camera", "📸 Photo capture started - reducing preview updates");
             }
             else
             {
-                Console.WriteLine("[CAMERA] ✅ Photo capture ended - resuming normal preview");
+                LoggingService.Hardware.Information("Camera", "✅ Photo capture ended - resuming normal preview");
             }
         }
 
@@ -435,7 +433,8 @@ namespace Photobooth.Services
                     
                     if (lockWaitTime.TotalMilliseconds > 10)
                     {
-                        Console.WriteLine($"[CAMERA] ⚠️ SLOW LOCK: Frame lock took {lockWaitTime.TotalMilliseconds:F0}ms");
+                        LoggingService.Hardware.Warning("Camera", "Slow frame lock", 
+                            ("LockWaitTimeMs", lockWaitTime.TotalMilliseconds));
                     }
 
                     // Dispose previous frame
@@ -470,7 +469,8 @@ namespace Photobooth.Services
                     
                     if (dispatcherDelay.TotalMilliseconds > 50)
                     {
-                        Console.WriteLine($"[CAMERA] ⚠️ UI THREAD DELAY: {dispatcherDelay.TotalMilliseconds:F0}ms for frame {_frameCounter}");
+                        LoggingService.Hardware.Warning("Camera", "UI thread delay", 
+                            ("DispatcherDelayMs", dispatcherDelay.TotalMilliseconds));
                     }
 
                     try
@@ -484,7 +484,8 @@ namespace Photobooth.Services
                                 
                                 if (lockWaitTime2.TotalMilliseconds > 10)
                                 {
-                                    Console.WriteLine($"[CAMERA] ⚠️ UI LOCK WAIT: {lockWaitTime2.TotalMilliseconds:F0}ms");
+                                    LoggingService.Hardware.Warning("Camera", "UI lock wait", 
+                                        ("LockWaitTimeMs", lockWaitTime2.TotalMilliseconds));
                                 }
 
                                 if (_lastFrame != null) // Double-check inside lock
@@ -495,7 +496,8 @@ namespace Photobooth.Services
                                     
                                     if (bitmapUpdateTime.TotalMilliseconds > 20)
                                     {
-                                        Console.WriteLine($"[CAMERA] ⚠️ SLOW BITMAP: {bitmapUpdateTime.TotalMilliseconds:F0}ms");
+                                        LoggingService.Hardware.Warning("Camera", "Slow bitmap update", 
+                                            ("BitmapUpdateTimeMs", bitmapUpdateTime.TotalMilliseconds));
                                     }
                                     
                                     _newFrameAvailable = true;
@@ -506,7 +508,6 @@ namespace Photobooth.Services
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"[CAMERA] ❌ UI ERROR: {ex.Message}");
                         LoggingService.Hardware.Error("Camera", "Error updating preview bitmap", ex);
                     }
                 }), DispatcherPriority.Background); // Use Background priority instead of Render
@@ -517,7 +518,9 @@ namespace Photobooth.Services
                     var avgFps = _frameCounter / (now - _lastStatsReport).TotalSeconds;
                     var skipRate = (_skippedFrameCounter / (double)_frameCounter) * 100;
                     
-                    Console.WriteLine($"[CAMERA] 📊 FPS: {avgFps:F1}, Skipped: {skipRate:F0}%");
+                    LoggingService.Hardware.Information("Camera", "📊 FPS", 
+                        ("AvgFps", avgFps),
+                        ("SkipRate", $"{skipRate:F0}%"));
                     
                     _frameCounter = 0;
                     _skippedFrameCounter = 0;
@@ -527,8 +530,7 @@ namespace Photobooth.Services
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[CAMERA] ❌ CRITICAL ERROR: {ex.Message}");
-                LoggingService.Hardware.Error("Camera", "Error processing new frame", ex);
+                LoggingService.Hardware.Error("Camera", "Critical error processing new frame", ex);
             }
         }
 
@@ -559,7 +561,11 @@ namespace Photobooth.Services
             // Validate dimensions to prevent buffer overruns
             if (source.Width != target.PixelWidth || source.Height != target.PixelHeight)
             {
-                Console.WriteLine($"[BITMAP] ❌ SIZE MISMATCH: {source.Width}x{source.Height} vs {target.PixelWidth}x{target.PixelHeight}");
+                LoggingService.Hardware.Warning("Camera", "Bitmap size mismatch", 
+                    ("SourceWidth", source.Width),
+                    ("SourceHeight", source.Height),
+                    ("TargetWidth", target.PixelWidth),
+                    ("TargetHeight", target.PixelHeight));
                 return;
             }
 
@@ -599,7 +605,8 @@ namespace Photobooth.Services
                 var totalTime = DateTime.Now - updateStart;
                 if (totalTime.TotalMilliseconds > 30)
                 {
-                    Console.WriteLine($"[BITMAP] ⚠️ VERY SLOW UPDATE: {totalTime.TotalMilliseconds:F0}ms");
+                    LoggingService.Hardware.Warning("Camera", "Slow bitmap update", 
+                        ("UpdateTimeMs", totalTime.TotalMilliseconds));
                 }
             }
             finally

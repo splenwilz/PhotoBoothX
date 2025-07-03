@@ -38,6 +38,10 @@ namespace Photobooth
         private bool _isNumberValid = false;
         private bool _isPasswordMatch = false;
 
+        // Password visibility state
+        private bool _isNewPasswordVisible = false;
+        private bool _isConfirmPasswordVisible = false;
+
         #endregion
 
         #region Initialization
@@ -109,7 +113,7 @@ namespace Photobooth
         /// </summary>
         private void ValidatePassword()
         {
-            var password = NewPasswordInput.Password;
+            var password = GetCurrentNewPassword();
 
             // Check length (at least 8 characters)
             _isLength8Valid = password.Length >= 8;
@@ -132,8 +136,9 @@ namespace Photobooth
         /// </summary>
         private void ValidatePasswordMatch()
         {
-            _isPasswordMatch = !string.IsNullOrEmpty(NewPasswordInput.Password) && 
-                              NewPasswordInput.Password == ConfirmPasswordInput.Password;
+            var newPassword = GetCurrentNewPassword();
+            var confirmPassword = GetCurrentConfirmPassword();
+            _isPasswordMatch = !string.IsNullOrEmpty(newPassword) && newPassword == confirmPassword;
         }
 
         /// <summary>
@@ -185,6 +190,133 @@ namespace Photobooth
             await PerformPasswordChange();
         }
 
+        /// <summary>
+        /// Handle new password visibility toggle
+        /// </summary>
+        private void NewPasswordToggleButton_Click(object sender, RoutedEventArgs e)
+        {
+            ToggleNewPasswordVisibility();
+        }
+
+        /// <summary>
+        /// Handle confirm password visibility toggle
+        /// </summary>
+        private void ConfirmPasswordToggleButton_Click(object sender, RoutedEventArgs e)
+        {
+            ToggleConfirmPasswordVisibility();
+        }
+
+        /// <summary>
+        /// Handle new password text input changes (visible mode)
+        /// </summary>
+        private void NewPasswordTextInput_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            ValidatePassword();
+            UpdatePasswordRequirements();
+            UpdateChangePasswordButton();
+        }
+
+        /// <summary>
+        /// Handle confirm password text input changes (visible mode)
+        /// </summary>
+        private void ConfirmPasswordTextInput_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            ValidatePasswordMatch();
+            UpdatePasswordRequirements();
+            UpdateChangePasswordButton();
+        }
+
+        #endregion
+
+        #region Password Visibility
+
+        /// <summary>
+        /// Toggle new password visibility between hidden and visible
+        /// </summary>
+        private void ToggleNewPasswordVisibility()
+        {
+            _isNewPasswordVisible = !_isNewPasswordVisible;
+
+            if (_isNewPasswordVisible)
+            {
+                // Show password as text
+                NewPasswordTextInput.Text = NewPasswordInput.Password;
+                NewPasswordInput.Visibility = Visibility.Collapsed;
+                NewPasswordTextInput.Visibility = Visibility.Visible;
+                NewPasswordToggleButton.Content = "🙈"; // Closed eye
+                NewPasswordToggleButton.ToolTip = "Hide Password";
+                NewPasswordTextInput.Focus();
+                NewPasswordTextInput.CaretIndex = NewPasswordTextInput.Text.Length;
+            }
+            else
+            {
+                // Hide password
+                NewPasswordInput.Password = NewPasswordTextInput.Text;
+                NewPasswordTextInput.Visibility = Visibility.Collapsed;
+                NewPasswordInput.Visibility = Visibility.Visible;
+                NewPasswordToggleButton.Content = "👁"; // Open eye
+                NewPasswordToggleButton.ToolTip = "Show Password";
+                NewPasswordInput.Focus();
+            }
+        }
+
+        /// <summary>
+        /// Toggle confirm password visibility between hidden and visible
+        /// </summary>
+        private void ToggleConfirmPasswordVisibility()
+        {
+            _isConfirmPasswordVisible = !_isConfirmPasswordVisible;
+
+            if (_isConfirmPasswordVisible)
+            {
+                // Show password as text
+                ConfirmPasswordTextInput.Text = ConfirmPasswordInput.Password;
+                ConfirmPasswordInput.Visibility = Visibility.Collapsed;
+                ConfirmPasswordTextInput.Visibility = Visibility.Visible;
+                ConfirmPasswordToggleButton.Content = "🙈"; // Closed eye
+                ConfirmPasswordToggleButton.ToolTip = "Hide Password";
+                ConfirmPasswordTextInput.Focus();
+                ConfirmPasswordTextInput.CaretIndex = ConfirmPasswordTextInput.Text.Length;
+            }
+            else
+            {
+                // Hide password
+                ConfirmPasswordInput.Password = ConfirmPasswordTextInput.Text;
+                ConfirmPasswordTextInput.Visibility = Visibility.Collapsed;
+                ConfirmPasswordInput.Visibility = Visibility.Visible;
+                ConfirmPasswordToggleButton.Content = "👁"; // Open eye
+                ConfirmPasswordToggleButton.ToolTip = "Show Password";
+                ConfirmPasswordInput.Focus();
+            }
+        }
+
+        /// <summary>
+        /// Get the current new password value from the active control
+        /// </summary>
+        private string GetCurrentNewPassword()
+        {
+            return _isNewPasswordVisible ? NewPasswordTextInput.Text : NewPasswordInput.Password;
+        }
+
+        /// <summary>
+        /// Get the current confirm password value from the active control
+        /// </summary>
+        private string GetCurrentConfirmPassword()
+        {
+            return _isConfirmPasswordVisible ? ConfirmPasswordTextInput.Text : ConfirmPasswordInput.Password;
+        }
+
+        /// <summary>
+        /// Clear both password controls
+        /// </summary>
+        private void ClearPasswords()
+        {
+            NewPasswordInput.Password = "";
+            NewPasswordTextInput.Text = "";
+            ConfirmPasswordInput.Password = "";
+            ConfirmPasswordTextInput.Text = "";
+        }
+
         #endregion
 
         #region Password Change Logic
@@ -196,7 +328,7 @@ namespace Photobooth
         {
             try
             {
-                var newPassword = NewPasswordInput.Password;
+                var newPassword = GetCurrentNewPassword();
 
                 // Show loading state
                 ChangePasswordButton.IsEnabled = false;

@@ -17,6 +17,9 @@ namespace Photobooth.Tests.Integration
     [TestClass]
     public class UserFlowIntegrationTests : IDisposable
     {
+        // Test execution framework support
+        public TestContext? TestContext { get; set; }
+        
         private IDatabaseService? _databaseService;
         private bool _disposed = false;
 
@@ -36,42 +39,43 @@ namespace Photobooth.Tests.Integration
         public async Task Database_Integration_ShouldLoadTemplates()
         {
             // Arrange
-            Console.WriteLine("Testing database integration for template loading...");
+            TestContext?.WriteLine("Testing database integration for template loading...");
 
             // Act
             var templatesResult = await _databaseService!.GetAllTemplatesAsync();
 
             // Assert
-            templatesResult.Success.Should().BeTrue($"Should successfully load templates: {templatesResult.ErrorMessage}");
-            Console.WriteLine($"✓ Database loaded {templatesResult.Data?.Count ?? 0} templates successfully");
+            templatesResult.Success.Should().BeTrue($"Database should load templates: {templatesResult.ErrorMessage}");
+            templatesResult.Data.Should().NotBeNull("Templates data should not be null");
+            TestContext?.WriteLine($"✓ Database loaded {templatesResult.Data?.Count ?? 0} templates successfully");
 
             if (templatesResult.Data?.Count > 0)
             {
                 var firstTemplate = templatesResult.Data[0];
-                firstTemplate.Name.Should().NotBeNull("Template name should not be null");
-                firstTemplate.Id.Should().BeGreaterThan(0, "Template ID should be greater than 0");
-                Console.WriteLine($"✓ Template data integrity verified: {firstTemplate.Name}");
+                firstTemplate.Name.Should().NotBeNullOrEmpty("Template name should not be empty");
+                firstTemplate.Id.Should().BeGreaterThan(0, "Template ID should be positive");
+                TestContext?.WriteLine($"✓ Template data integrity verified: {firstTemplate.Name}");
             }
         }
 
         [TestMethod]
         public void ProductInfo_Model_ShouldInitializeCorrectly()
         {
-            // Arrange & Act
+            // Arrange
             var product = new ProductInfo
             {
                 Name = "Test Product",
                 Type = "strips",
                 Price = 5.00m,
-                Description = "Test Description"
+                Description = "Test description"
             };
 
-            // Assert
+            // Act & Assert
             product.Name.Should().Be("Test Product");
             product.Type.Should().Be("strips");
             product.Price.Should().Be(5.00m);
-            product.Description.Should().Be("Test Description");
-            Console.WriteLine("✓ ProductInfo model works correctly");
+            product.Description.Should().Be("Test description");
+            TestContext?.WriteLine("✓ ProductInfo model works correctly");
         }
 
         [TestMethod]
@@ -91,42 +95,42 @@ namespace Photobooth.Tests.Integration
             template.Category.Should().Be("Classic");
             template.PreviewImagePath.Should().Be("/path/to/image.jpg");
             template.FolderPath.Should().Be("/path/to/folder");
-            Console.WriteLine("✓ TemplateInfo model works correctly");
+            TestContext?.WriteLine("✓ TemplateInfo model works correctly");
         }
 
         [TestMethod]
         public async Task DatabaseService_Initialization_ShouldSucceed()
         {
             // Arrange
-            Console.WriteLine("Testing database service initialization...");
+            TestContext?.WriteLine("Testing database service initialization...");
 
             // Act
             var result = await _databaseService!.InitializeAsync();
 
             // Assert
             result.Success.Should().BeTrue($"Database initialization should succeed: {result.ErrorMessage}");
-            Console.WriteLine("✓ Database service initialized successfully");
+            TestContext?.WriteLine("✓ Database service initialized successfully");
         }
 
         [TestMethod]
         public async Task Template_Categories_ShouldLoadCorrectly()
         {
             // Arrange
-            Console.WriteLine("Testing template categories loading...");
+            TestContext?.WriteLine("Testing template categories loading...");
 
             // Act
             var categoriesResult = await _databaseService!.GetTemplateCategoriesAsync();
 
             // Assert
             categoriesResult.Success.Should().BeTrue($"Should load categories: {categoriesResult.ErrorMessage}");
-            Console.WriteLine($"✓ Loaded {categoriesResult.Data?.Count ?? 0} template categories");
+            TestContext?.WriteLine($"✓ Loaded {categoriesResult.Data?.Count ?? 0} template categories");
 
             if (categoriesResult.Data?.Count > 0)
             {
                 var firstCategory = categoriesResult.Data[0];
                 firstCategory.Name.Should().NotBeNullOrEmpty("Category name should not be empty");
                 firstCategory.Id.Should().BeGreaterThan(0, "Category ID should be positive");
-                Console.WriteLine($"✓ Category data integrity verified: {firstCategory.Name}");
+                TestContext?.WriteLine($"✓ Category data integrity verified: {firstCategory.Name}");
             }
         }
 
@@ -175,26 +179,26 @@ namespace Photobooth.Tests.Integration
             photoSessionArgs.TimerSeconds.Should().Be(3);
             photoSessionArgs.FlashEnabled.Should().BeTrue();
 
-            Console.WriteLine("✓ All event args work correctly");
+            TestContext?.WriteLine("✓ All event args work correctly");
         }
 
         [TestMethod]
         public async Task Complete_UserFlow_DataModels_ShouldWork()
         {
             // Arrange
-            Console.WriteLine("=== TESTING COMPLETE USER FLOW DATA MODELS ===");
+            TestContext?.WriteLine("=== TESTING COMPLETE USER FLOW DATA MODELS ===");
 
             // Act & Assert - Test the complete data flow we've implemented
 
             // 1. Product Selection
             var product = new ProductInfo { Name = "Photo Strips", Type = "strips", Price = 5.00m };
             product.Name.Should().NotBeNullOrEmpty();
-            Console.WriteLine("✓ Product selection data model works");
+            TestContext?.WriteLine("✓ Product selection data model works");
 
             // 2. Template Loading from Database
             var templatesResult = await _databaseService!.GetAllTemplatesAsync();
             templatesResult.Success.Should().BeTrue();
-            Console.WriteLine("✓ Template loading from database works");
+            TestContext?.WriteLine("✓ Template loading from database works");
 
             // 3. Template Selection
             if (templatesResult.Data?.Count > 0)
@@ -206,7 +210,7 @@ namespace Photobooth.Tests.Integration
                     PreviewImagePath = templatesResult.Data[0].PreviewPath
                 };
                 template.TemplateName.Should().NotBeNullOrEmpty();
-                Console.WriteLine("✓ Template selection data model works");
+                TestContext?.WriteLine("✓ Template selection data model works");
 
                 // 4. Photo Session Start
                 var photoSessionArgs = new PhotoSessionStartEventArgs(
@@ -219,17 +223,17 @@ namespace Photobooth.Tests.Integration
                 );
                 photoSessionArgs.Template.Should().NotBeNull();
                 photoSessionArgs.PhotoCount.Should().BeGreaterThan(0);
-                Console.WriteLine("✓ Photo session start data model works");
+                TestContext?.WriteLine("✓ Photo session start data model works");
             }
 
-            Console.WriteLine("=== COMPLETE USER FLOW DATA MODELS TEST PASSED ===");
+            TestContext?.WriteLine("=== COMPLETE USER FLOW DATA MODELS TEST PASSED ===");
         }
 
         [TestMethod]
         public void Memory_Management_Models_ShouldNotLeak()
         {
             // Arrange
-            Console.WriteLine("Testing memory management for data models...");
+            TestContext?.WriteLine("Testing memory management for data models...");
             var initialMemory = GC.GetTotalMemory(false);
 
             // Act - Create many instances
@@ -241,7 +245,7 @@ namespace Photobooth.Tests.Integration
                 // Let them go out of scope
             }
 
-            // Force garbage collection
+            // Force garbage collection (appropriate for memory leak testing)
             GC.Collect();
             GC.WaitForPendingFinalizers();
             GC.Collect();
@@ -253,7 +257,7 @@ namespace Photobooth.Tests.Integration
             memoryIncrease.Should().BeLessThan(1_000_000, // Less than 1MB increase
                 $"Memory increase should be minimal: {memoryIncrease:N0} bytes");
             
-            Console.WriteLine($"✓ Memory usage acceptable: {memoryIncrease:N0} bytes increase");
+            TestContext?.WriteLine($"✓ Memory usage acceptable: {memoryIncrease:N0} bytes increase");
         }
 
         #region IDisposable Implementation
@@ -278,7 +282,7 @@ namespace Photobooth.Tests.Integration
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Disposal error: {ex.Message}");
+                    TestContext?.WriteLine($"Disposal error: {ex.Message}");
                 }
                 _disposed = true;
             }

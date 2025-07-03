@@ -640,13 +640,8 @@ namespace Photobooth.Services
         /// </summary>
         private void HandleKeyPressed(string key)
         {
-            Console.WriteLine($"=== VIRTUAL KEYBOARD INPUT DEBUG ===");
-            Console.WriteLine($"Key pressed: '{key}'");
-            Console.WriteLine($"Active input: {_activeInput?.GetType().Name} (Name: {_activeInput?.Name})");
-            
             if (_activeInput == null) 
             {
-                Console.WriteLine("❌ No active input control - ignoring key press");
                 return;
             }
 
@@ -657,12 +652,9 @@ namespace Photobooth.Services
                 
                 // Check focus after ensuring focus
                 var currentFocusAfter = Keyboard.FocusedElement;
-                Console.WriteLine($"Focus after ensure: {currentFocusAfter?.GetType().Name}");
 
                 if (_activeInput is TextBox textBox)
                 {
-                    Console.WriteLine($"Processing TextBox input - Current text: '{textBox.Text}', Caret: {textBox.CaretIndex}");
-                    
                     // Use Dispatcher to ensure proper threading for cross-window operations
                     textBox.Dispatcher.BeginInvoke(new Action(() =>
                     {
@@ -671,31 +663,23 @@ namespace Photobooth.Services
                             var caretIndex = textBox.CaretIndex;
                             var currentText = textBox.Text ?? "";
 
-                            Console.WriteLine($"Before insert - Text: '{currentText}', Caret: {caretIndex}, Inserting: '{key}'");
-
                             // Insert character at caret position
                             var newText = currentText.Insert(caretIndex, key);
                             textBox.Text = newText;
                             textBox.CaretIndex = caretIndex + 1;
                             
-                            Console.WriteLine($"After insert - New text: '{newText}', New caret: {textBox.CaretIndex}");
-                            
                             // Ensure focus is maintained after text change
                             var focusResult = textBox.Focus();
-                            Console.WriteLine($"Focus result: {focusResult}");
 
                         }
                         catch (Exception ex)
                         {
-                            Console.WriteLine($"❌ ERROR in TextBox handling: {ex.Message}");
                             LoggingService.Application.Error("Failed to handle key press for TextBox", ex);
                         }
                     }), System.Windows.Threading.DispatcherPriority.Input);
                 }
                 else if (_activeInput is PasswordBox passwordBox)
                 {
-                    Console.WriteLine($"Processing PasswordBox input - Current length: {passwordBox.Password?.Length ?? 0}");
-                    
                     // For password boxes, just append (can't get caret position easily)
                     passwordBox.Password += key;
                     
@@ -713,21 +697,15 @@ namespace Photobooth.Services
                         }
                         catch (Exception ex)
                         {
-                            Console.WriteLine($"❌ ERROR in PasswordBox cursor positioning: {ex.Message}");
                             LoggingService.Application.Error("Failed to set password box cursor position in HandleKeyPressed", ex);
                             passwordBox.Focus(); // Fallback
                         }
                     }), System.Windows.Threading.DispatcherPriority.Input);
 
                 }
-                else
-                {
-                    Console.WriteLine($"❌ Unsupported input type: {_activeInput.GetType().Name}");
-                }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ CRITICAL ERROR in HandleKeyPressed: {ex.Message}");
                 LoggingService.Application.Error("Failed to handle key press", ex);
             }
 

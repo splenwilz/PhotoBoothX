@@ -88,21 +88,19 @@ namespace Photobooth
         {
             try
             {
-                Console.WriteLine("=== INITIALIZING CAMERA CAPTURE SESSION ===");
-                Console.WriteLine($"Template Name: {template.Name}");
-                Console.WriteLine($"Template PhotoCount: {template.PhotoCount}");
-                Console.WriteLine($"Template Layout is null: {template.Layout == null}");
-                if (template.Layout != null)
-                {
-                    Console.WriteLine($"Layout PhotoCount: {template.Layout.PhotoCount}");
-                    Console.WriteLine($"Layout PhotoAreas count: {template.Layout.PhotoAreas?.Count ?? 0}");
-                }
+                LoggingService.Application.Information("Initializing camera capture session",
+                    ("TemplateName", template.Name),
+                    ("PhotoCount", template.PhotoCount),
+                    ("HasLayout", template.Layout != null),
+                    ("LayoutPhotoCount", template.Layout?.PhotoCount ?? 0),
+                    ("LayoutPhotoAreasCount", template.Layout?.PhotoAreas?.Count ?? 0));
                 
                 _currentTemplate = template;
                 _currentPhotoIndex = 0;
                 _capturedPhotos.Clear();
                 
-                Console.WriteLine($"Creating progress indicators for {template.PhotoCount} photos");
+                LoggingService.Application.Debug("Creating progress indicators",
+                    ("PhotoCount", template.PhotoCount));
                 
                 // Create progress indicators
                 CreateProgressIndicators(template.PhotoCount);
@@ -116,6 +114,7 @@ namespace Photobooth
                 var cameraStarted = _cameraService.StartCamera();
                 if (!cameraStarted)
                 {
+                    LoggingService.Application.Error("Failed to start camera during session initialization", null);
                     ShowErrorMessage("Failed to start camera. Please check your camera connection.");
                     return false;
                 }
@@ -126,12 +125,12 @@ namespace Photobooth
                 // Start automatic photo sequence after a short delay
                 StartAutoPhotoSequence();
                 
-                Console.WriteLine("=== CAMERA CAPTURE SESSION INITIALIZED ===");
+                LoggingService.Application.Information("Camera capture session initialized successfully");
                 return true;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR initializing camera session: {ex.Message}");
+                LoggingService.Application.Error("Failed to initialize camera session", ex);
                 ShowErrorMessage($"Failed to initialize camera: {ex.Message}");
                 return false;
             }
@@ -385,7 +384,9 @@ namespace Photobooth
             {
                 _isCapturing = true;
                 
-                Console.WriteLine($"Starting photo capture {_currentPhotoIndex + 1} of {_currentTemplate.PhotoCount}");
+                LoggingService.Application.Information("Starting photo capture",
+                    ("CurrentPhotoIndex", _currentPhotoIndex + 1),
+                    ("PhotoCount", _currentTemplate.PhotoCount));
                 
                 // Reduce camera preview updates during photo capture to prevent UI freezing
                 _cameraService.SetPhotoCaptureActive(true);
@@ -405,7 +406,9 @@ namespace Photobooth
                     _currentPhotoIndex++;
                     UpdateProgressIndicators();
                     
-                    Console.WriteLine($"Photo {_currentPhotoIndex} captured successfully");
+                    LoggingService.Application.Information("Photo captured successfully",
+                        ("CurrentPhotoIndex", _currentPhotoIndex),
+                        ("PhotoCount", _currentTemplate.PhotoCount));
                     
                     // Check if we've captured all photos
                     if (_currentPhotoIndex >= _currentTemplate.PhotoCount)
@@ -458,7 +461,7 @@ namespace Photobooth
                 // Resume normal camera preview updates on exception
                 _cameraService.SetPhotoCaptureActive(false);
                 
-                Console.WriteLine($"ERROR in photo capture: {ex.Message}");
+                LoggingService.Application.Error("Error in photo capture", ex);
                 SoundService.Instance.PlayError();
                 ShowErrorMessage($"Capture failed: {ex.Message}");
                 _isCapturing = false;
@@ -540,7 +543,8 @@ namespace Photobooth
                 // Show loading overlay on camera screen instead of immediate transition
                 ShowLoading("Composing your photos...");
                 
-                Console.WriteLine($"Photo session completed - {_capturedPhotos.Count} photos captured");
+                LoggingService.Application.Information("Photo session completed",
+                    ("CapturedPhotoCount", _capturedPhotos.Count));
                 
                 // Fire event with captured photos - now includes composition request
                 PhotosCaptured?.Invoke(this, new PhotosCapturedEventArgs(_currentTemplate!, _capturedPhotos));
@@ -548,7 +552,7 @@ namespace Photobooth
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR completing photo session: {ex.Message}");
+                LoggingService.Application.Error("Error completing photo session", ex);
                 ShowErrorMessage($"Session completion failed: {ex.Message}");
                 return Task.CompletedTask;
             }
@@ -580,12 +584,13 @@ namespace Photobooth
                 var totalTime = DateTime.Now - updateStart;
                 if (totalTime.TotalMilliseconds > 20)
                 {
-                    Console.WriteLine($"[PREVIEW] ⚠️ SLOW UPDATE: {totalTime.TotalMilliseconds:F0}ms");
+                    LoggingService.Application.Warning("Slow update detected",
+                        ("TotalMilliseconds", totalTime.TotalMilliseconds));
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[PREVIEW] ❌ ERROR: {ex.Message}");
+                LoggingService.Application.Error("Error in camera preview update", ex);
                 // Optionally reduce timer frequency if errors occur frequently
             }
         }
@@ -607,7 +612,8 @@ namespace Photobooth
             Dispatcher.Invoke(() =>
             {
                 ShowErrorMessage(errorMessage);
-                Console.WriteLine($"Camera error occurred: {errorMessage}");
+                LoggingService.Application.Error("Camera error occurred", null,
+                    ("ErrorMessage", errorMessage));
             });
         }
 
@@ -639,7 +645,8 @@ namespace Photobooth
             {
                 try
                 {
-                    Console.WriteLine($"CameraCaptureScreen: Disposing camera capture screen (IsCapturing: {_isCapturing})");
+                    LoggingService.Application.Information("Disposing camera capture screen",
+                        ("IsCapturing", _isCapturing));
                     
                     // Stop all sounds first
                     SoundService.Instance.StopAllSounds();
@@ -649,56 +656,57 @@ namespace Photobooth
                     {
                         _countdownTimer.Stop();
                         _countdownTimer = null;
-                        Console.WriteLine("CameraCaptureScreen: Countdown timer stopped");
+                        LoggingService.Application.Information("CameraCaptureScreen: Countdown timer stopped");
                     }
                     
                     if (_previewTimer != null)
                     {
                         _previewTimer.Stop();
                         _previewTimer = null;
-                        Console.WriteLine("CameraCaptureScreen: Preview timer stopped");
+                        LoggingService.Application.Information("CameraCaptureScreen: Preview timer stopped");
                     }
                     
                     if (_autoTriggerTimer != null)
                     {
                         _autoTriggerTimer.Stop();
                         _autoTriggerTimer = null;
-                        Console.WriteLine("CameraCaptureScreen: Auto trigger timer stopped");
+                        LoggingService.Application.Information("CameraCaptureScreen: Auto trigger timer stopped");
                     }
                     
                     if (_animationTimer != null)
                     {
                         _animationTimer.Stop();
                         _animationTimer = null;
-                        Console.WriteLine("CameraCaptureScreen: Animation timer stopped");
+                        LoggingService.Application.Information("CameraCaptureScreen: Animation timer stopped");
                     }
                     
                     if (_errorHideTimer != null)
                     {
                         _errorHideTimer.Stop();
                         _errorHideTimer = null;
-                        Console.WriteLine("CameraCaptureScreen: Error hide timer stopped");
+                        LoggingService.Application.Information("CameraCaptureScreen: Error hide timer stopped");
                     }
                     
                     // Unsubscribe from events and dispose camera service
                     if (_cameraService != null)
                     {
-                        Console.WriteLine("CameraCaptureScreen: Disposing camera service");
+                        LoggingService.Application.Information("CameraCaptureScreen: Disposing camera service");
                         _cameraService.PreviewFrameReady -= OnCameraPreviewFrameReady;
                         _cameraService.CameraError -= OnCameraError;
                         _cameraService.Dispose();
-                        Console.WriteLine("CameraCaptureScreen: Camera service disposed");
+                        LoggingService.Application.Information("CameraCaptureScreen: Camera service disposed");
                     }
                     
                     // Clear captured photos list
                     _capturedPhotos?.Clear();
                     
-                    Console.WriteLine("CameraCaptureScreen: Camera capture screen disposed successfully");
+                    LoggingService.Application.Information("Camera capture screen disposed successfully");
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"CameraCaptureScreen ERROR during disposal: {ex.Message}");
-                    Console.WriteLine($"CameraCaptureScreen ERROR stack trace: {ex.StackTrace}");
+                    LoggingService.Application.Error("Error during disposal", ex);
+                    LoggingService.Application.Error("CameraCaptureScreen ERROR stack trace", null,
+                        ("StackTrace", ex.StackTrace ?? "No stack trace available"));
                 }
                 finally
                 {

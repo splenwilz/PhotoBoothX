@@ -532,21 +532,21 @@ namespace Photobooth
                             await LoadProductsData();
                             break;
                         case "TemplatesTab":
-                            Console.WriteLine("=== TEMPLATES TAB CLICKED ===");
+                            LoggingService.Application.Information("Templates tab clicked");
                             TemplatesTabContent.Visibility = Visibility.Visible;
                             BreadcrumbText.Text = "Templates";
                             
                             // Manually trigger optimized template loading for faster tab switching
-                            Console.WriteLine("Looking for TemplatesTabControl in TemplatesTabContent...");
+                            LoggingService.Application.Debug("Looking for TemplatesTabControl in TemplatesTabContent");
                             var templatesControl = FindTemplatesTabControl(TemplatesTabContent);
                             if (templatesControl != null)
                             {
-                                Console.WriteLine("TemplatesTabControl found, triggering optimized load...");
+                                LoggingService.Application.Debug("TemplatesTabControl found, triggering optimized load");
                                 await templatesControl.ManualLoadTemplatesAsync();
                             }
                             else
                             {
-                                Console.WriteLine("WARNING: TemplatesTabControl not found in TemplatesTabContent");
+                                LoggingService.Application.Warning("TemplatesTabControl not found in TemplatesTabContent");
                             }
                             break;
                         case "DiagnosticsTab":
@@ -2320,7 +2320,6 @@ namespace Photobooth
             }
             return null;
         }
-
 
     }
 

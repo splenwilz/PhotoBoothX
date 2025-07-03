@@ -67,6 +67,7 @@ CREATE TABLE TemplateCategories (
     Name TEXT NOT NULL UNIQUE,
     Description TEXT,
     IsActive BOOLEAN NOT NULL DEFAULT 1,
+    IsPremium BOOLEAN NOT NULL DEFAULT 0, -- Premium badge determination
     SortOrder INTEGER NOT NULL DEFAULT 0,
     -- Seasonal functionality
     IsSeasonalCategory BOOLEAN NOT NULL DEFAULT 0,

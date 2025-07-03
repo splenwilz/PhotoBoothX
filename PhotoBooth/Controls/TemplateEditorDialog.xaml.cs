@@ -109,43 +109,26 @@ namespace Photobooth.Controls
 
             try
             {
-                Console.WriteLine($"=== NUMERIC INPUT DEBUG ===");
-                Console.WriteLine($"TextBox Name: {textBox.Name}");
-                Console.WriteLine($"Input Text: '{e.Text}'");
-                Console.WriteLine($"Current TextBox Text: '{textBox.Text}'");
-                Console.WriteLine($"Input Length: {e.Text.Length}");
-                
-                if (e.Text.Length > 0)
-                {
-                    Console.WriteLine($"First Character: '{e.Text[0]}' (ASCII: {(int)e.Text[0]})");
-                    Console.WriteLine($"Is Digit: {char.IsDigit(e.Text, 0)}");
-                }
-
                 // Allow decimal point for price fields, only integers for sort order
                 bool allowDecimal = textBox.Name == "PriceTextBox";
-                Console.WriteLine($"Allow Decimal: {allowDecimal}");
                 
                 // Check if the input is a digit
                 if (char.IsDigit(e.Text, 0))
                 {
-                    Console.WriteLine("✅ ALLOWING: Input is a digit");
                     return; // Allow digits
                 }
                 
                 // For price fields, allow decimal point if not already present
                 if (allowDecimal && e.Text == "." && !textBox.Text.Contains("."))
                 {
-                    Console.WriteLine("✅ ALLOWING: Input is decimal point for price field");
                     return; // Allow single decimal point
                 }
                 
                 // Block all other characters
-                Console.WriteLine("❌ BLOCKING: Input does not meet criteria");
                 e.Handled = true;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ ERROR in numeric validation: {ex.Message}");
                 LoggingService.Application.Error("Error validating numeric input", ex);
                 e.Handled = true; // Block input on error for safety
             }

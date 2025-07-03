@@ -101,13 +101,13 @@ namespace Photobooth
         {
             try
             {
-                Console.WriteLine("=== TEMPLATE SELECTION SCREEN LOADED ===");
-                Console.WriteLine($"Selected product: {selectedProduct?.Type ?? "NULL"}");
+                LoggingService.Application.Information("Template selection screen loaded",
+                    ("SelectedProductType", selectedProduct?.Type ?? "NULL"));
                 LoadTemplates();
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Template screen initialization failed: {ex.Message}");
+                LoggingService.Application.Error("Template screen initialization failed", ex);
                 System.Diagnostics.Debug.WriteLine($"Template screen initialization failed: {ex.Message}");
                 ShowErrorMessage("Failed to load templates. Please restart the application.");
             }
@@ -231,18 +231,21 @@ namespace Photobooth
         {
             try
             {
-                Console.WriteLine("=== LOADING TEMPLATES BY TYPE ===");
-                Console.WriteLine($"Selected product: {selectedProduct?.Type ?? "NULL"}");
+                LoggingService.Application.Information("Loading templates by type",
+                    ("SelectedProductType", selectedProduct?.Type ?? "NULL"));
 
                 allTemplates.Clear();
 
                 // Map product type to template type
                 TemplateType templateType = GetTemplateTypeFromProduct(selectedProduct);
-                Console.WriteLine($"Template type: {templateType}");
+                LoggingService.Application.Information("Template type determined",
+                    ("TemplateType", templateType));
 
                 // Load templates from database filtered by type
                 var dbTemplates = await _databaseService.GetTemplatesByTypeAsync(templateType);
-                Console.WriteLine($"Database returned: {dbTemplates.Success}, Templates: {dbTemplates.Data?.Count() ?? 0}");
+                LoggingService.Application.Information("Database returned",
+                    ("Success", dbTemplates.Success),
+                    ("Templates", dbTemplates.Data?.Count() ?? 0));
 
                 if (dbTemplates.Success && dbTemplates.Data != null)
                 {
@@ -252,7 +255,9 @@ namespace Photobooth
                         if (templateInfo != null)
                         {
                             var isValid = IsTemplateValidForProduct(templateInfo);
-                            Console.WriteLine($"Template: {templateInfo.TemplateName}, Valid: {isValid}");
+                            LoggingService.Application.Information("Template validation result",
+                                ("TemplateName", templateInfo.TemplateName),
+                                ("Valid", isValid));
                             
                             if (isValid)
                             {
@@ -262,7 +267,8 @@ namespace Photobooth
                     }
                 }
 
-                Console.WriteLine($"Total valid templates loaded: {allTemplates.Count}");
+                LoggingService.Application.Information("Total valid templates loaded",
+                    ("TemplateCount", allTemplates.Count));
 
                 // Apply seasonal prioritization
                 allTemplates = ApplySeasonalPrioritization(allTemplates);
@@ -273,11 +279,11 @@ namespace Photobooth
                 // Update display
                 UpdateTemplateDisplay();
 
-                Console.WriteLine("=== TEMPLATE LOADING COMPLETED ===");
+                LoggingService.Application.Information("Template loading completed");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR loading templates: {ex.Message}");
+                LoggingService.Application.Error("Error loading templates", ex);
                 System.Diagnostics.Debug.WriteLine($"Template loading failed: {ex.Message}");
                 ShowErrorMessage($"Failed to load templates: {ex.Message}");
             }
@@ -299,54 +305,61 @@ namespace Photobooth
         {
             try
             {
-                Console.WriteLine($"--- Loading template from folder: {folderPath} ---");
+                LoggingService.Application.Information("Loading template from folder",
+                    ("FolderPath", folderPath));
 
                 var configPath = System.IO.Path.Combine(folderPath, Constants.ConfigFileName);
-                Console.WriteLine($"Looking for config at: {configPath}");
+                LoggingService.Application.Information("Looking for config at",
+                    ("ConfigPath", configPath));
                 
                 if (!File.Exists(configPath))
                 {
-                    Console.WriteLine($"Config file missing: {configPath}");
+                    LoggingService.Application.Information("Config file missing");
                     System.Diagnostics.Debug.WriteLine($"Config file missing: {configPath}");
                     return null;
                 }
 
-                Console.WriteLine("Reading config file...");
+                LoggingService.Application.Information("Reading config file...");
                 var configJson = await File.ReadAllTextAsync(configPath);
-                Console.WriteLine($"Config JSON length: {configJson.Length} chars");
+                LoggingService.Application.Information("Config JSON length",
+                    ("ConfigJsonLength", configJson.Length));
                 
                 var config = JsonSerializer.Deserialize<TemplateConfig>(configJson);
 
                 if (config == null)
                 {
-                    Console.WriteLine($"Failed to parse config: {configPath}");
+                    LoggingService.Application.Error("Failed to parse config");
                     System.Diagnostics.Debug.WriteLine($"Failed to parse config: {configPath}");
                     return null;
                 }
 
-                Console.WriteLine($"Config parsed successfully: {config.TemplateName} (Category: {config.Category})");
+                LoggingService.Application.Information("Config parsed successfully",
+                    ("TemplateName", config.TemplateName),
+                    ("Category", config.Category));
 
                 // Find preview image
-                Console.WriteLine("Looking for preview image...");
+                LoggingService.Application.Information("Looking for preview image...");
                 var previewPath = FindPreviewImage(folderPath);
                 if (string.IsNullOrEmpty(previewPath))
                 {
-                    Console.WriteLine($"Preview image missing: {folderPath}");
+                    LoggingService.Application.Information("Preview image missing");
                     System.Diagnostics.Debug.WriteLine($"Preview image missing: {folderPath}");
                     return null;
                 }
-                Console.WriteLine($"Preview image found: {previewPath}");
+                LoggingService.Application.Information("Preview image found",
+                    ("PreviewPath", previewPath));
 
                 // Find template image
                 var templatePath = System.IO.Path.Combine(folderPath, "template.png");
-                Console.WriteLine($"Looking for template image at: {templatePath}");
+                LoggingService.Application.Information("Looking for template image at",
+                    ("TemplatePath", templatePath));
                 if (!File.Exists(templatePath))
                 {
-                    Console.WriteLine($"Template image missing: {templatePath}");
+                    LoggingService.Application.Information("Template image missing");
                     System.Diagnostics.Debug.WriteLine($"Template image missing: {templatePath}");
                     return null;
                 }
-                Console.WriteLine("Template image found");
+                LoggingService.Application.Information("Template image found");
 
                 // Calculate consistent display dimensions
                 var (displayWidth, displayHeight) = GetStandardDisplaySize(
@@ -379,6 +392,7 @@ namespace Photobooth
             }
             catch (Exception ex)
             {
+                LoggingService.Application.Error("Error loading template from folder", ex);
                 System.Diagnostics.Debug.WriteLine($"Error loading template from {folderPath}: {ex.Message}");
                 return null;
             }
@@ -485,6 +499,7 @@ namespace Photobooth
             }
             catch (Exception ex)
             {
+                LoggingService.Application.Error("Seasonal prioritization failed", ex);
                 System.Diagnostics.Debug.WriteLine($"Seasonal prioritization failed: {ex.Message}");
                 return templates.OrderBy(t => t.TemplateName).ToList();
             }
@@ -537,6 +552,7 @@ namespace Photobooth
             }
             catch (Exception ex)
             {
+                LoggingService.Application.Error("Template display update failed", ex);
                 System.Diagnostics.Debug.WriteLine($"Template display update failed: {ex.Message}");
             }
         }
@@ -631,8 +647,10 @@ namespace Photobooth
             };
 
             imageButton.Click += TemplateCard_Click;
-            Console.WriteLine($"Created template card for: {template.TemplateName}");
-            Console.WriteLine($"Button Tag set to: {imageButton.Tag?.GetType().Name}");
+            LoggingService.Application.Information("Created template card for",
+                ("TemplateName", template.TemplateName ?? "Unknown"));
+            LoggingService.Application.Information("Button Tag set to",
+                ("TagType", imageButton.Tag?.GetType().Name ?? "null"));
 
             container.Children.Add(imageButton);
             container.Children.Add(nameLabel);
@@ -657,6 +675,7 @@ namespace Photobooth
             }
             catch (Exception ex)
             {
+                LoggingService.Application.Error("Back button error", ex);
                 System.Diagnostics.Debug.WriteLine($"Back button error: {ex.Message}");
             }
         }
@@ -672,41 +691,49 @@ namespace Photobooth
         {
             try
             {
-                Console.WriteLine("=== TEMPLATE CARD CLICKED ===");
-                Console.WriteLine($"Sender type: {sender?.GetType().Name}");
+                LoggingService.Application.Information("Template card clicked");
+                LoggingService.Application.Information("Sender type",
+                    ("SenderType", sender?.GetType().Name ?? "null"));
                 
                 if (sender is Button button)
                 {
-                    Console.WriteLine($"Button found. Tag type: {button.Tag?.GetType().Name}");
-                    Console.WriteLine($"Button Tag value: {button.Tag}");
+                    LoggingService.Application.Information("Button found",
+                        ("ButtonType", button.Tag?.GetType().Name ?? "null"));
+                    LoggingService.Application.Information("Button Tag value",
+                        ("TagValue", button.Tag?.ToString() ?? "null"));
                     
                     if (button.Tag is TemplateInfo template)
                     {
-                        Console.WriteLine($"TemplateInfo found: {template.TemplateName}");
-                        Console.WriteLine($"Template Category: {template.Category}");
-                        Console.WriteLine($"Template Path: {template.PreviewImagePath}");
-                        Console.WriteLine($"TemplateSelected event subscribers: {TemplateSelected?.GetInvocationList()?.Length ?? 0}");
+                        LoggingService.Application.Information("TemplateInfo found",
+                            ("TemplateName", template.TemplateName ?? "Unknown"),
+                            ("TemplateCategory", template.Category ?? "Unknown"),
+                            ("TemplatePath", template.PreviewImagePath ?? "Unknown"));
+                        LoggingService.Application.Information("TemplateSelected event subscribers",
+                            ("SubscriberCount", TemplateSelected?.GetInvocationList()?.Length ?? 0));
                         
-                        Console.WriteLine("Invoking TemplateSelected event...");
+                        LoggingService.Application.Information("Invoking TemplateSelected event...");
                         TemplateSelected?.Invoke(this, new TemplateSelectedEventArgs(template));
-                        Console.WriteLine("TemplateSelected event invoked successfully");
+                        LoggingService.Application.Information("TemplateSelected event invoked successfully");
                     }
                     else
                     {
-                        Console.WriteLine("ERROR: Button.Tag is not TemplateInfo!");
-                        Console.WriteLine($"Actual Tag type: {button.Tag?.GetType().FullName ?? "null"}");
+                        LoggingService.Application.Error("ERROR: Button.Tag is not TemplateInfo!");
+                        LoggingService.Application.Information("Actual Tag type",
+                            ("ActualTagType", button.Tag?.GetType().FullName ?? "null"));
                     }
                 }
                 else
                 {
-                    Console.WriteLine("ERROR: Sender is not a Button!");
-                    Console.WriteLine($"Actual sender type: {sender?.GetType().FullName ?? "null"}");
+                    LoggingService.Application.Error("ERROR: Sender is not a Button!");
+                    LoggingService.Application.Information("Actual sender type",
+                        ("ActualSenderType", sender?.GetType().FullName ?? "null"));
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"EXCEPTION in TemplateCard_Click: {ex.Message}");
-                Console.WriteLine($"Stack trace: {ex.StackTrace}");
+                LoggingService.Application.Error("EXCEPTION in TemplateCard_Click", ex);
+                LoggingService.Application.Information("Stack trace",
+                    ("StackTrace", ex.StackTrace ?? "No stack trace available"));
                 System.Diagnostics.Debug.WriteLine($"Template selection error: {ex.Message}");
             }
         }
@@ -759,6 +786,7 @@ namespace Photobooth
             }
             catch (Exception ex)
             {
+                LoggingService.Application.Error("Error showing message", ex);
                 System.Diagnostics.Debug.WriteLine($"Error showing message: {ex.Message}");
             }
         }
@@ -807,6 +835,7 @@ namespace Photobooth
             }
             catch (Exception ex)
             {
+                LoggingService.Application.Error("Cleanup error", ex);
                 System.Diagnostics.Debug.WriteLine($"Cleanup error: {ex.Message}");
             }
         }
