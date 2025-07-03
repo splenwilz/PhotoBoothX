@@ -176,6 +176,9 @@ namespace Photobooth
         // Product ViewModels for new templated approach
         public ObservableCollection<ProductViewModel> ProductViewModels { get; set; } = new();
 
+        // Templates tab control instance
+        private Views.TemplatesTabControl? TemplatesTabControlInstance;
+
         #endregion
 
         #region Initialization
@@ -185,11 +188,68 @@ namespace Photobooth
         /// </summary>
         public AdminDashboardScreen(IDatabaseService databaseService)
         {
-            InitializeComponent();
-            _databaseService = databaseService;
-            InitializeTabMapping();
-            InitializeSalesData();
-            InitializeProductViewModels();
+
+            try
+            {
+
+
+                InitializeComponent();
+
+
+                _databaseService = databaseService;
+
+
+                InitializeTabMapping();
+
+
+                InitializeSalesData();
+
+
+                InitializeProductViewModels();
+
+
+                InitializeTemplatesTab();
+
+
+            }
+            catch (Exception ex)
+            {
+
+
+                if (ex.InnerException != null)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Inner Exception: {ex.InnerException.Message}");
+                }
+                throw; // Re-throw to prevent silent failures
+            }
+        }
+
+        /// <summary>
+        /// Initialize the Templates tab with the database service
+        /// </summary>
+        private void InitializeTemplatesTab()
+        {
+            try
+            {
+                // Create the TemplatesTabControl programmatically with proper dependency injection
+                var templatesControl = new Views.TemplatesTabControl(_databaseService);
+                
+                // Add it to the TemplatesTabContent grid
+                TemplatesTabContent.Children.Clear(); // Clear any existing content
+                TemplatesTabContent.Children.Add(templatesControl);
+                
+                // Store reference for later access if needed
+                TemplatesTabControlInstance = templatesControl;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error initializing Templates tab: {ex.Message}");
+                if (ex.InnerException != null)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Inner exception: {ex.InnerException.Message}");
+                }
+                // Don't throw here - let the admin screen continue without templates tab if needed
+            }
         }
 
         /// <summary>
@@ -346,10 +406,10 @@ namespace Photobooth
         /// </summary>
         public async System.Threading.Tasks.Task SetAccessLevel(AdminAccessLevel accessLevel, string? userId = null)
         {
-            Console.WriteLine($"SetAccessLevel called: accessLevel={accessLevel}, userId='{userId}'");
+
             _currentAccessLevel = accessLevel;
             _currentUserId = userId;
-            Console.WriteLine($"SetAccessLevel: _currentUserId set to '{_currentUserId}'");
+
             UpdateAccessLevelDisplay();
             await LoadInitialData();
         }
@@ -364,9 +424,9 @@ namespace Photobooth
                 await LoadSalesData();
                 await LoadSupplyStatus();
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Error refreshing sales data: {ex.Message}");
+
             }
         }
 
@@ -472,8 +532,22 @@ namespace Photobooth
                             await LoadProductsData();
                             break;
                         case "TemplatesTab":
+                            LoggingService.Application.Information("Templates tab clicked");
                             TemplatesTabContent.Visibility = Visibility.Visible;
                             BreadcrumbText.Text = "Templates";
+                            
+                            // Manually trigger optimized template loading for faster tab switching
+                            LoggingService.Application.Debug("Looking for TemplatesTabControl in TemplatesTabContent");
+                            var templatesControl = FindTemplatesTabControl(TemplatesTabContent);
+                            if (templatesControl != null)
+                            {
+                                LoggingService.Application.Debug("TemplatesTabControl found, triggering optimized load");
+                                await templatesControl.ManualLoadTemplatesAsync();
+                            }
+                            else
+                            {
+                                LoggingService.Application.Warning("TemplatesTabControl not found in TemplatesTabContent");
+                            }
                             break;
                         case "DiagnosticsTab":
                             DiagnosticsTabContent.Visibility = Visibility.Visible;
@@ -490,17 +564,16 @@ namespace Photobooth
                     }
                 }
             }
-            catch (Exception ex)
+            catch
             {
                 // Log the error for debugging
-                Console.WriteLine($"TabButton_Click error: {ex}");
-                
+
                 // Show user-friendly error message
                 try
                 {
                     NotificationService.Quick.Error("Failed to switch tabs. Please try again.");
                 }
-                catch
+                catch (Exception ex)
                 {
                     // Fallback if notification service fails
                     System.Diagnostics.Debug.WriteLine($"Critical error in TabButton_Click: {ex}");
@@ -577,8 +650,7 @@ namespace Photobooth
             try
             {
                 // Debug logging to see current user ID
-                Console.WriteLine($"SaveSettings_Click: _currentUserId = '{_currentUserId}'");
-                
+
                 if (string.IsNullOrEmpty(_currentUserId))
                 {
                     NotificationService.Quick.Warning("User session invalid, please login again.");
@@ -590,7 +662,7 @@ namespace Photobooth
                 {
                     SaveSettingsButton.IsEnabled = false;
                     SaveSettingsButton.Content = new StackPanel { Orientation = Orientation.Horizontal, Children = {
-                        new TextBlock { Text = "⏳", FontSize = 14, Margin = new Thickness(0,0,8,0) },
+                        new TextBlock { Text = "?", FontSize = 14, Margin = new Thickness(0,0,8,0) },
                         new TextBlock { Text = "Saving...", FontSize = 14 }
                     }};
                 }
@@ -609,7 +681,7 @@ namespace Photobooth
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"SaveSettings error: {ex}");
+
                 NotificationService.Quick.SettingsError(ex.Message);
             }
             finally
@@ -619,7 +691,7 @@ namespace Photobooth
                 {
                     SaveSettingsButton.IsEnabled = true;
                     SaveSettingsButton.Content = new StackPanel { Orientation = Orientation.Horizontal, Children = {
-                        new TextBlock { Text = "💾", FontSize = 14, Margin = new Thickness(0,0,8,0) },
+                        new TextBlock { Text = "??", FontSize = 14, Margin = new Thickness(0,0,8,0) },
                         new TextBlock { Text = "Save Settings", FontSize = 14 }
                     }};
                 }
@@ -633,21 +705,18 @@ namespace Photobooth
         {
             try
             {
-                Console.WriteLine($"SaveBusinessInformation: _currentUserId = '{_currentUserId}'");
-                
+
                 // Get business name and location from UI elements
                 var businessName = BusinessNameTextBox?.Text ?? "Downtown Event Center";
                 var location = LocationTextBox?.Text ?? "Main Street, Downtown";
                 var showLogo = ShowLogoToggle?.IsChecked == true;
-                
-                Console.WriteLine($"SaveBusinessInformation: Name='{businessName}', Location='{location}', ShowLogo={showLogo}, LogoPath='{_currentLogoPath}'");
 
                 // Check if business info already exists
                 var existingBusinessInfo = await _databaseService.GetAllAsync<BusinessInfo>();
                 
                 if (existingBusinessInfo.Success && existingBusinessInfo.Data?.Count > 0)
                 {
-                    Console.WriteLine("SaveBusinessInformation: Updating existing business info");
+
                     // Update existing
                     var businessInfo = existingBusinessInfo.Data[0];
                     businessInfo.BusinessName = businessName;
@@ -658,8 +727,7 @@ namespace Photobooth
                     businessInfo.UpdatedBy = _currentUserId; // Use string directly
 
                     var updateResult = await _databaseService.UpdateAsync(businessInfo);
-                    Console.WriteLine($"Business info update result: Success={updateResult.Success}, Error='{updateResult.ErrorMessage}'");
-                    
+
                     if (!updateResult.Success)
                     {
                         throw new Exception(updateResult.ErrorMessage ?? "Unknown error updating business info");
@@ -667,7 +735,7 @@ namespace Photobooth
                 }
                 else
                 {
-                    Console.WriteLine("SaveBusinessInformation: Creating new business info");
+
                     // Create new
                     var businessInfo = new BusinessInfo
                     {
@@ -680,19 +748,17 @@ namespace Photobooth
                     };
 
                     var insertResult = await _databaseService.InsertAsync(businessInfo);
-                    Console.WriteLine($"Business info insert result: Success={insertResult.Success}, Error='{insertResult.ErrorMessage}'");
-                    
+
                     if (!insertResult.Success)
                     {
                         throw new Exception(insertResult.ErrorMessage ?? "Unknown error creating business info");
                     }
                 }
-                
-                Console.WriteLine("SaveBusinessInformation: Completed successfully");
+
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"SaveBusinessInformation error: {ex}");
+
                 throw;
             }
         }
@@ -704,16 +770,15 @@ namespace Photobooth
         {
             try
             {
-                Console.WriteLine($"SaveOperationModeSettings: _currentUserId = '{_currentUserId}'");
-                
+
                 // NOTE: Product pricing and enabled states are now managed in the Products tab
                 // Only save operation mode here (Coin vs Free) - this is system-wide setting
                 var result = await _databaseService.SetSettingValueAsync("System", "Mode", _currentOperationMode, _currentUserId);
-                Console.WriteLine($"Mode save result: Success={result.Success}, Error='{result.ErrorMessage}'");
+
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"SaveOperationModeSettings error: {ex}");
+
                 throw new Exception($"Failed to save operation mode settings: {ex.Message}");
             }
         }
@@ -725,36 +790,29 @@ namespace Photobooth
         {
             try
             {
-                Console.WriteLine($"SaveSystemPreferences: _currentUserId = '{_currentUserId}'");
-                
+
                 // Get values from UI elements
                 var volume = (int)(VolumeSlider?.Value ?? 75);
                 var cameraFlash = CameraFlashToggle?.IsChecked == true;
                 var maintenanceMode = MaintenanceModeToggle?.IsChecked == true;
                 var rfidEnabled = RFIDDetectionToggle?.IsChecked == true;
                 var seasonalTemplates = SeasonalTemplatesToggle?.IsChecked == true;
-                
-                Console.WriteLine($"SaveSystemPreferences: Volume={volume}, Flash={cameraFlash}, Maintenance={maintenanceMode}, RFID={rfidEnabled}, Seasonal={seasonalTemplates}");
-                
+
                 // Save system preferences
                 var result1 = await _databaseService.SetSettingValueAsync("System", "Volume", volume, _currentUserId);
-                Console.WriteLine($"Volume save result: Success={result1.Success}, Error='{result1.ErrorMessage}'");
-                
+
                 var result2 = await _databaseService.SetSettingValueAsync("System", "LightsEnabled", cameraFlash, _currentUserId);
-                Console.WriteLine($"LightsEnabled save result: Success={result2.Success}, Error='{result2.ErrorMessage}'");
-                
+
                 var result3 = await _databaseService.SetSettingValueAsync("System", "MaintenanceMode", maintenanceMode, _currentUserId);
-                Console.WriteLine($"MaintenanceMode save result: Success={result3.Success}, Error='{result3.ErrorMessage}'");
-                
+
                 var result4 = await _databaseService.SetSettingValueAsync("RFID", "Enabled", rfidEnabled, _currentUserId);
-                Console.WriteLine($"RFID Enabled save result: Success={result4.Success}, Error='{result4.ErrorMessage}'");
-                
+
                 var result5 = await _databaseService.SetSettingValueAsync("Seasonal", "AutoTemplates", seasonalTemplates, _currentUserId);
-                Console.WriteLine($"AutoTemplates save result: Success={result5.Success}, Error='{result5.ErrorMessage}'");
+
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"SaveSystemPreferences error: {ex}");
+
                 throw new Exception($"Failed to save system preferences: {ex.Message}");
             }
         }
@@ -1181,9 +1239,9 @@ namespace Photobooth
                     }
                 }
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"LoadUsersList error: {ex}");
+
                 if (NoUsersMessage != null)
                 {
                     NoUsersMessage.Text = "Error loading users";
@@ -1267,7 +1325,7 @@ namespace Photobooth
             {
                 var deleteButton = new Button
                 {
-                    Content = "🗑️",
+                    Content = "???",
                     FontSize = 14,
                     Width = 28,
                     Height = 28,
@@ -1322,8 +1380,7 @@ namespace Photobooth
         {
             try
             {
-                Console.WriteLine($"DeleteUser_Click: Attempting to delete user '{user.DisplayName}' ({user.UserId})");
-                
+
                 // Prevent self-deletion
                 if (user.UserId == _currentUserId)
                 {
@@ -1346,8 +1403,7 @@ namespace Photobooth
 
                 if (confirmed)
                 {
-                    Console.WriteLine($"DeleteUser_Click: User confirmed deletion of '{user.DisplayName}'");
-                    
+
                     // Delete the user
                     var deleteResult = await _databaseService.DeleteAdminUserAsync(user.UserId, _currentUserId);
                     
@@ -1365,12 +1421,12 @@ namespace Photobooth
                 }
                 else
                 {
-                    Console.WriteLine($"DeleteUser_Click: User cancelled deletion of '{user.DisplayName}'");
+
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"DeleteUser_Click error: {ex}");
+
                 NotificationService.Quick.Error($"An error occurred while deleting the user: {ex.Message}");
             }
         }
@@ -1392,10 +1448,10 @@ namespace Photobooth
                     foreach (var child in stackPanel.Children)
                     {
                         if (child is TextBlock textBlock && !string.IsNullOrEmpty(textBlock.Text) &&
-                            !textBlock.Text.Contains("📊") && !textBlock.Text.Contains("⚙️") &&
-                            !textBlock.Text.Contains("📦") && !textBlock.Text.Contains("📅") &&
-                            !textBlock.Text.Contains("🔧") && !textBlock.Text.Contains("💻") &&
-                            !textBlock.Text.Contains("💰"))
+                            !textBlock.Text.Contains("??") && !textBlock.Text.Contains("??") &&
+                            !textBlock.Text.Contains("??") && !textBlock.Text.Contains("??") &&
+                            !textBlock.Text.Contains("??") && !textBlock.Text.Contains("??") &&
+                            !textBlock.Text.Contains("??"))
                         {
                             return textBlock.Text;
                         }
@@ -1405,9 +1461,9 @@ namespace Photobooth
                 // Fallback to button name
                 return button.Name?.Replace("Tab", "") ?? string.Empty;
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Error getting tab name: {ex.Message}");
+
                 return string.Empty;
             }
         }
@@ -1430,9 +1486,9 @@ namespace Photobooth
                     BreadcrumbText.Text = tabName;
                 }
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Error updating breadcrumb: {ex.Message}");
+
             }
         }
 
@@ -1459,9 +1515,9 @@ namespace Photobooth
                 MonthSales.Text = $"${_salesData.Month.Amount:F2}";
                 YearSales.Text = $"${_salesData.Year.Amount:F2}";
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Error updating sales display: {ex.Message}");
+
             }
         }
 
@@ -1493,9 +1549,9 @@ namespace Photobooth
                 PrintsProgressBar.Background = brush;
                 PrintsProgressIndicator.Background = brush;
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Error updating print status: {ex.Message}");
+
             }
         }
 
@@ -1530,9 +1586,9 @@ namespace Photobooth
                 var yearSales = await CalculatePeriodSales(yearStart, DateTime.Today);
                 YearSales.Text = $"${yearSales:F2}";
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Error loading sales data: {ex.Message}");
+
                 // Set default values on error
                 TodaySales.Text = "$0.00";
                 WeekSales.Text = "$0.00";
@@ -1556,9 +1612,9 @@ namespace Photobooth
                     return total;
                 }
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Error calculating period sales: {ex.Message}");
+
             }
             return 0;
         }
@@ -1601,9 +1657,9 @@ namespace Photobooth
                     }
                 }
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Error loading supply status: {ex.Message}");
+
             }
         }
 
@@ -1624,9 +1680,9 @@ namespace Photobooth
                     CurrentModeText.Text = "Coin Operated";
                 }
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Error loading system settings: {ex.Message}");
+
             }
         }
 
@@ -1727,17 +1783,17 @@ namespace Photobooth
                                 if (LogoPlaceholderText != null)
                                     LogoPlaceholderText.Visibility = Visibility.Collapsed;
                             }
-                            catch (Exception ex)
+                            catch
                             {
-                                Console.WriteLine($"Failed to load existing logo: {ex.Message}");
+
                             }
                         }
                     }
                 }
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Error loading business information: {ex.Message}");
+
             }
             
             // Also initialize operation mode UI
@@ -1750,9 +1806,9 @@ namespace Photobooth
                 // Load operation mode only (products are now managed in Products tab)
                 await LoadOperationMode();
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Error loading operation mode settings: {ex.Message}");
+
             }
         }
 
@@ -1803,9 +1859,9 @@ namespace Photobooth
                 }
 #pragma warning restore CS0472
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Error loading system preferences: {ex.Message}");
+
             }
         }
 
@@ -1823,29 +1879,29 @@ namespace Photobooth
 
             try
             {
-                Console.WriteLine("LoadProductsData: Starting to load products from database...");
+
                 var result = await _databaseService.GetProductsAsync();
                 if (result.Success && result.Data != null)
                 {
                     _products = result.Data;
-                    Console.WriteLine($"LoadProductsData: Loaded {_products.Count} products successfully");
+
                     foreach (var product in _products)
                     {
-                        Console.WriteLine($"LoadProductsData: Product - ID: {product.Id}, Name: {product.Name}, Price: {product.Price}, Active: {product.IsActive}");
+
                     }
                     UpdateProductsUI();
                 }
                 else
                 {
-                    Console.WriteLine($"LoadProductsData: Failed to load products: {result.ErrorMessage}");
+
                 }
 
                 // Load operation mode
                 await LoadOperationMode();
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"LoadProductsData: Error loading products: {ex.Message}");
+
             }
             finally
             {
@@ -1893,9 +1949,9 @@ namespace Photobooth
                 _hasUnsavedChanges = false;
                 UpdateSaveButtonState();
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Error updating products UI: {ex.Message}");
+
             }
         }
 
@@ -1922,9 +1978,9 @@ namespace Photobooth
                     UpdateOperationModeUI();
                 }
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Error loading operation mode: {ex.Message}");
+
             }
         }
 
@@ -1948,9 +2004,9 @@ namespace Photobooth
                     UpdateModeCardStyles(true);
                 }
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Error updating operation mode UI: {ex.Message}");
+
             }
         }
 
@@ -1976,9 +2032,9 @@ namespace Photobooth
                     ProductCoinOperatedCard.BorderThickness = new Thickness(1);
                 }
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Error updating mode card styles: {ex.Message}");
+
             }
         }
 
@@ -2048,7 +2104,7 @@ namespace Photobooth
                         Orientation = Orientation.Horizontal,
                         Children =
                         {
-                            new TextBlock { Text = "💾", FontSize = 16, Margin = new Thickness(0, 0, 8, 0) },
+                            new TextBlock { Text = "??", FontSize = 16, Margin = new Thickness(0, 0, 8, 0) },
                             new TextBlock { Text = "Save Changes" }
                         }
                     };
@@ -2061,15 +2117,15 @@ namespace Photobooth
                         Orientation = Orientation.Horizontal,
                         Children =
                         {
-                            new TextBlock { Text = "💾", FontSize = 16, Margin = new Thickness(0, 0, 8, 0) },
+                            new TextBlock { Text = "??", FontSize = 16, Margin = new Thickness(0, 0, 8, 0) },
                             new TextBlock { Text = "Save Configuration" }
                         }
                     };
                 }
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Error updating save button state: {ex.Message}");
+
             }
         }
 
@@ -2086,7 +2142,7 @@ namespace Photobooth
                     Orientation = Orientation.Horizontal,
                     Children =
                     {
-                        new TextBlock { Text = "⏳", FontSize = 16, Margin = new Thickness(0, 0, 8, 0) },
+                        new TextBlock { Text = "?", FontSize = 16, Margin = new Thickness(0, 0, 8, 0) },
                         new TextBlock { Text = "Saving..." }
                     }
                 };
@@ -2103,7 +2159,7 @@ namespace Photobooth
                     Orientation = Orientation.Horizontal,
                     Children =
                     {
-                        new TextBlock { Text = "✅", FontSize = 16, Margin = new Thickness(0, 0, 8, 0) },
+                        new TextBlock { Text = "?", FontSize = 16, Margin = new Thickness(0, 0, 8, 0) },
                         new TextBlock { Text = "Saved!" }
                     }
                 };
@@ -2112,10 +2168,9 @@ namespace Photobooth
                 await Task.Delay(2000);
                 UpdateSaveButtonState();
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Error saving product configuration: {ex.Message}");
-                
+
                 // Show error feedback
                 SaveProductConfigButton.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#DC2626"));
                 SaveProductConfigButton.Content = new StackPanel
@@ -2123,7 +2178,7 @@ namespace Photobooth
                     Orientation = Orientation.Horizontal,
                     Children =
                     {
-                        new TextBlock { Text = "❌", FontSize = 16, Margin = new Thickness(0, 0, 8, 0) },
+                        new TextBlock { Text = "?", FontSize = 16, Margin = new Thickness(0, 0, 8, 0) },
                         new TextBlock { Text = "Error saving" }
                     }
                 };
@@ -2155,24 +2210,21 @@ namespace Photobooth
                     
                     foreach (var errorViewModel in validationErrors)
                     {
-                        errorDetails.Add($"• {errorViewModel.Name}: {errorViewModel.ValidationError}");
+                        errorDetails.Add($"? {errorViewModel.Name}: {errorViewModel.ValidationError}");
                     }
                     
                     errorDetails.Add(""); // Empty line for readability
                     errorDetails.Add("Please fix these errors and try again.");
                     
                     var detailedErrorMessage = string.Join(Environment.NewLine, errorDetails);
-                    Console.WriteLine($"SaveProductConfiguration: Validation errors found:{Environment.NewLine}{detailedErrorMessage}");
+
                     throw new InvalidOperationException(detailedErrorMessage);
                 }
 
-                Console.WriteLine($"SaveProductConfiguration: Starting save. Products count: {_products.Count}");
-                
                 // Update products in database using ViewModels
                 foreach (var product in _products)
                 {
-                    Console.WriteLine($"SaveProductConfiguration: Processing product: {product.Name} (ID: {product.Id})");
-                    
+
                     bool newStatus = false;
                     decimal newPrice = 0;
 
@@ -2195,7 +2247,6 @@ namespace Photobooth
                     {
                         newStatus = viewModel.IsEnabled;
                         newPrice = viewModel.Price;
-                        Console.WriteLine($"SaveProductConfiguration: {product.Name} - Status: {newStatus}, Price: {newPrice}");
 
                         // Check what needs to be updated
                         bool statusChanged = product.IsActive != newStatus;
@@ -2206,11 +2257,7 @@ namespace Photobooth
                             // Collect all changes for atomic update
                             bool? statusUpdate = statusChanged ? newStatus : null;
                             decimal? priceUpdate = priceChanged ? newPrice : null;
-                            
-                            Console.WriteLine($"SaveProductConfiguration: Updating product {product.Name} atomically - " +
-                                            $"Status: {(statusChanged ? $"{product.IsActive} → {newStatus}" : "unchanged")}, " +
-                                            $"Price: {(priceChanged ? $"${product.Price:F2} → ${newPrice:F2}" : "unchanged")}");
-                            
+
                             // Perform atomic update
                             var updateResult = await _databaseService.UpdateProductAsync(product.Id, statusUpdate, priceUpdate);
                             
@@ -2228,12 +2275,11 @@ namespace Photobooth
                             {
                                 product.Price = newPrice;
                             }
-                            
-                            Console.WriteLine($"SaveProductConfiguration: Product {product.Name} updated successfully");
+
                         }
                         else
                         {
-                            Console.WriteLine($"SaveProductConfiguration: No changes detected for product {product.Name}");
+
                         }
 
                         // Mark ViewModel as saved
@@ -2244,16 +2290,37 @@ namespace Photobooth
                 // Save operation mode
                 await _databaseService.SetSettingValueAsync("System", "Mode", _currentOperationMode, _currentUserId);
 
-                Console.WriteLine("Product configuration saved successfully");
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Error saving product configuration: {ex.Message}");
+
                 throw;
             }
         }
 
         #endregion
+
+        /// <summary>
+        /// Helper method to find TemplatesTabControl in the content
+        /// </summary>
+        private Views.TemplatesTabControl? FindTemplatesTabControl(Panel parent)
+        {
+            foreach (var child in parent.Children)
+            {
+                if (child is Views.TemplatesTabControl templatesControl)
+                {
+                    return templatesControl;
+                }
+                
+                if (child is Panel childPanel)
+                {
+                    var found = FindTemplatesTabControl(childPanel);
+                    if (found != null) return found;
+                }
+            }
+            return null;
+        }
+
     }
 
     #region Data Models

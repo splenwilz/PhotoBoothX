@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
-using Microsoft.Data.Sqlite;
-using System.IO;
-using System.Threading.Tasks;
+using System.Data;
 using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
+using Microsoft.Data.Sqlite;
 using Photobooth.Models;
 using System.Security.Cryptography;
 using System.Text;
@@ -30,6 +32,28 @@ namespace Photobooth.Services
         Task<DatabaseResult<List<SalesOverviewDto>>> GetSalesOverviewAsync(DateTime? startDate = null, DateTime? endDate = null);
         Task<DatabaseResult<DailySalesSummary?>> GetDailySalesAsync(DateTime date);
         Task<DatabaseResult<List<PopularTemplateDto>>> GetPopularTemplatesAsync(int limit = 10);
+        Task<DatabaseResult<List<Template>>> GetAllTemplatesAsync(bool showAllSeasons = false);
+        Task<DatabaseResult<List<Template>>> GetTemplatesByTypeAsync(TemplateType templateType, bool showAllSeasons = false);
+        Task<DatabaseResult<Template>> CreateTemplateAsync(Template template);
+        Task<DatabaseResult<Template>> UpdateTemplateAsync(int templateId, string? name = null, bool? isActive = null, decimal? price = null, int? categoryId = null, string? description = null, int? sortOrder = null, int? photoCount = null, TemplateType? templateType = null);
+        Task<DatabaseResult> BulkUpdateTemplateCategoryAsync(List<int> templateIds, int categoryId);
+        Task<DatabaseResult> UpdateTemplatePathsAsync(int templateId, string folderPath, string templatePath, string previewPath);
+        Task<DatabaseResult> UpdateTemplateFileSizeAsync(int templateId, long fileSize);
+        Task<DatabaseResult> DeleteTemplateAsync(int templateId);
+        Task<DatabaseResult<List<TemplateCategory>>> GetTemplateCategoriesAsync();
+        Task<DatabaseResult<List<TemplateCategory>>> GetAllTemplateCategoriesAsync();
+        Task<DatabaseResult<TemplateCategory>> CreateTemplateCategoryAsync(string name, string description = "", 
+            bool isSeasonalCategory = false, string? seasonStartDate = null, string? seasonEndDate = null, int seasonalPriority = 0, bool isPremium = false);
+        Task<DatabaseResult<TemplateCategory>> UpdateTemplateCategoryAsync(int categoryId, string name, string description = "",
+            bool isSeasonalCategory = false, string? seasonStartDate = null, string? seasonEndDate = null, int seasonalPriority = 0, bool isPremium = false);
+        Task<DatabaseResult> UpdateTemplateCategoryStatusAsync(int categoryId, bool isActive);
+        Task<DatabaseResult> DeleteTemplateCategoryAsync(int categoryId);
+        Task<DatabaseResult<List<Template>>> GetTemplatesByCategoryAsync(int categoryId);
+        Task<DatabaseResult<List<TemplateLayout>>> GetTemplateLayoutsAsync();
+        Task<DatabaseResult<TemplateLayout?>> GetTemplateLayoutAsync(string layoutId);
+        Task<DatabaseResult<TemplateLayout?>> GetTemplateLayoutByKeyAsync(string layoutKey);
+        Task<DatabaseResult<List<TemplatePhotoArea>>> GetTemplatePhotoAreasAsync(string layoutId);
+        Task<DatabaseResult<Dictionary<string, List<TemplatePhotoArea>>>> GetPhotoAreasByLayoutIdsAsync(List<string> layoutIds);
         Task<DatabaseResult<List<HardwareStatusDto>>> GetHardwareStatusAsync();
         Task<DatabaseResult<PrintSupply?>> GetPrintSupplyAsync(SupplyType supplyType);
         Task<DatabaseResult> UpdatePrintSupplyAsync(SupplyType supplyType, int newCount);
@@ -43,8 +67,8 @@ namespace Photobooth.Services
         Task<DatabaseResult<List<Setting>>> GetSettingsByCategoryAsync(string category);
         Task<DatabaseResult<T?>> GetSettingValueAsync<T>(string category, string key);
         Task<DatabaseResult> SetSettingValueAsync<T>(string category, string key, T value, string? updatedBy = null);
-        Task<DatabaseResult> LogSystemEventAsync(LogLevel level, string category, string message, string? details = null, string? userId = null);
         Task<DatabaseResult> CleanupProductSettingsAsync();
+        Task<DatabaseResult<SystemDateStatus>> GetSystemDateStatusAsync();
     }
 
     public class DatabaseService : IDatabaseService
@@ -71,59 +95,50 @@ namespace Photobooth.Services
                 
                 // Ensure directory exists
                 var directory = Path.GetDirectoryName(_databasePath);
-                Console.WriteLine($"Database directory: {directory}");
-                
+
                 if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
                 {
-                    Console.WriteLine("Creating database directory...");
+
                     Directory.CreateDirectory(directory);
-                    Console.WriteLine($"Directory created successfully: {directory}");
+
                 }
                 else if (!string.IsNullOrEmpty(directory))
                 {
-                    Console.WriteLine($"Directory already exists: {directory}");
+
                 }
 
-                Console.WriteLine("Opening database connection...");
                 using var connection = new SqliteConnection(_connectionString);
                 await connection.OpenAsync();
-                Console.WriteLine("Database connection opened successfully");
 
                 // Check if database is already initialized
                 var checkQuery = "SELECT name FROM sqlite_master WHERE type='table' AND name='AdminUsers';";
                 using var checkCommand = new SqliteCommand(checkQuery, connection);
                 var tableExists = await checkCommand.ExecuteScalarAsync();
-                
-                Console.WriteLine($"AdminUsers table exists: {tableExists != null}");
-                
+
                 if (tableExists != null)
                 {
                     // Database already initialized - check for and apply migrations
-                    Console.WriteLine("Database already initialized, applying migrations...");
+
                     await ApplyMigrations(connection);
-                    Console.WriteLine("Database initialization completed (existing database)");
+
                     return DatabaseResult.SuccessResult();
                 }
 
                 // Database needs initialization - read and execute schema
                 var schemaPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Database_Schema.sql");
-                Console.WriteLine($"Schema file path: {schemaPath}");
-                
+
                 if (!File.Exists(schemaPath))
                 {
                     var errorMsg = $"Database schema file not found at: {schemaPath}";
-                    Console.WriteLine(errorMsg);
+
                     return DatabaseResult.ErrorResult(errorMsg);
                 }
 
-                Console.WriteLine("Reading schema file...");
                 var schemaScript = await File.ReadAllTextAsync(schemaPath);
-                Console.WriteLine($"Schema file read successfully. Length: {schemaScript.Length} characters");
 
                 // Split and execute commands
                 var commands = schemaScript.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
-                Console.WriteLine($"Found {commands.Length} SQL commands to execute");
-                
+
                 using var transaction = connection.BeginTransaction();
                 try
                 {
@@ -131,8 +146,10 @@ namespace Photobooth.Services
                     foreach (var commandText in commands)
                     {
                         commandIndex++;
-                        Console.WriteLine($"Processing command {commandIndex}/{commands.Length}");
-                        
+                        LoggingService.Application.Information("Executing database command",
+                            ("CommandIndex", commandIndex),
+                            ("CommandLength", commands.Length));
+
                         // Clean up the command - remove comments and whitespace
                         var lines = commandText.Split('\n');
                         var cleanLines = new List<string>();
@@ -164,80 +181,83 @@ namespace Photobooth.Services
                         
                         if (cleanLines.Count == 0)
                         {
-                            Console.WriteLine($"Command {commandIndex} is empty after cleaning, skipping");
+                            LoggingService.Application.Information("Skipping empty command",
+                                ("CommandIndex", commandIndex));
                             continue;
                         }
                         
                         var trimmedCommand = string.Join(" ", cleanLines);
-                        Console.WriteLine($"Executing command {commandIndex}: {trimmedCommand.Substring(0, Math.Min(100, trimmedCommand.Length))}...");
+                        LoggingService.Application.Information("Executing",
+                            ("Command", trimmedCommand.Substring(0, Math.Min(50, trimmedCommand.Length))));
 
                         using var command = new SqliteCommand(trimmedCommand, connection, transaction);
                         await command.ExecuteNonQueryAsync();
-                        Console.WriteLine($"Command {commandIndex} executed successfully");
+                        LoggingService.Application.Information("Command executed successfully",
+                            ("CommandIndex", commandIndex));
                     }
 
-                    Console.WriteLine("Committing transaction...");
+                    LoggingService.Application.Information("Committing transaction...");
                     await transaction.CommitAsync();
-                    Console.WriteLine("Transaction committed successfully");
-                    
+                    LoggingService.Application.Information("Transaction committed successfully");
+
                     // Create default admin users (only for new database)
-                    Console.WriteLine("Creating default admin users...");
+                    LoggingService.Application.Information("Creating default admin users...");
                     await CreateDefaultAdminUserDirect(connection);
-                    Console.WriteLine("Default admin users created successfully");
-                    
+                    LoggingService.Application.Information("Default admin users created");
+
                     // Create default system settings (only for new database)
-                    Console.WriteLine("Creating default system settings...");
+                    LoggingService.Application.Information("Creating default settings...");
                     await CreateDefaultSettingsDirect(connection);
-                    Console.WriteLine("Default system settings created successfully");
-                    
-                    Console.WriteLine("Database initialization completed successfully");
+                    LoggingService.Application.Information("Default settings created");
+
+                    LoggingService.Application.Information("Database initialization completed successfully!");
                     return DatabaseResult.SuccessResult();
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Transaction error: {ex.Message}");
-                    Console.WriteLine($"Stack trace: {ex.StackTrace}");
+                    LoggingService.Application.Error("Database initialization error", ex,
+                        ("ErrorMessage", ex.Message),
+                        ("StackTrace", ex.StackTrace ?? "No stack trace available"));
+                    LoggingService.Application.Error("Rolling back transaction");
                     await transaction.RollbackAsync();
+                    LoggingService.Application.Error("Transaction rolled back");
                     throw;
                 }
             }
             catch (Exception ex)
             {
                 var errorMsg = $"Database initialization failed: {ex.Message}";
-                Console.WriteLine(errorMsg);
-                Console.WriteLine($"Stack trace: {ex.StackTrace}");
+
+
                 return DatabaseResult.ErrorResult(errorMsg, ex);
             }
         }
 
         private async Task ApplyMigrations(SqliteConnection connection)
         {
-            Console.WriteLine("ApplyMigrations: Checking database schema version...");
-            
+
             try
             {
                 // Get current schema version
                 var currentVersion = await GetDatabaseVersionAsync(connection);
                 var expectedVersion = GetExpectedSchemaVersion();
-                
-                Console.WriteLine($"ApplyMigrations: Current DB version: {currentVersion}, Expected: {expectedVersion}");
-                
+
                 if (currentVersion == expectedVersion)
                 {
-                    Console.WriteLine("ApplyMigrations: Database schema is up to date");
+
                     return;
                 }
                 
                 // Apply incremental migrations for version differences
-                ApplyIncrementalMigrations(connection, currentVersion, expectedVersion);
+                await ApplyIncrementalMigrations(connection, currentVersion, expectedVersion);
                 
                 // Update database version
                 await SetDatabaseVersionAsync(connection, expectedVersion);
-                Console.WriteLine($"ApplyMigrations: Database updated to version {expectedVersion}");
+
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"ApplyMigrations: Error during migration: {ex.Message}");
+
                 // For now, continue - in the future could implement rollback logic
             }
         }
@@ -278,9 +298,9 @@ namespace Photobooth.Services
                 var result = await versionCmd.ExecuteScalarAsync();
                 return result != null ? Convert.ToInt32(result) : 1;
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"GetDatabaseVersionAsync error: {ex.Message}");
+
                 return 1; // Default to version 1
             }
         }
@@ -295,26 +315,29 @@ namespace Photobooth.Services
                 cmd.Parameters.AddWithValue("@updatedAt", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
                 await cmd.ExecuteNonQueryAsync();
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"SetDatabaseVersionAsync error: {ex.Message}");
+
             }
         }
         
         private int GetExpectedSchemaVersion()
         {
-            // Current schema version - increment this when making schema changes
-            return 1;
+            return 1; // Keep at version 1 during development - we recreate DB instead of migrating
         }
         
-        private void ApplyIncrementalMigrations(SqliteConnection connection, int fromVersion, int toVersion)
+        /// <summary>
+        /// Apply incremental database migrations (production only)
+        /// During development phase: No migrations - schema changes go directly into Database_Schema.sql
+        /// After v1.0 release: Implement proper migrations for production database updates
+        /// </summary>
+        private async Task ApplyIncrementalMigrations(SqliteConnection connection, int fromVersion, int toVersion)
         {
-            Console.WriteLine($"ApplyIncrementalMigrations: Migrating from v{fromVersion} to v{toVersion}");
-            
-            // No migrations needed during development - database will be recreated with latest schema
-            Console.WriteLine("ApplyIncrementalMigrations: No migrations required during development");
+            // Development phase: No migrations needed - just recreate DB with updated schema
+            // Production phase (post v1.0): Implement version-specific migrations here
+            await Task.CompletedTask;
         }
-
+        
 
 
         public async Task<DatabaseResult<List<T>>> GetAllAsync<T>() where T : class, new()
@@ -648,7 +671,11 @@ namespace Photobooth.Services
                 command.Parameters.AddWithValue("@accessLevel", accessLevel.ToString());
 
                 await command.ExecuteNonQueryAsync();
-                await LogSystemEventAsync(LogLevel.Info, "AdminUsers", $"Admin password updated for {accessLevel}", null, updatedBy);
+                
+                // Use file-based logging instead of database logging
+                LoggingService.Application.Information("Admin password updated",
+                    ("AccessLevel", accessLevel.ToString()),
+                    ("UpdatedBy", updatedBy ?? "Unknown"));
                 
                 return DatabaseResult.SuccessResult();
             }
@@ -680,7 +707,10 @@ namespace Photobooth.Services
 
                 await command.ExecuteNonQueryAsync();
                 
-                await LogSystemEventAsync(LogLevel.Info, "AdminUsers", $"User password updated for userId: {userId} - setup credentials converted to user-managed");
+                // Use file-based logging instead of database logging
+                LoggingService.Application.Information("User password updated - setup credentials converted",
+                    ("UserId", userId),
+                    ("UpdatedBy", updatedBy ?? "Self"));
                 
                 return DatabaseResult.SuccessResult();
             }
@@ -694,27 +724,10 @@ namespace Photobooth.Services
         {
             try
             {
-                Console.WriteLine($"CreateAdminUserAsync: Creating user '{user.Username}' with UserId='{user.UserId}', CreatedBy='{createdBy}'");
-                
-                // Check if the createdBy user exists (if specified)
-                if (!string.IsNullOrEmpty(createdBy))
-                {
-                    var checkQuery = "SELECT COUNT(*) FROM AdminUsers WHERE UserId = @createdBy";
-                    using var checkConnection = new SqliteConnection(_connectionString);
-                    await checkConnection.OpenAsync();
-                    using var checkCommand = new SqliteCommand(checkQuery, checkConnection);
-                    checkCommand.Parameters.AddWithValue("@createdBy", createdBy);
-                    var count = Convert.ToInt32(await checkCommand.ExecuteScalarAsync());
-                    Console.WriteLine($"CreateAdminUserAsync: CreatedBy user '{createdBy}' exists: {count > 0}");
-                    
-                    if (count == 0)
-                    {
-                        Console.WriteLine($"CreateAdminUserAsync: Warning - CreatedBy user '{createdBy}' not found, setting to NULL");
-                        createdBy = null;
-                    }
-                }
-                
-                var query = "INSERT INTO AdminUsers (UserId, Username, DisplayName, PasswordHash, AccessLevel, IsActive, CreatedAt, UpdatedAt, CreatedBy, UpdatedBy) VALUES (@userId, @username, @displayName, @passwordHash, @accessLevel, @isActive, @createdAt, @updatedAt, @createdBy, @updatedBy)";
+
+                var query = @"
+                    INSERT INTO AdminUsers (UserId, Username, DisplayName, PasswordHash, AccessLevel, IsActive, CreatedAt, UpdatedAt, CreatedBy, UpdatedBy)
+                    VALUES (@userId, @username, @displayName, @passwordHash, @accessLevel, @isActive, @createdAt, @updatedAt, @createdBy, @updatedBy)";
 
                 using var connection = new SqliteConnection(_connectionString);
                 await connection.OpenAsync();
@@ -730,17 +743,19 @@ namespace Photobooth.Services
                 command.Parameters.AddWithValue("@createdBy", (object?)createdBy ?? DBNull.Value);
                 command.Parameters.AddWithValue("@updatedBy", (object?)createdBy ?? DBNull.Value);
 
-                Console.WriteLine($"CreateAdminUserAsync: Executing query with parameters - UserId={user.UserId}, Username={user.Username}, CreatedBy={createdBy}");
                 await command.ExecuteNonQueryAsync();
-                Console.WriteLine($"CreateAdminUserAsync: User '{user.Username}' created successfully");
-                
-                await LogSystemEventAsync(LogLevel.Info, "AdminUsers", $"Admin user {user.Username} created");
+
+                // Use file-based logging instead of database logging
+                LoggingService.Application.Information("Admin user created",
+                    ("Username", user.Username),
+                    ("AccessLevel", user.AccessLevel.ToString()),
+                    ("CreatedBy", createdBy ?? "System"));
                 
                 return DatabaseResult.SuccessResult();
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"CreateAdminUserAsync error: {ex}");
+
                 return DatabaseResult.ErrorResult($"Failed to create admin user: {ex.Message}", ex);
             }
         }
@@ -878,6 +893,1278 @@ namespace Photobooth.Services
             }
         }
 
+        public async Task<DatabaseResult<List<Template>>> GetAllTemplatesAsync(bool showAllSeasons = false)
+        {
+            try
+            {
+                var templates = new List<Template>();
+                
+                var query = @"
+                    SELECT 
+                        t.Id, t.Name, t.CategoryId, t.LayoutId,
+                        t.FolderPath, t.TemplatePath, t.PreviewPath,
+                        t.IsActive, t.Price, t.SortOrder, t.FileSize,
+                        t.Description, t.UploadedAt, t.UploadedBy, t.TemplateType,
+                        tc.Name as CategoryName, tc.IsSeasonalCategory, tc.SeasonStartDate, tc.SeasonEndDate, tc.SeasonalPriority, tc.SortOrder as CategorySortOrder,
+                        tl.Name as LayoutName, tl.LayoutKey, tl.Width, tl.Height, tl.PhotoCount, tl.ProductCategoryId,
+                        pc.Name as ProductCategoryName,
+                        -- Calculate effective priority for seasonal ordering
+                        CASE 
+                            WHEN tc.IsSeasonalCategory = 1 AND (
+                                -- Normal seasons (start <= end): check if current date is within range
+                                (tc.SeasonStartDate <= tc.SeasonEndDate AND strftime('%m-%d', 'now') BETWEEN tc.SeasonStartDate AND tc.SeasonEndDate)
+                                OR
+                                -- Cross-year seasons (start > end): check if current date is in either part of the range
+                                (tc.SeasonStartDate > tc.SeasonEndDate AND (strftime('%m-%d', 'now') >= tc.SeasonStartDate OR strftime('%m-%d', 'now') <= tc.SeasonEndDate))
+                            ) THEN tc.SeasonalPriority
+                            ELSE 0
+                        END as EffectivePriority
+                    FROM Templates t
+                    LEFT JOIN TemplateCategories tc ON t.CategoryId = tc.Id
+                    LEFT JOIN TemplateLayouts tl ON t.LayoutId = tl.Id
+                    LEFT JOIN ProductCategories pc ON tl.ProductCategoryId = pc.Id
+                    ORDER BY 
+                        -- First: Active seasonal categories by their priority (highest first)
+                        CASE 
+                            WHEN tc.IsSeasonalCategory = 1 AND (
+                                -- Normal seasons (start <= end): check if current date is within range
+                                (tc.SeasonStartDate <= tc.SeasonEndDate AND strftime('%m-%d', 'now') BETWEEN tc.SeasonStartDate AND tc.SeasonEndDate)
+                                OR
+                                -- Cross-year seasons (start > end): check if current date is in either part of the range
+                                (tc.SeasonStartDate > tc.SeasonEndDate AND (strftime('%m-%d', 'now') >= tc.SeasonStartDate OR strftime('%m-%d', 'now') <= tc.SeasonEndDate))
+                            ) THEN tc.SeasonalPriority
+                            ELSE 0
+                        END DESC,
+                        -- Then: Regular category sort order
+                        tc.SortOrder ASC,
+                        -- Finally: Template sort order within category
+                        t.SortOrder ASC";
+
+                using (var connection = new SqliteConnection(_connectionString))
+                {
+                    await connection.OpenAsync();
+                    using (var command = new SqliteCommand(query, connection))
+                    {
+                        using (var reader = await command.ExecuteReaderAsync())
+                        {
+                            while (await reader.ReadAsync())
+                            {
+                                var template = new Template
+                                {
+                                    Id = GetIntValue(reader, "Id"),
+                                    Name = GetStringValue(reader, "Name"),
+                                    CategoryId = GetIntValue(reader, "CategoryId"),
+                                    LayoutId = GetStringValue(reader, "LayoutId"),
+                                    FolderPath = GetStringValue(reader, "FolderPath"),
+                                    TemplatePath = GetStringValue(reader, "TemplatePath"),
+                                    PreviewPath = GetStringValue(reader, "PreviewPath"),
+                                    IsActive = GetBoolValue(reader, "IsActive"),
+                                    Price = (decimal)GetDoubleValue(reader, "Price"),
+                                    SortOrder = GetIntValue(reader, "SortOrder"),
+                                    FileSize = GetLongValue(reader, "FileSize"),
+                                    Description = GetStringValue(reader, "Description"),
+                                    UploadedAt = DateTime.Parse(GetStringValue(reader, "UploadedAt")),
+                                    UploadedBy = GetStringValue(reader, "UploadedBy"),
+                                    TemplateType = (TemplateType)GetIntValue(reader, "TemplateType", (int)TemplateType.Strip)
+                                };
+
+                                // Set CategoryName for display (used by UI)
+                                template.CategoryName = reader["CategoryName"].ToString() ?? "";
+
+                                // Set category information if available
+                                if (reader["CategoryName"] != DBNull.Value)
+                                {
+                                    template.Category = new TemplateCategory 
+                                    { 
+                                        Id = template.CategoryId, 
+                                        Name = reader["CategoryName"].ToString() ?? "",
+                                        IsSeasonalCategory = GetBoolValue(reader, "IsSeasonalCategory", false),
+                                        SeasonStartDate = GetStringValue(reader, "SeasonStartDate"),
+                                        SeasonEndDate = GetStringValue(reader, "SeasonEndDate"),
+                                        SeasonalPriority = GetIntValue(reader, "SeasonalPriority", 0),
+                                        SortOrder = GetIntValue(reader, "CategorySortOrder", 0)
+                                    };
+                                }
+
+                                // Set layout information if available
+                                if (reader["LayoutName"] != DBNull.Value)
+                                {
+                                    template.Layout = new TemplateLayout
+                                    {
+                                        Id = template.LayoutId,
+                                        Name = reader["LayoutName"].ToString() ?? "",
+                                        LayoutKey = GetStringValue(reader, "LayoutKey"),
+                                        Width = GetIntValue(reader, "Width"),
+                                        Height = GetIntValue(reader, "Height"),
+                                        PhotoCount = GetIntValue(reader, "PhotoCount"),
+                                        ProductCategoryId = GetIntValue(reader, "ProductCategoryId")
+                                    };
+                                }
+
+                                templates.Add(template);
+                            }
+                        }
+                    }
+                }
+
+                // Load all photo areas for templates with layouts in a single query (N+1 optimization)
+                var layoutIds = templates.Where(t => t.Layout != null).Select(t => t.LayoutId).Distinct().ToList();
+                if (layoutIds.Any())
+                {
+                    var photoAreasResult = await GetPhotoAreasByLayoutIdsAsync(layoutIds);
+                    if (photoAreasResult.Success && photoAreasResult.Data != null)
+                    {
+                        // Map photo areas to templates
+                        foreach (var template in templates)
+                        {
+                            if (template.Layout != null && photoAreasResult.Data.ContainsKey(template.LayoutId))
+                            {
+                                template.Layout.PhotoAreas = photoAreasResult.Data[template.LayoutId];
+                            }
+                        }
+                    }
+                }
+
+                // Apply seasonal filtering: only keep templates from categories that are currently in season (or non-seasonal)
+                // Skip filtering if showAllSeasons is true (admin wants to see all templates regardless of season)
+                if (showAllSeasons)
+                {
+                    // Return all templates without seasonal filtering
+                    return DatabaseResult<List<Template>>.SuccessResult(templates);
+                }
+                else
+                {
+                    // Apply normal seasonal filtering
+                    var filteredTemplates = new List<Template>();
+                    foreach (var template in templates)
+                    {
+                        if (template.Category == null || !template.Category.IsSeasonalCategory || template.Category.IsCurrentlyInSeason)
+                        {
+                            filteredTemplates.Add(template);
+                        }
+                    }
+                    return DatabaseResult<List<Template>>.SuccessResult(filteredTemplates);
+                }
+            }
+            catch (Exception ex)
+            {
+                return DatabaseResult<List<Template>>.ErrorResult($"Failed to get templates: {ex.Message}", ex);
+            }
+        }
+
+        public async Task<DatabaseResult<List<Template>>> GetTemplatesByTypeAsync(TemplateType templateType, bool showAllSeasons = false)
+        {
+            try
+            {
+                var templates = new List<Template>();
+                
+                var query = @"
+                    SELECT 
+                        t.Id, t.Name, t.CategoryId, t.LayoutId,
+                        t.FolderPath, t.TemplatePath, t.PreviewPath,
+                        t.IsActive, t.Price, t.SortOrder, t.FileSize,
+                        t.Description, t.UploadedAt, t.UploadedBy, t.TemplateType,
+                        tc.Name as CategoryName, tc.IsSeasonalCategory, tc.SeasonStartDate, tc.SeasonEndDate, tc.SeasonalPriority, tc.SortOrder as CategorySortOrder,
+                        tl.Name as LayoutName, tl.LayoutKey, tl.Width, tl.Height, tl.PhotoCount, tl.ProductCategoryId,
+                        pc.Name as ProductCategoryName,
+                        -- Calculate effective priority for seasonal ordering
+                        CASE 
+                            WHEN tc.IsSeasonalCategory = 1 AND (
+                                -- Normal seasons (start <= end): check if current date is within range
+                                (tc.SeasonStartDate <= tc.SeasonEndDate AND strftime('%m-%d', 'now') BETWEEN tc.SeasonStartDate AND tc.SeasonEndDate)
+                                OR
+                                -- Cross-year seasons (start > end): check if current date is in either part of the range
+                                (tc.SeasonStartDate > tc.SeasonEndDate AND (strftime('%m-%d', 'now') >= tc.SeasonStartDate OR strftime('%m-%d', 'now') <= tc.SeasonEndDate))
+                            ) THEN tc.SeasonalPriority
+                            ELSE 0
+                        END as EffectivePriority
+                    FROM Templates t
+                    LEFT JOIN TemplateCategories tc ON t.CategoryId = tc.Id
+                    LEFT JOIN TemplateLayouts tl ON t.LayoutId = tl.Id
+                    LEFT JOIN ProductCategories pc ON tl.ProductCategoryId = pc.Id
+                    WHERE t.TemplateType = @TemplateType AND t.IsActive = 1
+                    ORDER BY 
+                        -- First: Active seasonal categories by their priority (highest first)
+                        CASE 
+                            WHEN tc.IsSeasonalCategory = 1 AND (
+                                -- Normal seasons (start <= end): check if current date is within range
+                                (tc.SeasonStartDate <= tc.SeasonEndDate AND strftime('%m-%d', 'now') BETWEEN tc.SeasonStartDate AND tc.SeasonEndDate)
+                                OR
+                                -- Cross-year seasons (start > end): check if current date is in either part of the range
+                                (tc.SeasonStartDate > tc.SeasonEndDate AND (strftime('%m-%d', 'now') >= tc.SeasonStartDate OR strftime('%m-%d', 'now') <= tc.SeasonEndDate))
+                            ) THEN tc.SeasonalPriority
+                            ELSE 0
+                        END DESC,
+                        -- Then: Regular category sort order
+                        tc.SortOrder ASC,
+                        -- Finally: Template sort order within category
+                        t.SortOrder ASC";
+
+                using (var connection = new SqliteConnection(_connectionString))
+                {
+                    await connection.OpenAsync();
+                    using (var command = new SqliteCommand(query, connection))
+                    {
+                        command.Parameters.AddWithValue("@TemplateType", (int)templateType);
+                        
+                        using (var reader = await command.ExecuteReaderAsync())
+                        {
+                            while (await reader.ReadAsync())
+                            {
+                                var template = new Template
+                                {
+                                    Id = GetIntValue(reader, "Id"),
+                                    Name = GetStringValue(reader, "Name"),
+                                    CategoryId = GetIntValue(reader, "CategoryId"),
+                                    LayoutId = GetStringValue(reader, "LayoutId"),
+                                    FolderPath = GetStringValue(reader, "FolderPath"),
+                                    TemplatePath = GetStringValue(reader, "TemplatePath"),
+                                    PreviewPath = GetStringValue(reader, "PreviewPath"),
+                                    IsActive = GetBoolValue(reader, "IsActive"),
+                                    Price = (decimal)GetDoubleValue(reader, "Price"),
+                                    SortOrder = GetIntValue(reader, "SortOrder"),
+                                    FileSize = GetLongValue(reader, "FileSize"),
+                                    Description = GetStringValue(reader, "Description"),
+                                    UploadedAt = DateTime.Parse(GetStringValue(reader, "UploadedAt")),
+                                    UploadedBy = GetStringValue(reader, "UploadedBy"),
+                                    TemplateType = (TemplateType)GetIntValue(reader, "TemplateType", (int)TemplateType.Strip)
+                                };
+
+                                // Set CategoryName for display (used by UI)
+                                template.CategoryName = reader["CategoryName"].ToString() ?? "";
+
+                                // Set category information if available
+                                if (reader["CategoryName"] != DBNull.Value)
+                                {
+                                    template.Category = new TemplateCategory 
+                                    { 
+                                        Id = template.CategoryId, 
+                                        Name = reader["CategoryName"].ToString() ?? "",
+                                        IsSeasonalCategory = GetBoolValue(reader, "IsSeasonalCategory", false),
+                                        SeasonStartDate = GetStringValue(reader, "SeasonStartDate"),
+                                        SeasonEndDate = GetStringValue(reader, "SeasonEndDate"),
+                                        SeasonalPriority = GetIntValue(reader, "SeasonalPriority", 0),
+                                        SortOrder = GetIntValue(reader, "CategorySortOrder", 0)
+                                    };
+                                }
+
+                                // Set layout information if available
+                                if (reader["LayoutName"] != DBNull.Value)
+                                {
+                                    template.Layout = new TemplateLayout
+                                    {
+                                        Id = template.LayoutId,
+                                        Name = reader["LayoutName"].ToString() ?? "",
+                                        LayoutKey = GetStringValue(reader, "LayoutKey"),
+                                        Width = GetIntValue(reader, "Width"),
+                                        Height = GetIntValue(reader, "Height"),
+                                        PhotoCount = GetIntValue(reader, "PhotoCount"),
+                                        ProductCategoryId = GetIntValue(reader, "ProductCategoryId")
+                                    };
+                                }
+
+                                templates.Add(template);
+                            }
+                        }
+                    }
+                }
+
+                // Load all photo areas for templates with layouts in a single query (N+1 optimization)
+                var layoutIds = templates.Where(t => t.Layout != null).Select(t => t.LayoutId).Distinct().ToList();
+                if (layoutIds.Any())
+                {
+                    var photoAreasResult = await GetPhotoAreasByLayoutIdsAsync(layoutIds);
+                    if (photoAreasResult.Success && photoAreasResult.Data != null)
+                    {
+                        // Map photo areas to templates
+                        foreach (var template in templates)
+                        {
+                            if (template.Layout != null && photoAreasResult.Data.ContainsKey(template.LayoutId))
+                            {
+                                template.Layout.PhotoAreas = photoAreasResult.Data[template.LayoutId];
+                            }
+                        }
+                    }
+                }
+
+                // Apply seasonal filtering: only keep templates from categories that are currently in season (or non-seasonal)
+                // Skip filtering if showAllSeasons is true (admin wants to see all templates regardless of season)
+                if (showAllSeasons)
+                {
+                    // Return all templates without seasonal filtering
+                    return DatabaseResult<List<Template>>.SuccessResult(templates);
+                }
+                else
+                {
+                    // Apply normal seasonal filtering
+                    var filteredTemplates = new List<Template>();
+                    foreach (var template in templates)
+                    {
+                        if (template.Category == null || !template.Category.IsSeasonalCategory || template.Category.IsCurrentlyInSeason)
+                        {
+                            filteredTemplates.Add(template);
+                        }
+                    }
+                    return DatabaseResult<List<Template>>.SuccessResult(filteredTemplates);
+                }
+            }
+            catch (Exception ex)
+            {
+                return DatabaseResult<List<Template>>.ErrorResult($"Failed to get templates by type: {ex.Message}", ex);
+            }
+        }
+
+        public async Task<DatabaseResult<Template>> CreateTemplateAsync(Template template)
+        {
+            try
+            {
+                var query = @"
+                    INSERT INTO Templates (Name, CategoryId, LayoutId,
+                                         FolderPath, TemplatePath, PreviewPath,
+                                         IsActive, Price, SortOrder, FileSize,
+                                         Description, UploadedAt, UploadedBy, TemplateType)
+                    VALUES (@Name, @CategoryId, @LayoutId,
+                            @FolderPath, @TemplatePath, @PreviewPath,
+                            @IsActive, @Price, @SortOrder, @FileSize,
+                            @Description, @UploadedAt, @UploadedBy, @TemplateType);
+                    SELECT last_insert_rowid();";
+
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+                using var command = new SqliteCommand(query, connection);
+                
+                command.Parameters.AddWithValue("@Name", template.Name);
+                command.Parameters.AddWithValue("@CategoryId", template.CategoryId);
+                command.Parameters.AddWithValue("@LayoutId", template.LayoutId);
+                command.Parameters.AddWithValue("@FolderPath", template.FolderPath);
+                command.Parameters.AddWithValue("@TemplatePath", template.TemplatePath);
+                command.Parameters.AddWithValue("@PreviewPath", template.PreviewPath);
+                command.Parameters.AddWithValue("@IsActive", template.IsActive);
+                command.Parameters.AddWithValue("@Price", template.Price);
+                command.Parameters.AddWithValue("@SortOrder", template.SortOrder);
+                command.Parameters.AddWithValue("@FileSize", template.FileSize);
+                command.Parameters.AddWithValue("@Description", template.Description);
+                command.Parameters.AddWithValue("@UploadedAt", template.UploadedAt.ToString("yyyy-MM-dd HH:mm:ss"));
+                command.Parameters.AddWithValue("@UploadedBy", template.UploadedBy ?? (object)DBNull.Value);
+                command.Parameters.AddWithValue("@TemplateType", (int)template.TemplateType);
+
+                var newId = await command.ExecuteScalarAsync();
+                template.Id = Convert.ToInt32(newId);
+
+                return DatabaseResult<Template>.SuccessResult(template);
+            }
+            catch (Exception ex)
+            {
+                return DatabaseResult<Template>.ErrorResult($"Failed to create template: {ex.Message}", ex);
+            }
+        }
+
+        public async Task<DatabaseResult<Template>> UpdateTemplateAsync(int templateId, string? name = null, bool? isActive = null, decimal? price = null, int? categoryId = null, string? description = null, int? sortOrder = null, int? photoCount = null, TemplateType? templateType = null)
+        {
+            try
+            {
+                var updates = new List<string>();
+                var parameters = new List<(string name, object value)>();
+
+                if (name != null)
+                {
+                    updates.Add("Name = @Name");
+                    parameters.Add(("@Name", name));
+                }
+
+                if (isActive.HasValue)
+                {
+                    updates.Add("IsActive = @IsActive");
+                    parameters.Add(("@IsActive", isActive.Value));
+                }
+
+                if (price.HasValue)
+                {
+                    updates.Add("Price = @Price");
+                    parameters.Add(("@Price", price.Value));
+                }
+
+                if (categoryId.HasValue)
+                {
+                    updates.Add("CategoryId = @CategoryId");
+                    parameters.Add(("@CategoryId", categoryId.Value));
+                }
+
+                if (description != null)
+                {
+                    updates.Add("Description = @Description");
+                    parameters.Add(("@Description", description));
+                }
+
+                if (sortOrder.HasValue)
+                {
+                    updates.Add("SortOrder = @SortOrder");
+                    parameters.Add(("@SortOrder", sortOrder.Value));
+                }
+
+                if (templateType.HasValue)
+                {
+                    updates.Add("TemplateType = @TemplateType");
+                    parameters.Add(("@TemplateType", (int)templateType.Value));
+                }
+
+                // PhotoCount is now computed from layout, no longer stored in template table
+
+                if (!updates.Any())
+                {
+                    return DatabaseResult<Template>.ErrorResult("No fields provided to update");
+                }
+
+                var query = $@"
+                    UPDATE Templates 
+                    SET {string.Join(", ", updates)}
+                    WHERE Id = @Id;
+                    
+                    SELECT * FROM Templates WHERE Id = @Id;";
+
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+                using var command = new SqliteCommand(query, connection);
+                
+                command.Parameters.AddWithValue("@Id", templateId);
+                foreach (var param in parameters)
+                {
+                    command.Parameters.AddWithValue(param.name, param.value);
+                }
+
+                using var reader = await command.ExecuteReaderAsync();
+                if (await reader.ReadAsync())
+                {
+                    // Just return success - the caller should reload the template from GetAllTemplatesAsync 
+                    // which includes the proper layout information
+                    return DatabaseResult<Template>.SuccessResult(new Template { Id = templateId });
+                }
+
+                return DatabaseResult<Template>.ErrorResult("Template not found after update");
+            }
+            catch (Exception ex)
+            {
+                return DatabaseResult<Template>.ErrorResult($"Failed to update template: {ex.Message}", ex);
+            }
+        }
+
+        /// <summary>
+        /// Bulk update category for multiple templates
+        /// </summary>
+        public async Task<DatabaseResult> BulkUpdateTemplateCategoryAsync(List<int> templateIds, int categoryId)
+        {
+            try
+            {
+                if (!templateIds.Any())
+                {
+                    return DatabaseResult.ErrorResult("No template IDs provided");
+                }
+
+                var placeholders = string.Join(",", templateIds.Select((_, i) => $"@id{i}"));
+                var query = $@"
+                    UPDATE Templates 
+                    SET CategoryId = @CategoryId
+                    WHERE Id IN ({placeholders})";
+
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+                using var command = new SqliteCommand(query, connection);
+                
+                command.Parameters.AddWithValue("@CategoryId", categoryId);
+                for (int i = 0; i < templateIds.Count; i++)
+                {
+                    command.Parameters.AddWithValue($"@id{i}", templateIds[i]);
+                }
+
+                var rowsAffected = await command.ExecuteNonQueryAsync();
+                
+                if (rowsAffected > 0)
+                {
+                    return DatabaseResult.SuccessResult();
+                }
+                else
+                {
+                    return DatabaseResult.ErrorResult("No templates were updated");
+                }
+            }
+            catch (Exception ex)
+            {
+                return DatabaseResult.ErrorResult($"Failed to update template categories: {ex.Message}", ex);
+            }
+        }
+
+        /// <summary>
+        /// Update template file paths - used for synchronization with file system
+        /// </summary>
+        public async Task<DatabaseResult> UpdateTemplatePathsAsync(int templateId, string folderPath, string templatePath, string previewPath)
+        {
+            try
+            {
+                var query = @"
+                    UPDATE Templates 
+                    SET FolderPath = @FolderPath, TemplatePath = @TemplatePath, PreviewPath = @PreviewPath
+                    WHERE Id = @Id";
+
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+                using var command = new SqliteCommand(query, connection);
+                
+                command.Parameters.AddWithValue("@Id", templateId);
+                command.Parameters.AddWithValue("@FolderPath", folderPath);
+                command.Parameters.AddWithValue("@TemplatePath", templatePath);
+                command.Parameters.AddWithValue("@PreviewPath", previewPath);
+
+                await command.ExecuteNonQueryAsync();
+                    return DatabaseResult.SuccessResult();
+                }
+            catch (Exception ex)
+            {
+                return DatabaseResult.ErrorResult($"Failed to update template paths: {ex.Message}", ex);
+            }
+        }
+        
+        public async Task<DatabaseResult> UpdateTemplateFileSizeAsync(int templateId, long fileSize)
+        {
+            try
+            {
+                var query = @"
+                    UPDATE Templates 
+                    SET FileSize = @FileSize
+                    WHERE Id = @Id";
+
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+                using var command = new SqliteCommand(query, connection);
+                
+                command.Parameters.AddWithValue("@Id", templateId);
+                command.Parameters.AddWithValue("@FileSize", fileSize);
+
+                await command.ExecuteNonQueryAsync();
+                return DatabaseResult.SuccessResult();
+            }
+            catch (Exception ex)
+            {
+                return DatabaseResult.ErrorResult($"Failed to update template file size: {ex.Message}", ex);
+            }
+        }
+
+        public async Task<DatabaseResult> DeleteTemplateAsync(int templateId)
+        {
+            try
+            {
+                var query = "DELETE FROM Templates WHERE Id = @Id";
+
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+                using var command = new SqliteCommand(query, connection);
+                command.Parameters.AddWithValue("@Id", templateId);
+
+                var rowsAffected = await command.ExecuteNonQueryAsync();
+                
+                if (rowsAffected > 0)
+                {
+                    return DatabaseResult.SuccessResult();
+                }
+                else
+                {
+                    return DatabaseResult.ErrorResult("Template not found");
+                }
+            }
+            catch (Exception ex)
+            {
+                return DatabaseResult.ErrorResult($"Failed to delete template: {ex.Message}", ex);
+            }
+        }
+
+        public async Task<DatabaseResult<List<TemplateCategory>>> GetTemplateCategoriesAsync()
+        {
+            try
+            {
+                var categories = new List<TemplateCategory>();
+                
+                var query = @"
+                    SELECT Id, Name, Description, IsActive, SortOrder, 
+                           IsSeasonalCategory, SeasonStartDate, SeasonEndDate, SeasonalPriority, CreatedAt
+                    FROM TemplateCategories
+                    WHERE IsActive = 1
+                    ORDER BY 
+                        CASE 
+                            WHEN IsSeasonalCategory = 1 THEN SeasonalPriority 
+                            ELSE 0 
+                        END DESC,
+                        SortOrder, Name";
+
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+                using var command = new SqliteCommand(query, connection);
+                
+                using var reader = await command.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    categories.Add(new TemplateCategory
+                    {
+                        Id = Convert.ToInt32(reader["Id"]),
+                        Name = reader["Name"].ToString() ?? "",
+                        Description = reader["Description"]?.ToString(),
+                        IsActive = Convert.ToBoolean(reader["IsActive"]),
+                        IsPremium = GetBoolValue(reader, "IsPremium", false),
+                        SortOrder = Convert.ToInt32(reader["SortOrder"]),
+                        IsSeasonalCategory = Convert.ToBoolean(reader["IsSeasonalCategory"]),
+                        SeasonStartDate = reader["SeasonStartDate"]?.ToString(),
+                        SeasonEndDate = reader["SeasonEndDate"]?.ToString(),
+                        SeasonalPriority = Convert.ToInt32(reader["SeasonalPriority"]),
+                        CreatedAt = Convert.ToDateTime(reader["CreatedAt"])
+                    });
+                }
+
+                // Filter seasonal categories to only show those currently in season, plus all non-seasonal
+                var filteredCategories = new List<TemplateCategory>();
+                foreach (var category in categories)
+                {
+                    if (!category.IsSeasonalCategory || category.IsCurrentlyInSeason)
+                    {
+                        filteredCategories.Add(category);
+                    }
+                }
+
+                return DatabaseResult<List<TemplateCategory>>.SuccessResult(filteredCategories);
+            }
+            catch (Exception ex)
+            {
+                return DatabaseResult<List<TemplateCategory>>.ErrorResult($"Failed to get template categories: {ex.Message}", ex);
+            }
+        }
+
+        public async Task<DatabaseResult<List<TemplateCategory>>> GetAllTemplateCategoriesAsync()
+        {
+            try
+            {
+                var categories = new List<TemplateCategory>();
+                
+                var query = @"
+                    SELECT Id, Name, Description, IsActive, IsPremium, SortOrder, 
+                           IsSeasonalCategory, SeasonStartDate, SeasonEndDate, SeasonalPriority, CreatedAt
+                    FROM TemplateCategories
+                    WHERE IsActive = 1
+                    ORDER BY 
+                        CASE 
+                            WHEN IsSeasonalCategory = 1 THEN SeasonalPriority 
+                            ELSE 0 
+                        END DESC,
+                        SortOrder, Name";
+
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+                using var command = new SqliteCommand(query, connection);
+                
+                using var reader = await command.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    categories.Add(new TemplateCategory
+                    {
+                        Id = Convert.ToInt32(reader["Id"]),
+                        Name = reader["Name"].ToString() ?? "",
+                        Description = reader["Description"]?.ToString(),
+                        IsActive = Convert.ToBoolean(reader["IsActive"]),
+                        IsPremium = GetBoolValue(reader, "IsPremium", false),
+                        SortOrder = Convert.ToInt32(reader["SortOrder"]),
+                        IsSeasonalCategory = Convert.ToBoolean(reader["IsSeasonalCategory"]),
+                        SeasonStartDate = reader["SeasonStartDate"]?.ToString(),
+                        SeasonEndDate = reader["SeasonEndDate"]?.ToString(),
+                        SeasonalPriority = Convert.ToInt32(reader["SeasonalPriority"]),
+                        CreatedAt = Convert.ToDateTime(reader["CreatedAt"])
+                    });
+                }
+
+                return DatabaseResult<List<TemplateCategory>>.SuccessResult(categories);
+            }
+            catch (Exception ex)
+            {
+                return DatabaseResult<List<TemplateCategory>>.ErrorResult($"Failed to get all template categories: {ex.Message}", ex);
+            }
+        }
+
+        public async Task<DatabaseResult<TemplateCategory>> CreateTemplateCategoryAsync(string name, string description = "", 
+            bool isSeasonalCategory = false, string? seasonStartDate = null, string? seasonEndDate = null, int seasonalPriority = 0, bool isPremium = false)
+        {
+            try
+            {
+                // Validate seasonal dates if provided
+                if (isSeasonalCategory)
+                {
+                    try
+                    {
+                        seasonStartDate = TemplateCategory.ValidateAndFormatSeasonalDate(seasonStartDate);
+                        seasonEndDate = TemplateCategory.ValidateAndFormatSeasonalDate(seasonEndDate);
+                    }
+                    catch (ArgumentException ex)
+                    {
+                        return DatabaseResult<TemplateCategory>.ErrorResult(ex.Message);
+                    }
+                }
+                var query = @"
+                    INSERT INTO TemplateCategories (Name, Description, IsActive, IsPremium, SortOrder, 
+                                                    IsSeasonalCategory, SeasonStartDate, SeasonEndDate, SeasonalPriority, CreatedAt)
+                    VALUES (@Name, @Description, 1, @IsPremium, 0, @IsSeasonalCategory, @SeasonStartDate, @SeasonEndDate, @SeasonalPriority, @CreatedAt);
+                    SELECT * FROM TemplateCategories WHERE Id = last_insert_rowid();";
+
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+                using var command = new SqliteCommand(query, connection);
+                command.Parameters.AddWithValue("@Name", name);
+                command.Parameters.AddWithValue("@Description", description);
+                command.Parameters.AddWithValue("@IsPremium", isPremium);
+                command.Parameters.AddWithValue("@IsSeasonalCategory", isSeasonalCategory);
+                command.Parameters.AddWithValue("@SeasonStartDate", seasonStartDate ?? (object)DBNull.Value);
+                command.Parameters.AddWithValue("@SeasonEndDate", seasonEndDate ?? (object)DBNull.Value);
+                command.Parameters.AddWithValue("@SeasonalPriority", seasonalPriority);
+                command.Parameters.AddWithValue("@CreatedAt", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+
+                using var reader = await command.ExecuteReaderAsync();
+                if (await reader.ReadAsync())
+                {
+                    // Manual mapping for performance
+                    var category = new TemplateCategory
+                    {
+                        Id = Convert.ToInt32(reader["Id"]),
+                        Name = reader["Name"].ToString() ?? "",
+                        Description = reader["Description"]?.ToString() ?? "",
+                        IsActive = Convert.ToBoolean(reader["IsActive"]),
+                        IsPremium = GetBoolValue(reader, "IsPremium", false),
+                        SortOrder = Convert.ToInt32(reader["SortOrder"]),
+                        IsSeasonalCategory = Convert.ToBoolean(reader["IsSeasonalCategory"]),
+                        SeasonStartDate = reader["SeasonStartDate"]?.ToString(),
+                        SeasonEndDate = reader["SeasonEndDate"]?.ToString(),
+                        SeasonalPriority = Convert.ToInt32(reader["SeasonalPriority"]),
+                        CreatedAt = Convert.ToDateTime(reader["CreatedAt"])
+                    };
+
+                    // Use file-based logging instead of database logging
+                    LoggingService.Application.Information("Template category created",
+                        ("Name", name),
+                        ("Description", description),
+                        ("CategoryId", category.Id));
+
+                    return DatabaseResult<TemplateCategory>.SuccessResult(category);
+                }
+
+                return DatabaseResult<TemplateCategory>.ErrorResult("Failed to create template category");
+            }
+            catch (Exception ex)
+            {
+                return DatabaseResult<TemplateCategory>.ErrorResult($"Failed to create template category: {ex.Message}", ex);
+            }
+        }
+
+        public async Task<DatabaseResult<TemplateCategory>> UpdateTemplateCategoryAsync(int categoryId, string name, string description = "",
+            bool isSeasonalCategory = false, string? seasonStartDate = null, string? seasonEndDate = null, int seasonalPriority = 0, bool isPremium = false)
+        {
+            try
+            {
+                // Validate seasonal dates if provided
+                if (isSeasonalCategory)
+                {
+                    try
+                    {
+                        seasonStartDate = TemplateCategory.ValidateAndFormatSeasonalDate(seasonStartDate);
+                        seasonEndDate = TemplateCategory.ValidateAndFormatSeasonalDate(seasonEndDate);
+                    }
+                    catch (ArgumentException ex)
+                    {
+                        return DatabaseResult<TemplateCategory>.ErrorResult(ex.Message);
+                    }
+                }
+                var query = @"
+                    UPDATE TemplateCategories 
+                    SET Name = @name, Description = @description, IsPremium = @isPremium,
+                        IsSeasonalCategory = @isSeasonalCategory, SeasonStartDate = @seasonStartDate, SeasonEndDate = @seasonEndDate, SeasonalPriority = @seasonalPriority
+                    WHERE Id = @id";
+
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+                using var command = new SqliteCommand(query, connection);
+                command.Parameters.AddWithValue("@name", name);
+                command.Parameters.AddWithValue("@description", description);
+                command.Parameters.AddWithValue("@isPremium", isPremium);
+                command.Parameters.AddWithValue("@id", categoryId);
+                command.Parameters.AddWithValue("@isSeasonalCategory", isSeasonalCategory);
+                command.Parameters.AddWithValue("@seasonStartDate", seasonStartDate ?? (object)DBNull.Value);
+                command.Parameters.AddWithValue("@seasonEndDate", seasonEndDate ?? (object)DBNull.Value);
+                command.Parameters.AddWithValue("@seasonalPriority", seasonalPriority);
+
+                var rowsAffected = await command.ExecuteNonQueryAsync();
+                if (rowsAffected == 0)
+                {
+                    return DatabaseResult<TemplateCategory>.ErrorResult("Template category not found");
+                }
+
+                // Get the updated category
+                var selectQuery = @"
+                    SELECT Id, Name, Description, IsActive, IsPremium, SortOrder, CreatedAt, 
+                           IsSeasonalCategory, SeasonStartDate, SeasonEndDate, SeasonalPriority
+                    FROM TemplateCategories 
+                    WHERE Id = @id";
+
+                using var selectCommand = new SqliteCommand(selectQuery, connection);
+                selectCommand.Parameters.AddWithValue("@id", categoryId);
+                using var reader = await selectCommand.ExecuteReaderAsync();
+
+                if (await reader.ReadAsync())
+                {
+                    // Manual mapping for performance (avoid slow reflection)
+                    var category = new TemplateCategory
+                    {
+                        Id = Convert.ToInt32(reader["Id"]),
+                        Name = reader["Name"].ToString() ?? "",
+                        Description = reader["Description"]?.ToString() ?? "",
+                        IsActive = Convert.ToBoolean(reader["IsActive"]),
+                        IsPremium = GetBoolValue(reader, "IsPremium", false),
+                        SortOrder = Convert.ToInt32(reader["SortOrder"]),
+                        CreatedAt = Convert.ToDateTime(reader["CreatedAt"]),
+                        IsSeasonalCategory = GetBoolValue(reader, "IsSeasonalCategory", false),
+                        SeasonStartDate = GetStringValue(reader, "SeasonStartDate"),
+                        SeasonEndDate = GetStringValue(reader, "SeasonEndDate"),
+                        SeasonalPriority = GetIntValue(reader, "SeasonalPriority", 0)
+                    };
+
+                    // Use file-based logging instead of database logging
+                    LoggingService.Application.Information("Template category updated",
+                        ("CategoryId", categoryId),
+                        ("Name", name),
+                        ("Description", description));
+                    
+                    return DatabaseResult<TemplateCategory>.SuccessResult(category);
+                }
+
+                return DatabaseResult<TemplateCategory>.ErrorResult("Failed to retrieve updated category");
+            }
+            catch (Exception ex)
+            {
+                return DatabaseResult<TemplateCategory>.ErrorResult($"Failed to update template category: {ex.Message}", ex);
+            }
+        }
+
+        public async Task<DatabaseResult> UpdateTemplateCategoryStatusAsync(int categoryId, bool isActive)
+        {
+            try
+            {
+
+
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+                using var transaction = connection.BeginTransaction();
+
+                try
+                {
+                    // Update the category status
+                    var categoryQuery = @"
+                        UPDATE TemplateCategories 
+                        SET IsActive = @isActive 
+                        WHERE Id = @id";
+
+                    using var categoryCommand = new SqliteCommand(categoryQuery, connection, transaction);
+                    categoryCommand.Parameters.AddWithValue("@isActive", isActive);
+                    categoryCommand.Parameters.AddWithValue("@id", categoryId);
+
+                    var categoryRowsAffected = await categoryCommand.ExecuteNonQueryAsync();
+
+                    if (categoryRowsAffected == 0)
+                    {
+
+                        transaction.Rollback();
+                        return DatabaseResult.ErrorResult("Template category not found");
+                    }
+
+                    // Check how many templates are in this category before updating
+                    var countQuery = @"SELECT COUNT(*) FROM Templates WHERE CategoryId = @categoryId";
+                    using var countCommand = new SqliteCommand(countQuery, connection, transaction);
+                    countCommand.Parameters.AddWithValue("@categoryId", categoryId);
+                    var templateCount = Convert.ToInt32(await countCommand.ExecuteScalarAsync());
+
+                    // Update all templates in this category to match the category status
+                    var templatesQuery = @"
+                        UPDATE Templates 
+                        SET IsActive = @isActive 
+                        WHERE CategoryId = @categoryId";
+
+                    using var templatesCommand = new SqliteCommand(templatesQuery, connection, transaction);
+                    templatesCommand.Parameters.AddWithValue("@isActive", isActive);
+                    templatesCommand.Parameters.AddWithValue("@categoryId", categoryId);
+
+                    var templateRowsAffected = await templatesCommand.ExecuteNonQueryAsync();
+
+                    // Commit the transaction
+                    transaction.Commit();
+
+                    // Use file-based logging instead of database logging
+                    LoggingService.Application.Information("Template category status updated",
+                        ("CategoryId", categoryId),
+                        ("IsActive", isActive),
+                        ("TemplatesAffected", templateRowsAffected));
+                        
+                    return DatabaseResult.SuccessResult();
+                }
+                catch
+                {
+
+                    transaction.Rollback();
+                    throw;
+                }
+            }
+            catch (Exception ex)
+            {
+
+                return DatabaseResult.ErrorResult($"Failed to update template category status: {ex.Message}", ex);
+            }
+        }
+
+        public async Task<DatabaseResult> DeleteTemplateCategoryAsync(int categoryId)
+        {
+            try
+            {
+                var query = "DELETE FROM TemplateCategories WHERE Id = @id";
+
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+                using var command = new SqliteCommand(query, connection);
+                command.Parameters.AddWithValue("@id", categoryId);
+
+                var rowsAffected = await command.ExecuteNonQueryAsync();
+                if (rowsAffected == 0)
+                {
+                    return DatabaseResult.ErrorResult("Template category not found");
+                }
+
+                // Use file-based logging instead of database logging
+                LoggingService.Application.Information("Template category deleted",
+                    ("CategoryId", categoryId));
+                    
+                return DatabaseResult.SuccessResult();
+            }
+            catch (Exception ex)
+            {
+                return DatabaseResult.ErrorResult($"Failed to delete template category: {ex.Message}", ex);
+            }
+        }
+
+        public async Task<DatabaseResult<List<Template>>> GetTemplatesByCategoryAsync(int categoryId)
+        {
+            try
+            {
+                var query = @"
+                    SELECT t.*, tc.Name as CategoryName 
+                    FROM Templates t 
+                    LEFT JOIN TemplateCategories tc ON t.CategoryId = tc.Id 
+                    WHERE t.CategoryId = @categoryId 
+                    ORDER BY t.Name";
+
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+                using var command = new SqliteCommand(query, connection);
+                command.Parameters.AddWithValue("@categoryId", categoryId);
+                using var reader = await command.ExecuteReaderAsync();
+
+                var templates = new List<Template>();
+                while (await reader.ReadAsync())
+                {
+                    var template = MapReaderToEntity<Template>(reader);
+                    if (reader["CategoryName"] != DBNull.Value)
+                    {
+                        template.Category = new TemplateCategory 
+                        { 
+                            Id = template.CategoryId, 
+                            Name = reader["CategoryName"].ToString() ?? "" 
+                        };
+                    }
+                    templates.Add(template);
+                }
+
+                return DatabaseResult<List<Template>>.SuccessResult(templates);
+            }
+            catch (Exception ex)
+            {
+                return DatabaseResult<List<Template>>.ErrorResult($"Failed to get templates by category: {ex.Message}", ex);
+            }
+        }
+
+        public async Task<DatabaseResult<List<TemplateLayout>>> GetTemplateLayoutsAsync()
+        {
+            try
+            {
+                var layouts = new List<TemplateLayout>();
+                
+                var query = @"
+                    SELECT tl.*, pc.Name as ProductCategoryName
+                    FROM TemplateLayouts tl
+                    LEFT JOIN ProductCategories pc ON tl.ProductCategoryId = pc.Id
+                    WHERE tl.IsActive = 1
+                    ORDER BY tl.SortOrder, tl.Name";
+
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+                using var command = new SqliteCommand(query, connection);
+                
+                using var reader = await command.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    var layout = new TemplateLayout
+                    {
+                        Id = GetStringValue(reader, "Id"),
+                        LayoutKey = GetStringValue(reader, "LayoutKey"),
+                        Name = GetStringValue(reader, "Name"),
+                        Description = GetStringValue(reader, "Description"),
+                        Width = GetIntValue(reader, "Width"),
+                        Height = GetIntValue(reader, "Height"),
+                        PhotoCount = GetIntValue(reader, "PhotoCount"),
+                        ProductCategoryId = GetIntValue(reader, "ProductCategoryId"),
+                        IsActive = GetBoolValue(reader, "IsActive"),
+                        SortOrder = GetIntValue(reader, "SortOrder"),
+                        CreatedAt = Convert.ToDateTime(reader["CreatedAt"])
+                    };
+
+                    // Set product category if available
+                    if (reader["ProductCategoryName"] != DBNull.Value)
+                    {
+                        layout.ProductCategory = new ProductCategory
+                        {
+                            Id = layout.ProductCategoryId,
+                            Name = GetStringValue(reader, "ProductCategoryName")
+                        };
+                    }
+
+                    layouts.Add(layout);
+                }
+
+                return DatabaseResult<List<TemplateLayout>>.SuccessResult(layouts);
+            }
+            catch (Exception ex)
+            {
+                return DatabaseResult<List<TemplateLayout>>.ErrorResult($"Failed to get template layouts: {ex.Message}", ex);
+            }
+        }
+
+        public async Task<DatabaseResult<TemplateLayout?>> GetTemplateLayoutAsync(string layoutId)
+        {
+            try
+            {
+                var query = @"
+                    SELECT tl.*, pc.Name as ProductCategoryName
+                    FROM TemplateLayouts tl
+                    LEFT JOIN ProductCategories pc ON tl.ProductCategoryId = pc.Id
+                    WHERE tl.Id = @layoutId";
+
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+                using var command = new SqliteCommand(query, connection);
+                command.Parameters.AddWithValue("@layoutId", layoutId);
+                
+                using var reader = await command.ExecuteReaderAsync();
+                if (await reader.ReadAsync())
+                {
+                    var layout = new TemplateLayout
+                    {
+                        Id = GetStringValue(reader, "Id"),
+                        LayoutKey = GetStringValue(reader, "LayoutKey"),
+                        Name = GetStringValue(reader, "Name"),
+                        Description = GetStringValue(reader, "Description"),
+                        Width = GetIntValue(reader, "Width"),
+                        Height = GetIntValue(reader, "Height"),
+                        PhotoCount = GetIntValue(reader, "PhotoCount"),
+                        ProductCategoryId = GetIntValue(reader, "ProductCategoryId"),
+                        IsActive = GetBoolValue(reader, "IsActive"),
+                        SortOrder = GetIntValue(reader, "SortOrder"),
+                        CreatedAt = Convert.ToDateTime(reader["CreatedAt"])
+                    };
+
+                    // Set product category if available
+                    if (reader["ProductCategoryName"] != DBNull.Value)
+                    {
+                        layout.ProductCategory = new ProductCategory
+                        {
+                            Id = layout.ProductCategoryId,
+                            Name = GetStringValue(reader, "ProductCategoryName")
+                        };
+                    }
+
+                    // Load photo areas
+                    var photoAreasResult = await GetTemplatePhotoAreasAsync(layoutId);
+                    if (photoAreasResult.Success && photoAreasResult.Data != null)
+                    {
+                        layout.PhotoAreas = photoAreasResult.Data;
+                    }
+
+                    return DatabaseResult<TemplateLayout?>.SuccessResult(layout);
+                }
+
+                return DatabaseResult<TemplateLayout?>.SuccessResult(null);
+            }
+            catch (Exception ex)
+            {
+                return DatabaseResult<TemplateLayout?>.ErrorResult($"Failed to get template layout: {ex.Message}", ex);
+            }
+        }
+
+        public async Task<DatabaseResult<TemplateLayout?>> GetTemplateLayoutByKeyAsync(string layoutKey)
+        {
+            try
+            {
+                var query = @"
+                    SELECT tl.*, pc.Name as ProductCategoryName
+                    FROM TemplateLayouts tl
+                    LEFT JOIN ProductCategories pc ON tl.ProductCategoryId = pc.Id
+                    WHERE tl.LayoutKey = @layoutKey";
+
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+                using var command = new SqliteCommand(query, connection);
+                command.Parameters.AddWithValue("@layoutKey", layoutKey);
+                
+                using var reader = await command.ExecuteReaderAsync();
+                if (await reader.ReadAsync())
+                {
+                    var layout = new TemplateLayout
+                    {
+                        Id = GetStringValue(reader, "Id"),
+                        LayoutKey = GetStringValue(reader, "LayoutKey"),
+                        Name = GetStringValue(reader, "Name"),
+                        Description = GetStringValue(reader, "Description"),
+                        Width = GetIntValue(reader, "Width"),
+                        Height = GetIntValue(reader, "Height"),
+                        PhotoCount = GetIntValue(reader, "PhotoCount"),
+                        ProductCategoryId = GetIntValue(reader, "ProductCategoryId"),
+                        IsActive = GetBoolValue(reader, "IsActive"),
+                        SortOrder = GetIntValue(reader, "SortOrder"),
+                        CreatedAt = Convert.ToDateTime(reader["CreatedAt"])
+                    };
+
+                    // Set product category if available
+                    if (reader["ProductCategoryName"] != DBNull.Value)
+                    {
+                        layout.ProductCategory = new ProductCategory
+                        {
+                            Id = layout.ProductCategoryId,
+                            Name = GetStringValue(reader, "ProductCategoryName")
+                        };
+                    }
+
+                    // Load photo areas
+                    var photoAreasResult = await GetTemplatePhotoAreasAsync(layout.Id);
+                    if (photoAreasResult.Success && photoAreasResult.Data != null)
+                    {
+                        layout.PhotoAreas = photoAreasResult.Data;
+                    }
+
+                    return DatabaseResult<TemplateLayout?>.SuccessResult(layout);
+                }
+
+                return DatabaseResult<TemplateLayout?>.SuccessResult(null);
+            }
+            catch (Exception ex)
+            {
+                return DatabaseResult<TemplateLayout?>.ErrorResult($"Failed to get template layout: {ex.Message}", ex);
+            }
+        }
+
+        public async Task<DatabaseResult<List<TemplatePhotoArea>>> GetTemplatePhotoAreasAsync(string layoutId)
+        {
+            try
+            {
+                var photoAreas = new List<TemplatePhotoArea>();
+                
+                var query = @"
+                    SELECT Id, LayoutId, PhotoIndex, X, Y, Width, Height, Rotation
+                    FROM TemplatePhotoAreas
+                    WHERE LayoutId = @layoutId
+                    ORDER BY PhotoIndex";
+
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+                using var command = new SqliteCommand(query, connection);
+                command.Parameters.AddWithValue("@layoutId", layoutId);
+                
+                using var reader = await command.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    photoAreas.Add(new TemplatePhotoArea
+                    {
+                        Id = GetIntValue(reader, "Id"),
+                        LayoutId = GetStringValue(reader, "LayoutId"),
+                        PhotoIndex = GetIntValue(reader, "PhotoIndex"),
+                        X = GetIntValue(reader, "X"),
+                        Y = GetIntValue(reader, "Y"),
+                        Width = GetIntValue(reader, "Width"),
+                        Height = GetIntValue(reader, "Height"),
+                        Rotation = Convert.ToDouble(reader["Rotation"])
+                    });
+                }
+
+                return DatabaseResult<List<TemplatePhotoArea>>.SuccessResult(photoAreas);
+            }
+            catch (Exception ex)
+            {
+                return DatabaseResult<List<TemplatePhotoArea>>.ErrorResult($"Failed to get template photo areas: {ex.Message}", ex);
+            }
+        }
+
+        public async Task<DatabaseResult<Dictionary<string, List<TemplatePhotoArea>>>> GetPhotoAreasByLayoutIdsAsync(List<string> layoutIds)
+        {
+            try
+            {
+                if (!layoutIds.Any())
+                {
+                    return DatabaseResult<Dictionary<string, List<TemplatePhotoArea>>>.SuccessResult(new Dictionary<string, List<TemplatePhotoArea>>());
+                }
+
+                var photoAreasByLayout = new Dictionary<string, List<TemplatePhotoArea>>();
+                
+                // Create parameter placeholders for IN clause
+                var placeholders = string.Join(",", layoutIds.Select((_, i) => $"@layoutId{i}"));
+                var query = $@"
+                    SELECT Id, LayoutId, PhotoIndex, X, Y, Width, Height, Rotation
+                    FROM TemplatePhotoAreas
+                    WHERE LayoutId IN ({placeholders})
+                    ORDER BY LayoutId, PhotoIndex";
+
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+                using var command = new SqliteCommand(query, connection);
+                
+                // Add parameters for each layout ID
+                for (int i = 0; i < layoutIds.Count; i++)
+                {
+                    command.Parameters.AddWithValue($"@layoutId{i}", layoutIds[i]);
+                }
+                
+                using var reader = await command.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    var photoArea = new TemplatePhotoArea
+                    {
+                        Id = GetIntValue(reader, "Id"),
+                        LayoutId = GetStringValue(reader, "LayoutId"),
+                        PhotoIndex = GetIntValue(reader, "PhotoIndex"),
+                        X = GetIntValue(reader, "X"),
+                        Y = GetIntValue(reader, "Y"),
+                        Width = GetIntValue(reader, "Width"),
+                        Height = GetIntValue(reader, "Height"),
+                        Rotation = Convert.ToDouble(reader["Rotation"])
+                    };
+
+                    if (!photoAreasByLayout.ContainsKey(photoArea.LayoutId))
+                    {
+                        photoAreasByLayout[photoArea.LayoutId] = new List<TemplatePhotoArea>();
+                    }
+                    photoAreasByLayout[photoArea.LayoutId].Add(photoArea);
+                }
+
+                return DatabaseResult<Dictionary<string, List<TemplatePhotoArea>>>.SuccessResult(photoAreasByLayout);
+            }
+            catch (Exception ex)
+            {
+                return DatabaseResult<Dictionary<string, List<TemplatePhotoArea>>>.ErrorResult($"Failed to get photo areas by layout IDs: {ex.Message}", ex);
+            }
+        }
+
         public async Task<DatabaseResult<List<HardwareStatusDto>>> GetHardwareStatusAsync()
         {
             try
@@ -962,7 +2249,11 @@ namespace Photobooth.Services
                 command.Parameters.AddWithValue("@supplyType", supplyType.ToString());
 
                 await command.ExecuteNonQueryAsync();
-                await LogSystemEventAsync(LogLevel.Info, "Supplies", $"{supplyType} supply updated to {newCount}");
+                
+                // Use file-based logging instead of database logging
+                LoggingService.Hardware.Information("Supplies", "Supply count updated",
+                    ("SupplyType", supplyType.ToString()),
+                    ("NewCount", newCount));
                 
                 return DatabaseResult.SuccessResult();
             }
@@ -1050,7 +2341,11 @@ namespace Photobooth.Services
                 var rowsAffected = await command.ExecuteNonQueryAsync();
                 if (rowsAffected > 0)
                 {
-                    await LogSystemEventAsync(LogLevel.Info, "Products", $"Product {productId} status updated to {isActive}");
+                    // Use file-based logging instead of database logging
+                    LoggingService.Application.Information("Product status updated",
+                        ("ProductId", productId),
+                        ("IsActive", isActive));
+                        
                     return DatabaseResult.SuccessResult();
                 }
                 else
@@ -1080,7 +2375,11 @@ namespace Photobooth.Services
                 var rowsAffected = await command.ExecuteNonQueryAsync();
                 if (rowsAffected > 0)
                 {
-                    await LogSystemEventAsync(LogLevel.Info, "Products", $"Product {productId} price updated to ${price:F2}");
+                    // Use file-based logging instead of database logging
+                    LoggingService.Application.Information("Product price updated",
+                        ("ProductId", productId),
+                        ("NewPrice", price));
+                        
                     return DatabaseResult.SuccessResult();
                 }
                 else
@@ -1154,9 +2453,11 @@ namespace Photobooth.Services
                     // Commit the transaction
                     await transaction.CommitAsync();
 
-                    // Log the successful update
+                    // Use file-based logging instead of database logging
                     var logMessage = $"Product {productId} updated: {string.Join(", ", logMessages)}";
-                    await LogSystemEventAsync(LogLevel.Info, "Products", logMessage);
+                    LoggingService.Application.Information("Product updated",
+                        ("ProductId", productId),
+                        ("Changes", string.Join(", ", logMessages)));
 
                     return DatabaseResult.SuccessResult();
                 }
@@ -1235,36 +2536,43 @@ namespace Photobooth.Services
         {
             try
             {
-                Console.WriteLine($"SetSettingValueAsync: {category}.{key} = {value}, updatedBy = '{updatedBy}'");
-                
+
                 var stringValue = value?.ToString() ?? "";
                 var dataType = GetDataTypeString<T>();
 
-                Console.WriteLine($"SetSettingValueAsync: stringValue = '{stringValue}', dataType = '{dataType}'");
-
+                // Check if setting exists
+                var checkQuery = "SELECT COUNT(*) FROM Settings WHERE Category = @category AND Key = @key";
                 using var connection = new SqliteConnection(_connectionString);
                 await connection.OpenAsync();
 
-                // First try to update the existing setting
+                using var checkCommand = new SqliteCommand(checkQuery, connection);
+                checkCommand.Parameters.AddWithValue("@category", category);
+                checkCommand.Parameters.AddWithValue("@key", key);
+                
+                var exists = Convert.ToInt32(await checkCommand.ExecuteScalarAsync()) > 0;
+
+                if (exists)
+                {
+                    // Update existing setting
                 var updateQuery = @"
                     UPDATE Settings 
                     SET Value = @value, DataType = @dataType, UpdatedAt = @updatedAt, UpdatedBy = @updatedBy
                     WHERE Category = @category AND Key = @key";
 
                 using var updateCommand = new SqliteCommand(updateQuery, connection);
-                updateCommand.Parameters.AddWithValue("@category", category);
-                updateCommand.Parameters.AddWithValue("@key", key);
                 updateCommand.Parameters.AddWithValue("@value", stringValue);
                 updateCommand.Parameters.AddWithValue("@dataType", dataType);
+                    updateCommand.Parameters.AddWithValue("@category", category);
+                    updateCommand.Parameters.AddWithValue("@key", key);
                 updateCommand.Parameters.AddWithValue("@updatedAt", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
                 updateCommand.Parameters.AddWithValue("@updatedBy", (object?)updatedBy ?? DBNull.Value);
 
-                var rowsAffected = await updateCommand.ExecuteNonQueryAsync();
-                Console.WriteLine($"SetSettingValueAsync: UPDATE affected {rowsAffected} rows");
+                    var updatedRows = await updateCommand.ExecuteNonQueryAsync();
 
-                // If no rows were updated, insert a new setting with UUID
-                if (rowsAffected == 0)
+                }
+                else
                 {
+                    // Insert new setting
                     var insertQuery = @"
                         INSERT INTO Settings (Id, Category, Key, Value, DataType, IsUserEditable, UpdatedAt, UpdatedBy)
                         VALUES (@id, @category, @key, @value, @dataType, 1, @updatedAt, @updatedBy)";
@@ -1279,50 +2587,199 @@ namespace Photobooth.Services
                     insertCommand.Parameters.AddWithValue("@updatedBy", (object?)updatedBy ?? DBNull.Value);
 
                     var insertedRows = await insertCommand.ExecuteNonQueryAsync();
-                    Console.WriteLine($"SetSettingValueAsync: INSERT affected {insertedRows} rows");
+
                 }
 
-                // Log the setting change
-                await LogSystemEventAsync(LogLevel.Info, "Settings", 
-                    $"Setting updated: {category}.{key} = {value}", 
-                    $"Updated by user: {updatedBy ?? "Unknown"}", 
-                    updatedBy);
+                // Use file-based logging instead of database logging
+                LoggingService.Application.Information("Setting updated",
+                    ("Category", category),
+                    ("Key", key),
+                    ("Value", stringValue),
+                    ("UpdatedBy", updatedBy ?? "Unknown"));
 
-                Console.WriteLine($"SetSettingValueAsync: Successfully saved {category}.{key}");
                 return DatabaseResult.SuccessResult();
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"SetSettingValueAsync error: {ex}");
+
                 return DatabaseResult.ErrorResult($"Failed to set setting value: {ex.Message}", ex);
             }
         }
 
-        public async Task<DatabaseResult> LogSystemEventAsync(LogLevel level, string category, string message, string? details = null, string? userId = null)
+        public async Task<DatabaseResult> CleanupProductSettingsAsync()
         {
             try
             {
+                // Remove settings for products that no longer exist
                 var query = @"
-                    INSERT INTO SystemLogs (LogLevel, Category, Message, Details, UserId, CreatedAt)
-                    VALUES (@level, @category, @message, @details, @userId, @createdAt)";
+                    DELETE FROM Settings 
+                    WHERE Category = 'Product' 
+                    AND Key NOT IN (
+                        SELECT 'Product_' || Id || '_IsActive' FROM Products
+                        UNION
+                        SELECT 'Product_' || Id || '_Price' FROM Products
+                    )";
 
                 using var connection = new SqliteConnection(_connectionString);
                 await connection.OpenAsync();
                 using var command = new SqliteCommand(query, connection);
-                command.Parameters.AddWithValue("@level", level.ToString());
-                command.Parameters.AddWithValue("@category", category);
-                command.Parameters.AddWithValue("@message", message);
-                command.Parameters.AddWithValue("@details", (object?)details ?? DBNull.Value);
-                command.Parameters.AddWithValue("@userId", (object?)userId ?? DBNull.Value);
-                command.Parameters.AddWithValue("@createdAt", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-
-                await command.ExecuteNonQueryAsync();
+                
+                var deletedCount = await command.ExecuteNonQueryAsync();
+                
                 return DatabaseResult.SuccessResult();
             }
             catch (Exception ex)
             {
-                // Don't throw here to avoid infinite loops
-                return DatabaseResult.ErrorResult($"Failed to log system event: {ex.Message}", ex);
+                return DatabaseResult.ErrorResult($"Failed to cleanup product settings: {ex.Message}", ex);
+            }
+        }
+
+        /// <summary>
+        /// Get system date status and seasonal information for verification
+        /// </summary>
+        public async Task<DatabaseResult<SystemDateStatus>> GetSystemDateStatusAsync()
+        {
+            try
+            {
+                var status = new SystemDateStatus
+                {
+                    CurrentSystemDate = DateTime.Now,
+                    CurrentSystemDateString = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
+                    CurrentDateForSeason = $"{DateTime.Now.Month:D2}-{DateTime.Now.Day:D2}",
+                    TimeZone = TimeZoneInfo.Local.DisplayName
+                };
+
+                // Get all seasonal categories and check their status
+                var categoriesResult = await GetAllTemplateCategoriesAsync();
+                if (categoriesResult.Success && categoriesResult.Data != null)
+                {
+                    var seasonalCategories = categoriesResult.Data.Where(c => c.IsSeasonalCategory).ToList();
+                    
+                    foreach (var category in seasonalCategories)
+                    {
+                        var seasonStatus = new SeasonStatus
+                        {
+                            CategoryName = category.Name,
+                            SeasonStartDate = category.SeasonStartDate ?? "",
+                            SeasonEndDate = category.SeasonEndDate ?? "",
+                            SeasonalPriority = category.SeasonalPriority,
+                            IsCurrentlyActive = category.IsCurrentlyInSeason,
+                            SpansYears = !string.IsNullOrEmpty(category.SeasonStartDate) && !string.IsNullOrEmpty(category.SeasonEndDate) && 
+                                       string.Compare(category.SeasonStartDate, category.SeasonEndDate) > 0
+                        };
+                        
+                        status.SeasonalCategories.Add(seasonStatus);
+                    }
+
+                    // Sort by priority (active seasons first, then by priority)
+                    status.SeasonalCategories = status.SeasonalCategories
+                        .OrderByDescending(s => s.IsCurrentlyActive)
+                        .ThenByDescending(s => s.SeasonalPriority)
+                        .ToList();
+
+                    status.ActiveSeasonsCount = status.SeasonalCategories.Count(s => s.IsCurrentlyActive);
+                }
+
+                return DatabaseResult<SystemDateStatus>.SuccessResult(status);
+            }
+            catch (Exception ex)
+            {
+                return DatabaseResult<SystemDateStatus>.ErrorResult($"Failed to get system date status: {ex.Message}", ex);
+            }
+        }
+
+        public async Task<DatabaseResult> DeleteAdminUserAsync(string userId, string? deletedBy = null)
+        {
+            try
+            {
+
+                // First check if the user exists and get their username for logging
+                var userResult = await GetByUserIdAsync<AdminUser>(userId);
+                if (!userResult.Success || userResult.Data == null)
+                {
+
+                    return DatabaseResult.ErrorResult($"User with ID '{userId}' not found");
+                }
+                
+                var username = userResult.Data.Username;
+
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+                using var transaction = connection.BeginTransaction();
+
+                try
+                {
+                    // Properly handle foreign key relationships instead of disabling constraints
+                    
+                    // 1. Update Templates.UploadedBy to NULL where it references this user
+                    var updateTemplatesCmd = new SqliteCommand(
+                        "UPDATE Templates SET UploadedBy = NULL WHERE UploadedBy = @userId", 
+                        connection, transaction);
+                    updateTemplatesCmd.Parameters.AddWithValue("@userId", userId);
+                    await updateTemplatesCmd.ExecuteNonQueryAsync();
+                    
+                    // 2. Update Settings.UpdatedBy to NULL where it references this user
+                    var updateSettingsCmd = new SqliteCommand(
+                        "UPDATE Settings SET UpdatedBy = NULL WHERE UpdatedBy = @userId", 
+                        connection, transaction);
+                    updateSettingsCmd.Parameters.AddWithValue("@userId", userId);
+                    await updateSettingsCmd.ExecuteNonQueryAsync();
+                    
+                    // 3. Update BusinessInfo.UpdatedBy to NULL where it references this user
+                    var updateBusinessInfoCmd = new SqliteCommand(
+                        "UPDATE BusinessInfo SET UpdatedBy = NULL WHERE UpdatedBy = @userId", 
+                        connection, transaction);
+                    updateBusinessInfoCmd.Parameters.AddWithValue("@userId", userId);
+                    await updateBusinessInfoCmd.ExecuteNonQueryAsync();
+                    
+                    // 4. Update SystemErrors.ResolvedBy to NULL where it references this user
+                    var updateErrorsCmd = new SqliteCommand(
+                        "UPDATE SystemErrors SET ResolvedBy = NULL WHERE ResolvedBy = @userId", 
+                        connection, transaction);
+                    updateErrorsCmd.Parameters.AddWithValue("@userId", userId);
+                    await updateErrorsCmd.ExecuteNonQueryAsync();
+                    
+                    // 5. Update AdminUsers self-references (CreatedBy, UpdatedBy) to NULL
+                    var updateAdminUsersCmd = new SqliteCommand(
+                        "UPDATE AdminUsers SET CreatedBy = NULL, UpdatedBy = NULL WHERE CreatedBy = @userId OR UpdatedBy = @userId", 
+                        connection, transaction);
+                    updateAdminUsersCmd.Parameters.AddWithValue("@userId", userId);
+                    await updateAdminUsersCmd.ExecuteNonQueryAsync();
+                    
+                    // 6. Now safely delete the admin user
+                    var deleteCmd = new SqliteCommand("DELETE FROM AdminUsers WHERE UserId = @userId", connection, transaction);
+                    deleteCmd.Parameters.AddWithValue("@userId", userId);
+                    var rowsAffected = await deleteCmd.ExecuteNonQueryAsync();
+                    
+                    // Commit the transaction
+                    transaction.Commit();
+                    
+                    if (rowsAffected > 0)
+                    {
+                        // Use file-based logging instead of database logging
+                        LoggingService.Application.Information("Admin user deleted",
+                            ("Username", username),
+                            ("UserId", userId),
+                            ("DeletedBy", deletedBy ?? "Unknown"));
+
+                        return DatabaseResult.SuccessResult();
+                    }
+                    else
+                    {
+                        return DatabaseResult.ErrorResult("User not found or already deleted");
+                    }
+                }
+                catch
+                {
+                    // Rollback transaction on error
+                    transaction.Rollback();
+                    throw; // Re-throw to be caught by outer catch block
+                }
+            }
+            catch (Exception ex)
+            {
+
+                return DatabaseResult.ErrorResult($"Failed to delete admin user: {ex.Message}", ex);
             }
         }
 
@@ -1347,8 +2804,6 @@ namespace Photobooth.Services
                 nameof(HardwareStatusModel) => "HardwareStatus",
                 nameof(PrintSupply) => "PrintSupplies",
                 nameof(SupplyUsageHistory) => "SupplyUsageHistory",
-                nameof(SystemLog) => "SystemLogs",
-                nameof(SystemError) => "SystemErrors",
                 nameof(DailySalesSummary) => "DailySalesSummary",
                 nameof(TemplateUsageStat) => "TemplateUsageStats",
                 nameof(Customer) => "Customers",
@@ -1435,9 +2890,71 @@ namespace Photobooth.Services
             return Convert.ToBase64String(hashedBytes);
         }
 
-        /// <summary>
-        /// Generates a cryptographically secure random password
-        /// </summary>
+        private string GetStringValue(System.Data.Common.DbDataReader reader, string columnName, string defaultValue = "")
+        {
+            try
+            {
+                var ordinal = reader.GetOrdinal(columnName);
+                return reader.IsDBNull(ordinal) ? defaultValue : reader.GetString(ordinal);
+            }
+            catch
+            {
+                return defaultValue;
+            }
+        }
+
+        private int GetIntValue(System.Data.Common.DbDataReader reader, string columnName, int defaultValue = 0)
+        {
+            try
+            {
+                var ordinal = reader.GetOrdinal(columnName);
+                return reader.IsDBNull(ordinal) ? defaultValue : reader.GetInt32(ordinal);
+            }
+            catch
+            {
+                return defaultValue;
+            }
+        }
+
+        private long GetLongValue(System.Data.Common.DbDataReader reader, string columnName, long defaultValue = 0)
+        {
+            try
+            {
+                var ordinal = reader.GetOrdinal(columnName);
+                return reader.IsDBNull(ordinal) ? defaultValue : reader.GetInt64(ordinal);
+            }
+            catch
+            {
+                return defaultValue;
+            }
+        }
+
+        private bool GetBoolValue(System.Data.Common.DbDataReader reader, string columnName, bool defaultValue = false)
+        {
+            try
+            {
+                var ordinal = reader.GetOrdinal(columnName);
+                return reader.IsDBNull(ordinal) ? defaultValue : reader.GetBoolean(ordinal);
+            }
+            catch
+            {
+                return defaultValue;
+            }
+        }
+
+        private double GetDoubleValue(System.Data.Common.DbDataReader reader, string columnName, double defaultValue = 0.0)
+        {
+            try
+            {
+                var ordinal = reader.GetOrdinal(columnName);
+                return reader.IsDBNull(ordinal) ? defaultValue : reader.GetDouble(ordinal);
+            }
+            catch
+            {
+                return defaultValue;
+            }
+        }
+
         private string GenerateSecurePassword(int length = 16)
         {
             const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
@@ -1519,19 +3036,15 @@ namespace Photobooth.Services
                 // Write secure credentials to a protected file for first-time setup
                 await WriteInitialCredentialsSecurely(masterPassword, userPassword);
 
-                Console.WriteLine("🔒 Default admin users created with secure random passwords");
-                Console.WriteLine("📋 Check the setup credentials file for initial login information");
+
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Error creating default admin users: {ex.Message}");
+
                 throw;
             }
         }
 
-        /// <summary>
-        /// Writes initial credentials to a secure file for first-time setup
-        /// </summary>
         private async Task WriteInitialCredentialsSecurely(string masterPassword, string userPassword)
         {
             try
@@ -1609,21 +3122,15 @@ It contains no important application files.
                 await File.WriteAllTextAsync(credentialsFile, credentialsContent);
                 await File.WriteAllTextAsync(readmeFile, readmeContent);
 
-                Console.WriteLine($"📋 Setup credentials folder created on Desktop: {setupDir}");
-                Console.WriteLine("🎯 Folder is clearly labeled and will auto-delete after setup");
+
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Warning: Could not write credentials file: {ex.Message}");
-                Console.WriteLine($"Master admin password: {masterPassword}");
-                Console.WriteLine($"User admin password: {userPassword}");
-                Console.WriteLine("Please note these passwords for initial setup!");
+
+
             }
         }
 
-        /// <summary>
-        /// Cleans up the setup credentials folder after successful admin login
-        /// </summary>
         public static void CleanupSetupCredentials()
         {
             try
@@ -1634,19 +3141,16 @@ It contains no important application files.
                 if (Directory.Exists(setupDir))
                 {
                     Directory.Delete(setupDir, true);
-                    Console.WriteLine("🗑️ Setup credentials folder automatically deleted from Desktop");
+
                 }
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Note: Could not auto-delete setup folder: {ex.Message}");
-                Console.WriteLine("You can safely delete the PhotoBoothX-Setup-Credentials folder from Desktop manually.");
+
+
             }
         }
 
-        /// <summary>
-        /// Asynchronously cleans up the setup credentials folder after successful admin login
-        /// </summary>
         public static async Task CleanupSetupCredentialsAsync()
         {
             await Task.Run(() =>
@@ -1659,13 +3163,13 @@ It contains no important application files.
                     if (Directory.Exists(setupDir))
                     {
                         Directory.Delete(setupDir, true);
-                        Console.WriteLine("🗑️ Setup credentials folder automatically deleted from Desktop");
+
                     }
                 }
-                catch (Exception ex)
+                catch
                 {
-                    Console.WriteLine($"Note: Could not auto-delete setup folder: {ex.Message}");
-                    Console.WriteLine("You can safely delete the PhotoBoothX-Setup-Credentials folder from Desktop manually.");
+
+
                 }
             });
         }
@@ -1674,8 +3178,7 @@ It contains no important application files.
         {
             try
             {
-                Console.WriteLine("CreateDefaultSettingsDirect: Starting default settings creation...");
-                
+
                 // NOTE: Product pricing and enabled states removed - now managed exclusively in Products table
                 var defaultSettings = new[]
                 {
@@ -1704,132 +3207,14 @@ It contains no important application files.
                     command.Parameters.AddWithValue("@updatedAt", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
                     
                     await command.ExecuteNonQueryAsync();
-                    Console.WriteLine($"CreateDefaultSettingsDirect: Created setting {setting.Category}.{setting.Key}");
+
                 }
-                
-                Console.WriteLine("CreateDefaultSettingsDirect: All default settings created successfully");
+
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"CreateDefaultSettingsDirect error: {ex.Message}");
+
                 throw;
-            }
-        }
-
-        public async Task<DatabaseResult> DeleteAdminUserAsync(string userId, string? deletedBy = null)
-        {
-            try
-            {
-                Console.WriteLine($"DeleteAdminUserAsync: Attempting to delete user '{userId}', deleted by '{deletedBy}'");
-                
-                // First check if the user exists and get their username for logging
-                var userResult = await GetByUserIdAsync<AdminUser>(userId);
-                if (!userResult.Success || userResult.Data == null)
-                {
-                    Console.WriteLine($"DeleteAdminUserAsync: User '{userId}' not found");
-                    return DatabaseResult.ErrorResult($"User with ID '{userId}' not found");
-                }
-                
-                var username = userResult.Data.Username;
-                Console.WriteLine($"DeleteAdminUserAsync: Found user '{username}' to delete");
-
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
-                
-                // Temporarily disable foreign key constraints to work around migration issues
-                Console.WriteLine("DeleteAdminUserAsync: Disabling foreign key constraints temporarily");
-                using var disableFkCmd = new SqliteCommand("PRAGMA foreign_keys = OFF;", connection);
-                await disableFkCmd.ExecuteNonQueryAsync();
-
-                var query = "DELETE FROM AdminUsers WHERE UserId = @userId";
-                using var command = new SqliteCommand(query, connection);
-                command.Parameters.AddWithValue("@userId", userId);
-
-                var rowsAffected = await command.ExecuteNonQueryAsync();
-                Console.WriteLine($"DeleteAdminUserAsync: {rowsAffected} rows affected");
-                
-                // Re-enable foreign key constraints
-                Console.WriteLine("DeleteAdminUserAsync: Re-enabling foreign key constraints");
-                using var enableFkCmd = new SqliteCommand("PRAGMA foreign_keys = ON;", connection);
-                await enableFkCmd.ExecuteNonQueryAsync();
-                
-                if (rowsAffected > 0)
-                {
-                    await LogSystemEventAsync(LogLevel.Info, "AdminUsers", $"Admin user '{username}' ({userId}) deleted", $"Deleted by: {deletedBy ?? "Unknown"}", deletedBy);
-                    Console.WriteLine($"DeleteAdminUserAsync: User '{username}' deleted successfully");
-                    return DatabaseResult.SuccessResult();
-                }
-                else
-                {
-                    Console.WriteLine($"DeleteAdminUserAsync: No rows affected, user may have already been deleted");
-                    return DatabaseResult.ErrorResult("User not found or already deleted");
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"DeleteAdminUserAsync error: {ex}");
-                return DatabaseResult.ErrorResult($"Failed to delete admin user: {ex.Message}", ex);
-            }
-        }
-
-        public async Task<DatabaseResult> CleanupProductSettingsAsync()
-        {
-            try
-            {
-                Console.WriteLine("CleanupProductSettingsAsync: Starting cleanup of redundant product settings...");
-                
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
-
-                // List of product-related settings to remove from Settings table
-                var productSettingsToRemove = new[]
-                {
-                    // Pricing category - now handled by Products table
-                    new { Category = "Pricing", Key = "StripPrice" },
-                    new { Category = "Pricing", Key = "Photo4x6Price" },
-                    new { Category = "Pricing", Key = "SmartphonePrice" },
-                    
-                    // Products category - now handled by Products table
-                    new { Category = "Products", Key = "StripEnabled" },
-                    new { Category = "Products", Key = "Photo4x6Enabled" },
-                    new { Category = "Products", Key = "PhonePrintsEnabled" }
-                };
-
-                int totalRemoved = 0;
-                
-                var deleteQuery = "DELETE FROM Settings WHERE Category = @category AND Key = @key";
-
-                foreach (var setting in productSettingsToRemove)
-                {
-                    using var command = new SqliteCommand(deleteQuery, connection);
-                    command.Parameters.AddWithValue("@category", setting.Category);
-                    command.Parameters.AddWithValue("@key", setting.Key);
-                    
-                    var rowsAffected = await command.ExecuteNonQueryAsync();
-                    if (rowsAffected > 0)
-                    {
-                        Console.WriteLine($"CleanupProductSettingsAsync: Removed {setting.Category}.{setting.Key} ({rowsAffected} rows)");
-                        totalRemoved += rowsAffected;
-                    }
-                    else
-                    {
-                        Console.WriteLine($"CleanupProductSettingsAsync: Setting {setting.Category}.{setting.Key} not found (already cleaned)");
-                    }
-                }
-
-                Console.WriteLine($"CleanupProductSettingsAsync: Cleanup completed. Removed {totalRemoved} total redundant settings.");
-                
-                // Log the cleanup action
-                await LogSystemEventAsync(LogLevel.Info, "Database", 
-                    $"Product settings cleanup completed", 
-                    $"Removed {totalRemoved} redundant product-related settings from Settings table. Products now managed exclusively in Products table.");
-
-                return DatabaseResult.SuccessResult();
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"CleanupProductSettingsAsync error: {ex}");
-                return DatabaseResult.ErrorResult($"Failed to cleanup product settings: {ex.Message}", ex);
             }
         }
 

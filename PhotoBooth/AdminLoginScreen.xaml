@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:behaviors="clr-namespace:Photobooth.Behaviors"
              mc:Ignorable="d"
              d:DesignHeight="1080" d:DesignWidth="1920">
 
@@ -165,6 +166,40 @@
             </Setter>
         </Style>
 
+        <!-- Password Toggle Button Style -->
+        <Style x:Key="PasswordToggleButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Width" Value="24"/>
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Opacity" Value="0.7"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                CornerRadius="4"
+                                x:Name="Border">
+                            <ContentPresenter HorizontalAlignment="Center" 
+                                            VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Opacity" Value="1"/>
+                                <Setter TargetName="Border" Property="Background">
+                                    <Setter.Value>
+                                        <SolidColorBrush Color="White" Opacity="0.1"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- Simple Input Style -->
         <Style x:Key="SimpleTextBoxStyle" TargetType="TextBox">
             <Setter Property="Background" Value="#33FFFFFF"/>
@@ -222,7 +257,7 @@
                 </Ellipse.Fill>
             </Ellipse>
 
-            <Ellipse Width="96" Height="96" Canvas.Right="64" Canvas.Top="128" Opacity="0.12">
+            <Ellipse Width="96" Height="96" Canvas.Left="1600" Canvas.Top="128" Opacity="0.12">
                 <Ellipse.Fill>
                     <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
                         <GradientStop Color="#A78BFA" Offset="0"/>
@@ -231,7 +266,7 @@
                 </Ellipse.Fill>
             </Ellipse>
 
-            <Ellipse Width="192" Height="192" Canvas.Left="-96" Canvas.Bottom="-96" Opacity="0.08">
+            <Ellipse Width="192" Height="192" Canvas.Left="-96" Canvas.Top="792" Opacity="0.08">
                 <Ellipse.Fill>
                     <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
                         <GradientStop Color="#22D3EE" Offset="0"/>
@@ -301,7 +336,8 @@
                                  BorderThickness="0"
                                  CaretBrush="White"
                                  SelectionBrush="#4A90E2"
-                                 VerticalContentAlignment="Center"/>
+                                 VerticalContentAlignment="Center"
+                                 behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True" />
                     </Border>
                 </StackPanel>
 
@@ -313,22 +349,50 @@
                                FontWeight="Medium"
                                Margin="0,0,0,8"/>
 
-                    <!-- Password TextBox -->
+                    <!-- Password Input Container -->
                     <Border Background="#33FFFFFF" 
                             BorderBrush="#66FFFFFF" 
                             BorderThickness="1" 
                             CornerRadius="8"
                             Height="40">
-                        <PasswordBox Name="PasswordInput" 
+                        <Grid>
+                            <!-- Hidden Password Input -->
+                            <PasswordBox Name="PasswordInput" 
+                                         KeyDown="PasswordInput_KeyDown"
+                                         FontSize="16"
+                                         Padding="12,8,40,8"
+                                         Background="Transparent"
+                                         Foreground="White"
+                                         BorderThickness="0"
+                                         CaretBrush="White"
+                                         SelectionBrush="#4A90E2"
+                                         VerticalContentAlignment="Center"
+                                         behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True" />
+                            
+                            <!-- Visible Password Input (Initially Hidden) -->
+                            <TextBox Name="PasswordTextInput" 
                                      KeyDown="PasswordInput_KeyDown"
                                      FontSize="16"
-                                     Padding="12,8"
+                                     Padding="12,8,40,8"
                                      Background="Transparent"
                                      Foreground="White"
                                      BorderThickness="0"
                                      CaretBrush="White"
                                      SelectionBrush="#4A90E2"
-                                     VerticalContentAlignment="Center"/>
+                                     VerticalContentAlignment="Center"
+                                     Visibility="Collapsed"
+                                     behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True" />
+                            
+                            <!-- Show/Hide Password Toggle Button -->
+                            <Button Name="PasswordToggleButton"
+                                    Style="{StaticResource PasswordToggleButtonStyle}"
+                                    Content="👁"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Center"
+                                    Margin="0,0,8,0"
+                                    Click="PasswordToggleButton_Click"
+                                    ToolTip="Show/Hide Password"/>
+                        </Grid>
                     </Border>
                 </StackPanel>
 

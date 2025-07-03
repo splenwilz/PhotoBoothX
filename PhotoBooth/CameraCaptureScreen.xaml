@@ -1,0 +1,349 @@
+<UserControl x:Class="Photobooth.CameraCaptureScreen"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             mc:Ignorable="d" 
+             d:DesignHeight="1080" d:DesignWidth="1920">
+    
+    <UserControl.Resources>
+        <!-- Main Background Gradient: from-purple-900 via-blue-900 to-indigo-900 -->
+        <LinearGradientBrush x:Key="MainBackgroundGradient" StartPoint="0,0" EndPoint="1,1">
+            <GradientStop Color="#581C87" Offset="0"/>
+            <!-- purple-900 -->
+            <GradientStop Color="#1E3A8A" Offset="0.5"/>
+            <!-- blue-900 -->
+            <GradientStop Color="#312E81" Offset="1"/>
+            <!-- indigo-900 -->
+        </LinearGradientBrush>
+
+        <!-- Status Text Gradient -->
+        <LinearGradientBrush x:Key="StatusGradient" StartPoint="0,0" EndPoint="1,0">
+            <GradientStop Color="#FFFFFF" Offset="0"/>
+            <GradientStop Color="#DDD6FE" Offset="0.5"/>
+            <GradientStop Color="#BFDBFE" Offset="1"/>
+        </LinearGradientBrush>
+
+        <!-- Template Info Gradient -->
+        <LinearGradientBrush x:Key="TemplateGradient" StartPoint="0,0" EndPoint="1,0">
+            <GradientStop Color="#A5F3FC" Offset="0"/>
+            <GradientStop Color="#BFDBFE" Offset="1"/>
+        </LinearGradientBrush>
+
+        <!-- Floating Orb Styles -->
+        <Style x:Key="FloatingOrbStyle" TargetType="Ellipse">
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <BlurEffect Radius="15"/>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Modern Button Style -->
+        <Style x:Key="ModernButtonStyle" TargetType="Button">
+            <Setter Property="Background">
+                <Setter.Value>
+                    <SolidColorBrush Color="White" Opacity="0.1"/>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush">
+                <Setter.Value>
+                    <SolidColorBrush Color="White" Opacity="0.2"/>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="FontWeight" Value="Medium"/>
+            <Setter Property="Padding" Value="20,12"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <DropShadowEffect BlurRadius="8" Opacity="0.1" ShadowDepth="2"/>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" 
+                                CornerRadius="12" 
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" 
+                                            VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background">
+                                    <Setter.Value>
+                                        <SolidColorBrush Color="White" Opacity="0.15"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="Background">
+                                    <Setter.Value>
+                                        <SolidColorBrush Color="White" Opacity="0.2"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Back Button Style -->
+        <Style x:Key="BackButtonStyle" TargetType="Button" BasedOn="{StaticResource ModernButtonStyle}">
+            <Setter Property="Background" Value="#6B7280"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#4B5563"/>
+                </Trigger>
+                <Trigger Property="IsPressed" Value="True">
+                    <Setter Property="Background" Value="#374151"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
+
+    <!-- Main Container with Animated Background -->
+    <Grid Background="{StaticResource MainBackgroundGradient}" ClipToBounds="True">
+
+        <!-- Floating Orbs Layer -->
+        <Canvas Name="FloatingOrbsCanvas">
+            <!-- Purple orb -->
+            <Ellipse Width="96" Height="96" 
+                     Fill="#A855F7" Opacity="0.2" 
+                     Style="{StaticResource FloatingOrbStyle}"
+                     Canvas.Left="128" Canvas.Top="128"/>
+
+            <!-- Blue orb -->
+            <Ellipse Width="80" Height="80" 
+                     Fill="#3B82F6" Opacity="0.25" 
+                     Style="{StaticResource FloatingOrbStyle}"
+                     Canvas.Left="1680" Canvas.Top="80"/>
+
+            <!-- Pink orb -->
+            <Ellipse Width="128" Height="128" 
+                     Fill="#EC4899" Opacity="0.15" 
+                     Style="{StaticResource FloatingOrbStyle}"
+                     Canvas.Left="480" Canvas.Top="792"/>
+
+            <!-- Cyan orb -->
+            <Ellipse Width="80" Height="80" 
+                     Fill="#06B6D4" Opacity="0.2" 
+                     Style="{StaticResource FloatingOrbStyle}"
+                     Canvas.Left="1712" Canvas.Top="872"/>
+        </Canvas>
+
+        <!-- Floating Particles Canvas -->
+        <Canvas Name="ParticlesCanvas" ClipToBounds="True">
+            <!-- Particles will be added programmatically -->
+        </Canvas>
+
+        <!-- Main Content Layout -->
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <!-- Back Button -->
+                <RowDefinition Height="*"/>
+                <!-- Camera Preview -->
+                <RowDefinition Height="Auto"/>
+                <!-- Status and Progress -->
+            </Grid.RowDefinitions>
+
+            <!-- Back Button -->
+            <Button Name="BackButton" 
+                    Content="← Back" 
+                    Style="{StaticResource BackButtonStyle}"
+                    HorizontalAlignment="Left" 
+                    VerticalAlignment="Top"
+                    Margin="40,40,0,0"
+                    Click="BackButton_Click"/>
+
+            <!-- Camera Preview Container -->
+            <Border Name="CameraPreviewBorder" 
+                    Grid.Row="1"
+                    Width="800" 
+                    Height="600" 
+                    Background="Black" 
+                    CornerRadius="20"
+                    BorderBrush="White" 
+                    BorderThickness="4"
+                    HorizontalAlignment="Center" 
+                    VerticalAlignment="Center"
+                    Margin="0,20,0,40">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="20" Opacity="0.3" ShadowDepth="0"/>
+                </Border.Effect>
+                
+                <Grid>
+                    <!-- Camera Preview Image -->
+                    <Image Name="CameraPreviewImage" 
+                           Stretch="UniformToFill"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           RenderTransformOrigin="0.5,0.5">
+                        <Image.RenderTransform>
+                            <ScaleTransform ScaleX="-1" ScaleY="1"/>
+                        </Image.RenderTransform>
+                    </Image>
+                    
+                    <!-- Countdown Overlay -->
+                    <Grid Name="CountdownOverlay" 
+                          Background="#80000000" 
+                          Visibility="Collapsed">
+                        <TextBlock Name="CountdownText" 
+                                   Text="3" 
+                                   FontSize="200" 
+                                   FontWeight="Bold" 
+                                   Foreground="White" 
+                                   HorizontalAlignment="Center" 
+                                   VerticalAlignment="Center">
+                            <TextBlock.Effect>
+                                <DropShadowEffect BlurRadius="10" ShadowDepth="2"/>
+                            </TextBlock.Effect>
+                        </TextBlock>
+                    </Grid>
+                </Grid>
+            </Border>
+
+            <!-- Status and Progress Section -->
+            <StackPanel Grid.Row="2" 
+                        HorizontalAlignment="Center" 
+                        VerticalAlignment="Bottom"
+                        Margin="0,0,0,60">
+                
+                <!-- Status Text -->
+                <TextBlock Name="StatusText" 
+                           Text="Photo 1 of 4 - Get ready!" 
+                           FontSize="32" 
+                           FontWeight="SemiBold" 
+                           Foreground="{StaticResource StatusGradient}" 
+                           HorizontalAlignment="Center"
+                           Margin="0,0,0,20"
+                           TextAlignment="Center">
+                    <TextBlock.Effect>
+                        <DropShadowEffect Color="Black" Opacity="0.3" BlurRadius="4" ShadowDepth="1"/>
+                    </TextBlock.Effect>
+                </TextBlock>
+
+                <!-- Progress Indicators -->
+                <StackPanel Name="ProgressIndicator" 
+                            Orientation="Horizontal" 
+                            HorizontalAlignment="Center"
+                            Margin="0,0,0,20">
+                    <!-- Progress dots will be added programmatically -->
+                </StackPanel>
+
+                <!-- Template Info -->
+                <StackPanel Orientation="Horizontal" 
+                            HorizontalAlignment="Center">
+                    <TextBlock Name="TemplateNameText" 
+                               Text="Template Name" 
+                               FontSize="18" 
+                               FontWeight="Medium" 
+                               Foreground="{StaticResource TemplateGradient}" 
+                               Margin="0,0,8,0"/>
+                    <TextBlock Text="•" 
+                               FontSize="18" 
+                               Foreground="{StaticResource TemplateGradient}" 
+                               Margin="0,0,8,0"/>
+                    <TextBlock Name="PhotoCountText" 
+                               Text="4 Photos" 
+                               FontSize="18" 
+                               FontWeight="Medium" 
+                               Foreground="{StaticResource TemplateGradient}"/>
+                </StackPanel>
+            </StackPanel>
+        </Grid>
+
+        <!-- Loading Overlay -->
+        <Grid Name="LoadingOverlay" 
+              Background="#80000000" 
+              Visibility="Collapsed">
+            <Border Background="#1F2937" 
+                    CornerRadius="16" 
+                    Padding="40,30"
+                    HorizontalAlignment="Center" 
+                    VerticalAlignment="Center"
+                    MaxWidth="400">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="20" Opacity="0.3" ShadowDepth="0"/>
+                </Border.Effect>
+                
+                <StackPanel Orientation="Horizontal" 
+                            HorizontalAlignment="Center">
+                    <!-- Loading Spinner -->
+                    <Ellipse Width="24" Height="24" 
+                             Stroke="White" 
+                             StrokeThickness="3" 
+                             Margin="0,0,15,0"
+                             Opacity="0.8">
+                        <Ellipse.Style>
+                            <Style TargetType="Ellipse">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ElementName=LoadingOverlay, Path=Visibility}" Value="Visible">
+                                        <DataTrigger.EnterActions>
+                                            <BeginStoryboard>
+                                                <Storyboard RepeatBehavior="Forever">
+                                                    <DoubleAnimation Storyboard.TargetProperty="RenderTransform.(RotateTransform.Angle)"
+                                                                   From="0" To="360" Duration="0:0:1"/>
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </DataTrigger.EnterActions>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Ellipse.Style>
+                        <Ellipse.RenderTransform>
+                            <RotateTransform CenterX="12" CenterY="12"/>
+                        </Ellipse.RenderTransform>
+                        <Ellipse.StrokeDashArray>
+                            <DoubleCollection>4,2</DoubleCollection>
+                        </Ellipse.StrokeDashArray>
+                    </Ellipse>
+                    
+                    <!-- Loading Text -->
+                    <TextBlock Name="LoadingText" 
+                               Text="Composing your photos..." 
+                               FontSize="18" 
+                               FontWeight="Medium" 
+                               Foreground="White" 
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- Error Message Overlay -->
+        <Border Name="ErrorMessageBorder" 
+                Background="#CC000000" 
+                CornerRadius="12" 
+                Visibility="Collapsed"
+                HorizontalAlignment="Center" 
+                VerticalAlignment="Center"
+                Padding="30,20"
+                MaxWidth="600">
+            <TextBlock Name="ErrorMessageText" 
+                       Text="Error message" 
+                       FontSize="18" 
+                       Foreground="White" 
+                       TextAlignment="Center" 
+                       TextWrapping="Wrap"/>
+        </Border>
+
+        <!-- Bottom Gradient Overlay -->
+        <Border VerticalAlignment="Bottom" Height="128">
+            <Border.Background>
+                <LinearGradientBrush StartPoint="0,1" EndPoint="0,0">
+                    <GradientStop Color="#33000000" Offset="0"/>
+                    <GradientStop Color="Transparent" Offset="1"/>
+                </LinearGradientBrush>
+            </Border.Background>
+        </Border>
+
+    </Grid>
+</UserControl> 

@@ -3,11 +3,10 @@ name: "Build and Deploy PhotoBoothX"
 on:
   push:
     branches:
-      - production
-      - main  # Also trigger on main for testing
+      - '**'  # Run on all branches
   pull_request:
     branches:
-      - production
+      - '**'  # Run on PRs to any branch
   release:
     types: [published]
 
@@ -24,9 +23,58 @@ env:
   PUBLISH_PATH: 'PhotoBooth/bin/Release/net8.0-windows/win-x64/publish'
 
 jobs:
-  build-and-test:
-    name: Build and Test
+  # Quick test job that runs on every commit
+  test-only:
+    name: Run Tests
     runs-on: windows-latest
+    # Skip this job if we're doing a full build (production/main/master)
+    if: github.ref != 'refs/heads/production' && github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+        
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+        
+    - name: Cache NuGet packages
+      uses: actions/cache@v4
+      with:
+        path: ~/.nuget/packages
+        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+        restore-keys: |
+          ${{ runner.os }}-nuget-
+          
+    - name: Restore dependencies
+      run: dotnet restore ${{ env.PROJECT_PATH }}
+      
+    - name: Build application (Debug)
+      run: dotnet build ${{ env.PROJECT_PATH }} --configuration Debug --no-restore
+      
+    - name: Run tests
+      run: |
+        if (Test-Path "Photobooth.Tests/Photobooth.Tests.csproj") {
+          Write-Host "🧪 Running PhotoBoothX tests..."
+          dotnet test Photobooth.Tests/Photobooth.Tests.csproj --configuration Debug --no-build --verbosity normal --logger "console;verbosity=detailed"
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "✅ All tests passed!" -ForegroundColor Green
+          } else {
+            Write-Host "❌ Some tests failed!" -ForegroundColor Red
+            exit 1
+          }
+        } else {
+          Write-Host "⚠️ No tests found, skipping test execution" -ForegroundColor Yellow
+        }
+      shell: powershell
+
+  # Full build and test job (production/main/master only)
+  build-and-test:
+    name: Build and Test (Full)
+    runs-on: windows-latest
+    # Only run on production/main/master branches or release events
+    if: github.ref == 'refs/heads/production' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.event_name == 'release'
     
     steps:
     - name: Checkout code
@@ -53,12 +101,19 @@ jobs:
     - name: Build application
       run: dotnet build ${{ env.PROJECT_PATH }} --configuration Release --no-restore
       
-    - name: Run tests
+    - name: Run tests with coverage
       run: |
         if (Test-Path "Photobooth.Tests/Photobooth.Tests.csproj") {
+          Write-Host "🧪 Running PhotoBoothX tests with coverage..."
           dotnet test Photobooth.Tests/Photobooth.Tests.csproj --configuration Release --no-build --verbosity normal --collect:"XPlat Code Coverage" --logger trx --results-directory coverage
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "✅ All tests passed!" -ForegroundColor Green
+          } else {
+            Write-Host "❌ Some tests failed!" -ForegroundColor Red
+            exit 1
+          }
         } else {
-          Write-Host "No tests found, skipping test execution"
+          Write-Host "⚠️ No tests found, skipping test execution" -ForegroundColor Yellow
         }
       shell: powershell
       
@@ -70,13 +125,13 @@ jobs:
       with:
         name: published-app
         path: ${{ env.PUBLISH_PATH }}
-        retention-days: 30
+        retention-days: 7
 
   create-installer:
     name: Create Installer
     needs: build-and-test
     runs-on: windows-latest
-    if: github.ref == 'refs/heads/production' || github.event_name == 'release'
+    if: github.ref == 'refs/heads/production' || github.ref == 'refs/heads/master' || github.event_name == 'release'
     
     steps:
     - name: Checkout code
@@ -204,7 +259,7 @@ jobs:
       with:
         name: installer
         path: dist/*.exe
-        retention-days: 90
+        retention-days: 7
         
     - name: List installer files
       run: Get-ChildItem -Path "dist" -Recurse
@@ -214,7 +269,7 @@ jobs:
     name: Create GitHub Release
     needs: [build-and-test, create-installer]
     runs-on: windows-latest
-    if: github.ref == 'refs/heads/production'
+    if: github.ref == 'refs/heads/production' || github.ref == 'refs/heads/master'
     
     steps:
     - name: Checkout code
@@ -296,7 +351,7 @@ jobs:
     name: Notify Deployment Success
     needs: [create-release]
     runs-on: windows-latest
-    if: success() && github.ref == 'refs/heads/production'
+    if: success() && (github.ref == 'refs/heads/production' || github.ref == 'refs/heads/master')
     
     steps:
     - name: Success notification

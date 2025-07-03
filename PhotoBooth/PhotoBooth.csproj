@@ -6,6 +6,9 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+	<!-- Suppress warnings for legacy AForge package compatibility -->
+	<NoWarn>$(NoWarn);NU1701</NoWarn>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     
     <!-- Application Icon -->
     <ApplicationIcon>icon.ico</ApplicationIcon>
@@ -53,18 +56,28 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<None Include="Assets\Sounds\**\*">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+	</ItemGroup>
+
+	<ItemGroup>
 		<None Include="Database_Schema.sql">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
 	</ItemGroup>
 
 	<ItemGroup>
+		<PackageReference Include="AForge.Video" Version="2.2.5" />
+		<PackageReference Include="AForge.Video.DirectShow" Version="2.2.5" />
 		<PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.0" />
+		<PackageReference Include="Microsoft.Xaml.Behaviors.Wpf" Version="1.1.135" />
 		<PackageReference Include="Serilog" Version="4.2.0" />
 		<PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
 		<PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
 		<PackageReference Include="Serilog.Enrichers.Thread" Version="4.0.0" />
 		<PackageReference Include="Serilog.Enrichers.Environment" Version="3.0.1" />
+		<PackageReference Include="System.Drawing.Common" Version="8.0.0" />
 	</ItemGroup>
 
 </Project>

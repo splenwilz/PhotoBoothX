@@ -16,6 +16,21 @@
         <!-- Content will be dynamically loaded here -->
         <ContentControl Name="CurrentScreenContainer" Panel.ZIndex="0" />
 
+        <!-- Modal Overlay Container (for in-window modals) -->
+        <Grid Name="ModalOverlayContainer" 
+              Panel.ZIndex="5000"
+              Visibility="Collapsed"
+              IsHitTestVisible="True">
+            <!-- Semi-transparent backdrop -->
+            <Border Name="ModalBackdrop" 
+                    Background="#80000000" 
+                    Opacity="0.6"/>
+            <!-- Modal content will be added here dynamically -->
+            <ContentControl Name="ModalContentContainer" 
+                           HorizontalAlignment="Center" 
+                           VerticalAlignment="Center"/>
+        </Grid>
+
         <!-- Modern Notification Container (top-right) -->
         <Grid Name="NotificationContainer" 
               HorizontalAlignment="Right" 
