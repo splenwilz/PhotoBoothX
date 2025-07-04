@@ -269,6 +269,25 @@ namespace Photobooth.Tests.Mocks
             _isPhotoCaptureActive = isActive;
         }
 
+        public async Task<CameraDiagnosticResult> RunDiagnosticsAsync()
+        {
+            // Simulate diagnostic delay
+            await Task.Delay(100);
+            
+            // Return mock diagnostic results for testing
+            return new CameraDiagnosticResult
+            {
+                OverallStatus = "Healthy",
+                PrivacySettingsAllowed = true,
+                CamerasDetected = _mockCameras.Count,
+                CanAccessCamera = true,
+                WindowsVersion = "10.0.22000 (Mock)",
+                Issues = new List<string>(),
+                Solutions = new List<string>(),
+                ConflictingProcesses = new List<string>()
+            };
+        }
+
         #endregion
 
         #region Test Helpers

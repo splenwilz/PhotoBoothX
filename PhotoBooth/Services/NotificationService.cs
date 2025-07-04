@@ -100,7 +100,9 @@ namespace Photobooth.Services
                 // Handle notification closed event
                 notification.NotificationClosed += (s, e) =>
                 {
+                    // Remove from both the tracking list and the UI container
                     _activeNotifications.Remove(notification);
+                    _notificationContainer.Children.Remove(notification);
                     RepositionNotifications();
                 };
 

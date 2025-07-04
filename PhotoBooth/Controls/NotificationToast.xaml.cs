@@ -134,11 +134,6 @@ namespace Photobooth.Controls
             CloseNotification();
         }
 
-        private void CloseNotification_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
-        {
-            CloseNotification();
-        }
-
         public void CloseNotification()
         {
             _autoCloseTimer?.Stop();
