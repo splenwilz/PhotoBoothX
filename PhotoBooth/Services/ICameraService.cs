@@ -76,6 +76,11 @@ namespace Photobooth.Services
         /// </summary>
         void SetPhotoCaptureActive(bool isActive);
 
+        /// <summary>
+        /// Run comprehensive camera diagnostics to identify common issues
+        /// </summary>
+        Task<CameraDiagnosticResult> RunDiagnosticsAsync();
+
         #endregion
     }
 } 

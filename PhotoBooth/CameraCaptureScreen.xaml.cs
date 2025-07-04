@@ -6,8 +6,11 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
+using System.Windows.Media.Effects;
 using System.Windows.Shapes;
 using System.Windows.Threading;
+using System.Windows.Data;
+using System.Windows.Input;
 using AForge.Video;
 using Photobooth.Models;
 using Photobooth.Services;
@@ -344,32 +347,353 @@ namespace Photobooth
         }
 
         /// <summary>
-        /// Show error message
+        /// Show error message with enhanced styling and retry option
         /// </summary>
         private void ShowErrorMessage(string message)
+        {
+            if (ErrorMessageText != null && ErrorMessageBorder != null)
         {
             ErrorMessageText.Text = message;
             ErrorMessageBorder.Visibility = Visibility.Visible;
             
-            // Stop and dispose previous timer if exists
-            if (_errorHideTimer != null)
+                // Auto-hide after 15 seconds for long error messages
+                _errorHideTimer?.Stop();
+                _errorHideTimer = new DispatcherTimer
+                {
+                    Interval = TimeSpan.FromSeconds(15)
+                };
+                _errorHideTimer.Tick += (s, e) =>
             {
                 _errorHideTimer.Stop();
-                _errorHideTimer = null;
+                    ErrorMessageBorder.Visibility = Visibility.Collapsed;
+                };
+                _errorHideTimer.Start();
+            }
+        }
+
+        /// <summary>
+        /// Show retry option for camera errors
+        /// </summary>
+        private void ShowRetryOption()
+        {
+            // Create retry button if it doesn't exist
+            var retryButton = this.FindName("RetryButton") as Button;
+            var diagnosticsButton = this.FindName("DiagnosticsButton") as Button;
+            
+            if (retryButton == null && ErrorMessageBorder != null)
+            {
+                // Create a new StackPanel container if ErrorMessageBorder only has TextBlock
+                if (ErrorMessageBorder.Child is TextBlock textBlock)
+                {
+                    // Remove the TextBlock and add it to a StackPanel
+                    ErrorMessageBorder.Child = null;
+                    
+                    var stackPanel = new StackPanel
+                    {
+                        Orientation = Orientation.Vertical,
+                        HorizontalAlignment = HorizontalAlignment.Center
+                    };
+                    
+                    stackPanel.Children.Add(textBlock);
+                    
+                    // Create button container
+                    var buttonPanel = new StackPanel
+                    {
+                        Orientation = Orientation.Horizontal,
+                        HorizontalAlignment = HorizontalAlignment.Center,
+                        Margin = new Thickness(0, 20, 0, 0)
+                    };
+                    
+                    // Create retry button
+                    retryButton = new Button
+                    {
+                        Name = "RetryButton",
+                        Content = "🔄 Retry",
+                        Width = 140,
+                        Height = 45,
+                        Margin = new Thickness(0, 0, 10, 0),
+                        Style = CreateWelcomeScreenButtonStyle(),
+                        HorizontalAlignment = HorizontalAlignment.Center
+                    };
+                    
+                    retryButton.Click += RetryButton_Click;
+                    buttonPanel.Children.Add(retryButton);
+                    
+                    // Create diagnostics button
+                    diagnosticsButton = new Button
+                    {
+                        Name = "DiagnosticsButton",
+                        Content = "🔧 Diagnose",
+                        Width = 140,
+                        Height = 45,
+                        Margin = new Thickness(10, 0, 0, 0),
+                        Style = CreateWelcomeScreenButtonStyle(),
+                        HorizontalAlignment = HorizontalAlignment.Center
+                    };
+                    
+                    diagnosticsButton.Click += DiagnosticsButton_Click;
+                    buttonPanel.Children.Add(diagnosticsButton);
+                    
+                    // Add subtle entrance animations
+                    AddButtonEntranceAnimation(retryButton, 0);
+                    AddButtonEntranceAnimation(diagnosticsButton, 150); // Slight delay for staggered effect
+                    
+                    stackPanel.Children.Add(buttonPanel);
+                    ErrorMessageBorder.Child = stackPanel;
+                    
+                    // Register the buttons so they can be found later
+                    this.RegisterName("RetryButton", retryButton);
+                    this.RegisterName("DiagnosticsButton", diagnosticsButton);
+                }
             }
             
-            // Auto-hide after 5 seconds
-            _errorHideTimer = new DispatcherTimer
+            if (retryButton != null)
             {
-                Interval = TimeSpan.FromSeconds(5)
-            };
-            _errorHideTimer.Tick += (s, e) =>
+                retryButton.Visibility = Visibility.Visible;
+            }
+            if (diagnosticsButton != null)
+            {
+                diagnosticsButton.Visibility = Visibility.Visible;
+            }
+        }
+
+        /// <summary>
+        /// Handle retry button click
+        /// </summary>
+        private void RetryButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                LoggingService.Application.Information("User clicked retry camera button");
+                
+                // Hide error overlay
+                if (ErrorMessageBorder != null)
             {
                 ErrorMessageBorder.Visibility = Visibility.Collapsed;
-                _errorHideTimer.Stop();
-                _errorHideTimer = null;
+                }
+                
+                // Show loading message
+                UpdateStatusText("Retrying camera connection...");
+                
+                // Restart camera initialization
+                Task.Run(async () =>
+                {
+                    await Task.Delay(500); // Small delay to show loading message
+                    
+                    Dispatcher.Invoke(() =>
+                    {
+                        if (_currentTemplate != null)
+                        {
+                            // Re-initialize the camera session
+                            var success = InitializeSession(_currentTemplate);
+                            if (!success)
+                            {
+                                UpdateStatusText("Camera retry failed. Please check your camera and try again.");
+                            }
+                        }
+                    });
+                });
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Error during camera retry", ex);
+                ShowErrorMessage($"Retry failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Handle diagnostics button click
+        /// </summary>
+        private async void DiagnosticsButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                LoggingService.Application.Information("User clicked camera diagnostics button");
+                
+                // Show loading
+                UpdateStatusText("Running camera diagnostics...");
+                
+                // Run diagnostics
+                var diagnostics = await _cameraService.RunDiagnosticsAsync();
+                
+                // Show diagnostics results
+                ShowDiagnosticsResults(diagnostics);
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Error running camera diagnostics", ex);
+                ShowErrorMessage($"Diagnostics failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Show camera diagnostics results in a dialog
+        /// </summary>
+        private void ShowDiagnosticsResults(CameraDiagnosticResult diagnostics)
+        {
+            var message = $"Camera Diagnostics Report\n\n";
+            message += $"Overall Status: {diagnostics.OverallStatus}\n";
+            message += $"Cameras Detected: {diagnostics.CamerasDetected}\n";
+            message += $"Privacy Settings: {(diagnostics.PrivacySettingsAllowed ? "Allowed" : "Blocked")}\n";
+            message += $"Can Access Camera: {(diagnostics.CanAccessCamera ? "Yes" : "No")}\n";
+            message += $"Windows Version: {diagnostics.WindowsVersion}\n\n";
+            
+            if (diagnostics.ConflictingProcesses.Any())
+            {
+                message += $"Conflicting Apps: {string.Join(", ", diagnostics.ConflictingProcesses)}\n\n";
+            }
+            
+            if (diagnostics.Issues.Any())
+            {
+                message += "Issues Found:\n";
+                foreach (var issue in diagnostics.Issues)
+                {
+                    message += $"• {issue}\n";
+                }
+                message += "\n";
+            }
+            
+            if (diagnostics.Solutions.Any())
+            {
+                message += "Recommended Solutions:\n";
+                for (int i = 0; i < diagnostics.Solutions.Count; i++)
+                {
+                    message += $"{i + 1}. {diagnostics.Solutions[i]}\n";
+                }
+            }
+            
+            if (diagnostics.Issues.Count == 0)
+            {
+                message += "No issues detected. The camera should be working properly.";
+            }
+            
+            // Show as message box
+            MessageBox.Show(message, "Camera Diagnostics", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        /// <summary>
+        /// Create a button style that matches the welcome screen's ProductButtonStyle
+        /// </summary>
+        private Style CreateWelcomeScreenButtonStyle()
+        {
+            var style = new Style(typeof(Button));
+            
+            // Background: SolidColorBrush Color="White" Opacity="0.1"
+            style.Setters.Add(new Setter(Button.BackgroundProperty, 
+                new SolidColorBrush(Colors.White) { Opacity = 0.1 }));
+            
+            // Foreground: #DDD6FE (purple-100)
+            style.Setters.Add(new Setter(Button.ForegroundProperty, 
+                new SolidColorBrush(Color.FromRgb(0xDD, 0xD6, 0xFE))));
+            
+            // Typography
+            style.Setters.Add(new Setter(Button.FontSizeProperty, 18.0));
+            style.Setters.Add(new Setter(Button.FontWeightProperty, FontWeights.Medium));
+            style.Setters.Add(new Setter(Button.PaddingProperty, new Thickness(16, 8, 16, 8)));
+            
+            // Border
+            style.Setters.Add(new Setter(Button.BorderThicknessProperty, new Thickness(1)));
+            style.Setters.Add(new Setter(Button.BorderBrushProperty, 
+                new SolidColorBrush(Colors.White) { Opacity = 0.2 }));
+            
+            // Cursor and effects
+            style.Setters.Add(new Setter(Button.CursorProperty, Cursors.Hand));
+            style.Setters.Add(new Setter(Button.EffectProperty, 
+                new DropShadowEffect { BlurRadius = 8, Opacity = 0.1, ShadowDepth = 2 }));
+            
+            // Template with rounded corners
+            var template = new ControlTemplate(typeof(Button));
+            var border = new FrameworkElementFactory(typeof(Border));
+            border.SetBinding(Border.BackgroundProperty, new Binding("Background") { RelativeSource = RelativeSource.TemplatedParent });
+            border.SetBinding(Border.BorderBrushProperty, new Binding("BorderBrush") { RelativeSource = RelativeSource.TemplatedParent });
+            border.SetBinding(Border.BorderThicknessProperty, new Binding("BorderThickness") { RelativeSource = RelativeSource.TemplatedParent });
+            border.SetBinding(Border.PaddingProperty, new Binding("Padding") { RelativeSource = RelativeSource.TemplatedParent });
+            border.SetValue(Border.CornerRadiusProperty, new CornerRadius(20));
+            
+            var contentPresenter = new FrameworkElementFactory(typeof(ContentPresenter));
+            contentPresenter.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+            contentPresenter.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
+            
+            border.AppendChild(contentPresenter);
+            template.VisualTree = border;
+            
+            // Triggers for hover and press states
+            var hoverTrigger = new Trigger { Property = Button.IsMouseOverProperty, Value = true };
+            hoverTrigger.Setters.Add(new Setter(Button.BackgroundProperty, 
+                new SolidColorBrush(Colors.White) { Opacity = 0.15 }));
+            
+            var pressTrigger = new Trigger { Property = Button.IsPressedProperty, Value = true };
+            pressTrigger.Setters.Add(new Setter(Button.BackgroundProperty, 
+                new SolidColorBrush(Colors.White) { Opacity = 0.2 }));
+            
+            template.Triggers.Add(hoverTrigger);
+            template.Triggers.Add(pressTrigger);
+            
+            style.Setters.Add(new Setter(Button.TemplateProperty, template));
+            
+            return style;
+        }
+
+        /// <summary>
+        /// Add subtle entrance animation to buttons (similar to welcome screen animations)
+        /// </summary>
+        private void AddButtonEntranceAnimation(Button button, int delayMilliseconds)
+        {
+            // Start with button scaled down and transparent
+            var scaleTransform = new ScaleTransform(0.8, 0.8);
+            var transformGroup = new TransformGroup();
+            transformGroup.Children.Add(scaleTransform);
+            
+            button.RenderTransform = transformGroup;
+            button.RenderTransformOrigin = new Point(0.5, 0.5);
+            button.Opacity = 0;
+            
+            // Create entrance animation
+            var storyboard = new Storyboard();
+            storyboard.BeginTime = TimeSpan.FromMilliseconds(delayMilliseconds);
+            
+            // Scale animation (elastic ease-out like welcome screen)
+            var scaleXAnimation = new DoubleAnimation
+            {
+                From = 0.8,
+                To = 1.0,
+                Duration = TimeSpan.FromMilliseconds(600),
+                EasingFunction = new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.3 }
             };
-            _errorHideTimer.Start();
+            
+            var scaleYAnimation = new DoubleAnimation
+            {
+                From = 0.8,
+                To = 1.0,
+                Duration = TimeSpan.FromMilliseconds(600),
+                EasingFunction = new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.3 }
+            };
+            
+            // Opacity animation
+            var opacityAnimation = new DoubleAnimation
+            {
+                From = 0,
+                To = 1.0,
+                Duration = TimeSpan.FromMilliseconds(400),
+                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+            };
+            
+            // Set animation targets
+            Storyboard.SetTarget(scaleXAnimation, button);
+            Storyboard.SetTargetProperty(scaleXAnimation, new PropertyPath("RenderTransform.Children[0].ScaleX"));
+            
+            Storyboard.SetTarget(scaleYAnimation, button);
+            Storyboard.SetTargetProperty(scaleYAnimation, new PropertyPath("RenderTransform.Children[0].ScaleY"));
+            
+            Storyboard.SetTarget(opacityAnimation, button);
+            Storyboard.SetTargetProperty(opacityAnimation, new PropertyPath("Opacity"));
+            
+            storyboard.Children.Add(scaleXAnimation);
+            storyboard.Children.Add(scaleYAnimation);
+            storyboard.Children.Add(opacityAnimation);
+            
+            // Start the animation
+            storyboard.Begin();
         }
 
         /// <summary>
@@ -614,6 +938,9 @@ namespace Photobooth
                 ShowErrorMessage(errorMessage);
                 LoggingService.Application.Error("Camera error occurred", null,
                     ("ErrorMessage", errorMessage));
+                    
+                // Show retry option for camera errors
+                ShowRetryOption();
             });
         }
 

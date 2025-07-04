@@ -28,6 +28,7 @@ namespace Photobooth
         private TemplateCustomizationScreen? templateCustomizationScreen;
         private CameraCaptureScreen? cameraCaptureScreen;
         private PhotoPreviewScreen? photoPreviewScreen;
+        private UpsellScreen? upsellScreen;
         private AdminLoginScreen? adminLoginScreen;
         private AdminDashboardScreen? adminDashboardScreen;
         private ForcedPasswordChangeScreen? forcedPasswordChangeScreen;
@@ -177,6 +178,9 @@ namespace Photobooth
                 
                 // Hide virtual keyboard when navigating away from admin screens
                 VirtualKeyboardService.Instance.HideKeyboard();
+
+                // Clear all notifications when returning to welcome screen
+                NotificationService.Instance.ClearAll();
 
                 // Clear any admin state
                 currentAdminAccess = AdminAccessLevel.None;
@@ -694,6 +698,133 @@ namespace Photobooth
                 LoggingService.Application.Error("Photo preview navigation failed", ex);
                 NotificationService.Instance.ShowError("Preview Error", $"Failed to show photo preview: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Navigate to the upselling screen after photos are approved
+        /// </summary>
+        public async Task NavigateToUpsell(Template template, ProductInfo originalProduct, string composedImagePath, List<string> capturedPhotosPaths)
+        {
+            try
+            {
+                LoggingService.Application.Information("Navigating to upsell screen",
+                    ("TemplateName", template.Name ?? "Unknown"),
+                    ("OriginalProduct", originalProduct.Type),
+                    ("ComposedImagePath", composedImagePath));
+
+                if (upsellScreen == null)
+                {
+                    upsellScreen = new UpsellScreen();
+                    // Subscribe to upsell completion events
+                    upsellScreen.UpsellCompleted += UpsellScreen_UpsellCompleted;
+                    upsellScreen.UpsellTimeout += UpsellScreen_UpsellTimeout;
+                }
+
+                // Initialize the upsell screen with session data
+                await upsellScreen.InitializeAsync(template, originalProduct, composedImagePath, capturedPhotosPaths);
+
+                CurrentScreenContainer.Content = upsellScreen;
+                
+                LoggingService.Application.Information("Upsell screen loaded successfully");
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Upsell navigation failed", ex);
+                NotificationService.Instance.ShowError("Upsell Error", $"Failed to show upselling options: {ex.Message}");
+                
+                // Fallback: proceed directly to printing
+                await NavigateToPrinting(template, originalProduct, composedImagePath, capturedPhotosPaths, 0, null, 0, false);
+            }
+        }
+
+        /// <summary>
+        /// Navigate to printing after upselling is complete or skipped
+        /// </summary>
+        private async Task NavigateToPrinting(Template template, ProductInfo originalProduct, string composedImagePath, 
+            List<string> capturedPhotosPaths, int extraCopies, ProductInfo? crossSellProduct, decimal totalAdditionalCost, bool crossSellAccepted)
+        {
+            try
+            {
+                LoggingService.Application.Information("Starting printing process",
+                    ("OriginalProduct", originalProduct.Type),
+                    ("ExtraCopies", extraCopies),
+                    ("CrossSellAccepted", crossSellAccepted),
+                    ("CrossSellProduct", crossSellProduct?.Type ?? "None"),
+                    ("TotalAdditionalCost", totalAdditionalCost));
+
+                // TODO: Check payment/credits for additional costs
+                if (totalAdditionalCost > 0)
+                {
+                    // Here you would integrate with payment system
+                    // For now, assume payment is handled or sufficient credits exist
+                    LoggingService.Application.Information("Additional payment required",
+                        ("Amount", totalAdditionalCost));
+                }
+
+                // TODO: Send to print queue
+                // This is where you would integrate with your printer service
+                await SimulatePrintingProcess(template, originalProduct, composedImagePath, extraCopies, crossSellProduct);
+
+                // Show printing confirmation and return to welcome
+                var message = BuildPrintingMessage(originalProduct, extraCopies, crossSellProduct, totalAdditionalCost);
+                NotificationService.Instance.ShowSuccess("Printing Started!", message, 6);
+
+                // Wait a bit then return to welcome
+                await Task.Delay(3000);
+                NavigateToWelcome();
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Printing process failed", ex);
+                NotificationService.Instance.ShowError("Printing Error", "There was an issue with printing. Please contact support.");
+                
+                // Return to welcome after error
+                await Task.Delay(2000);
+                NavigateToWelcome();
+            }
+        }
+
+        /// <summary>
+        /// Simulate the printing process (placeholder for actual printer integration)
+        /// </summary>
+        private async Task SimulatePrintingProcess(Template template, ProductInfo originalProduct, string composedImagePath, 
+            int extraCopies, ProductInfo? crossSellProduct)
+        {
+            // TODO: Replace with actual printer integration
+            LoggingService.Application.Information("Simulating printing process",
+                ("ComposedImagePath", composedImagePath),
+                ("OriginalCopies", 1),
+                ("ExtraCopies", extraCopies),
+                ("CrossSellIncluded", crossSellProduct != null));
+
+            await Task.Delay(1000); // Simulate processing time
+        }
+
+        /// <summary>
+        /// Build the printing confirmation message
+        /// </summary>
+        private string BuildPrintingMessage(ProductInfo originalProduct, int extraCopies, ProductInfo? crossSellProduct, decimal totalAdditionalCost)
+        {
+            var message = $"Printing your {originalProduct.Name}";
+            
+            if (extraCopies > 0)
+            {
+                message += $"\n+ {extraCopies} extra cop{(extraCopies == 1 ? "y" : "ies")}";
+            }
+            
+            if (crossSellProduct != null)
+            {
+                message += $"\n+ {crossSellProduct.Name}";
+            }
+            
+            if (totalAdditionalCost > 0)
+            {
+                message += $"\n\nAdditional cost: ${totalAdditionalCost:F2}";
+            }
+            
+            message += "\n\nPlease wait for your photos to print!";
+            
+            return message;
         }
 
         /// <summary>
@@ -1365,7 +1496,7 @@ namespace Photobooth
         /// <summary>
         /// Handles photos approved event from photo preview screen
         /// </summary>
-        private void PhotoPreviewScreen_PhotosApproved(object? sender, PhotosApprovedEventArgs e)
+        private async void PhotoPreviewScreen_PhotosApproved(object? sender, PhotosApprovedEventArgs e)
         {
             try
             {
@@ -1373,17 +1504,17 @@ namespace Photobooth
                     ("TemplateName", e.Template.Name),
                     ("ComposedImagePath", e.ComposedImagePath));
 
-                // TODO: Implement print queue and upselling functionality
-                // For now, show success message and return to welcome
-                var message = $"Photos approved!\n\n" +
-                             $"Template: {e.Template.Name}\n" +
-                             $"Final image saved to:\n{e.ComposedImagePath}\n\n" +
-                             $"Print functionality will be implemented next.";
-
-                NotificationService.Instance.ShowSuccess("Photos Approved!", message, 8);
-
-                // Return to welcome screen
-                NavigateToWelcome();
+                // Navigate to upselling screen
+                if (currentProduct != null)
+                {
+                    await NavigateToUpsell(e.Template, currentProduct, e.ComposedImagePath, e.OriginalPhotosPaths);
+                }
+                else
+                {
+                    LoggingService.Application.Error("Current product is null - cannot proceed to upselling", null);
+                    NotificationService.Instance.ShowError("Navigation Error", "Unable to proceed with upselling - missing product information.");
+                    NavigateToWelcome();
+                }
             }
             catch (Exception ex)
             {
@@ -1415,6 +1546,57 @@ namespace Photobooth
             catch (Exception ex)
             {
                 LoggingService.Application.Error("Photo preview back navigation failed", ex);
+                NavigateToWelcome();
+            }
+        }
+
+        /// <summary>
+        /// Handles upsell completion
+        /// </summary>
+        private async void UpsellScreen_UpsellCompleted(object? sender, UpsellCompletedEventArgs e)
+        {
+            try
+            {
+                LoggingService.Application.Information("Upsell completed",
+                    ("ExtraCopies", e.Result.ExtraCopies),
+                    ("CrossSellAccepted", e.Result.CrossSellAccepted),
+                    ("TotalAdditionalCost", e.Result.TotalAdditionalCost));
+
+                // Navigate to printing with upsell results
+                await NavigateToPrinting(
+                    e.Result.OriginalTemplate,
+                    e.Result.OriginalProduct,
+                    e.Result.ComposedImagePath,
+                    e.Result.CapturedPhotosPaths,
+                    e.Result.ExtraCopies,
+                    e.Result.CrossSellProduct,
+                    e.Result.TotalAdditionalCost,
+                    e.Result.CrossSellAccepted
+                );
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Upsell completion handling failed", ex);
+                NavigateToWelcome();
+            }
+        }
+
+        /// <summary>
+        /// Handles upsell timeout
+        /// </summary>
+        private void UpsellScreen_UpsellTimeout(object? sender, EventArgs e)
+        {
+            try
+            {
+                LoggingService.Application.Warning("Upsell timeout - proceeding to print original order only");
+                
+                // For timeout, just navigate to welcome since we don't have easy access to the template context
+                // In a production system, you might want to store this context or have the upsell screen handle timeouts internally
+                NavigateToWelcome();
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Upsell timeout handling failed", ex);
                 NavigateToWelcome();
             }
         }

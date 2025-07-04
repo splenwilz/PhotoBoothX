@@ -11,6 +11,7 @@ using System.Windows.Threading;
 using AForge.Video;
 using AForge.Video.DirectShow;
 using Photobooth.Models;
+using Microsoft.Win32; // Add for registry access
 
 namespace Photobooth.Services
 {
@@ -113,7 +114,7 @@ namespace Photobooth.Services
         #region Public Methods
 
         /// <summary>
-        /// Get list of available cameras
+        /// Get list of available cameras with enhanced diagnostics
         /// </summary>
         public List<CameraDevice> GetAvailableCameras()
         {
@@ -121,6 +122,12 @@ namespace Photobooth.Services
             
             try
             {
+                // Check camera privacy settings first
+                if (!IsCameraAccessAllowed())
+                {
+                    LoggingService.Hardware.Warning("Camera", "Camera access may be restricted by privacy settings");
+                }
+
                 var videoDevices = new FilterInfoCollection(FilterCategory.VideoInputDevice);
                 
                 for (int i = 0; i < videoDevices.Count; i++)
@@ -135,36 +142,88 @@ namespace Photobooth.Services
 
                 LoggingService.Hardware.Information("Camera", "Available cameras enumerated", 
                     ("CameraCount", cameras.Count));
+                    
+                if (cameras.Count == 0)
+                {
+                    LoggingService.Hardware.Warning("Camera", "No cameras detected - this may indicate permission issues or hardware problems");
+                }
             }
             catch (Exception ex)
             {
                 LoggingService.Hardware.Error("Camera", "Failed to enumerate cameras", ex);
+                
+                // Provide specific guidance based on exception type
+                if (ex.Message.Contains("0x800703E3") || ex.Message.Contains("access") || ex.Message.Contains("denied"))
+                {
+                    LoggingService.Hardware.Error("Camera", "Camera access appears to be blocked - check Windows privacy settings", ex);
+                }
             }
 
             return cameras;
         }
 
         /// <summary>
-        /// Start camera capture with optimized settings
+        /// Start camera capture with enhanced error handling and retry logic
         /// </summary>
         public bool StartCamera(int cameraIndex = 0)
         {
+            const int maxRetries = 3;
+            const int retryDelayMs = 1000;
+            
+            for (int attempt = 1; attempt <= maxRetries; attempt++)
+            {
             try
             {
                 var startTime = DateTime.Now;
                 
+                    LoggingService.Hardware.Information("Camera", $"Starting camera (attempt {attempt}/{maxRetries})", 
+                        ("CameraIndex", cameraIndex));
+                    
                 StopCamera();
+
+                    // Add delay between stop and start to ensure resources are released
+                    if (attempt > 1)
+                    {
+                        LoggingService.Hardware.Debug("Camera", $"Waiting {retryDelayMs}ms before retry attempt {attempt}");
+                        System.Threading.Thread.Sleep(retryDelayMs);
+                    }
 
                 var cameras = GetAvailableCameras();
                 
-                if (cameras.Count == 0 || cameraIndex >= cameras.Count)
-                {
-                    LoggingService.Hardware.Warning("Camera", "No cameras available or invalid index", 
+                    if (cameras.Count == 0)
+                    {
+                        var errorMsg = "No cameras available. Please check:\n" +
+                                     "1. Camera is connected and working\n" +
+                                     "2. Windows camera privacy settings allow desktop apps\n" +
+                                     "3. No other applications are using the camera\n" +
+                                     "4. Camera drivers are up to date";
+                        
+                        LoggingService.Hardware.Warning("Camera", errorMsg, 
                         ("RequestedIndex", cameraIndex), ("AvailableCameras", cameras.Count));
-                    return false;
+                        
+                        if (attempt == maxRetries)
+                        {
+                            CameraError?.Invoke(this, errorMsg);
+                        }
+                        continue;
+                    }
+                    
+                    if (cameraIndex >= cameras.Count)
+                    {
+                        var errorMsg = $"Camera index {cameraIndex} not available. Only {cameras.Count} camera(s) detected.";
+                        LoggingService.Hardware.Warning("Camera", errorMsg);
+                        
+                        if (attempt == maxRetries)
+                        {
+                            CameraError?.Invoke(this, errorMsg);
+                        }
+                        continue;
                 }
 
                 var selectedCamera = cameras[cameraIndex];
+                    LoggingService.Hardware.Information("Camera", "Attempting to initialize camera", 
+                        ("CameraName", selectedCamera.Name),
+                        ("MonikerString", selectedCamera.MonikerString));
                 
                 _videoSource = new VideoCaptureDevice(selectedCamera.MonikerString);
 
@@ -223,17 +282,50 @@ namespace Photobooth.Services
                 LoggingService.Hardware.Information("Camera", "Camera started successfully", 
                     ("CameraName", selectedCamera.Name),
                     ("OptimizedResolution", $"{_previewWidth}x{_previewHeight}"),
-                    ("StartupTime", $"{totalStartTime.TotalMilliseconds:F1}ms"));
+                        ("StartupTime", $"{totalStartTime.TotalMilliseconds:F1}ms"),
+                        ("AttemptNumber", attempt));
 
                 return true;
             }
             catch (Exception ex)
             {
-                LoggingService.Hardware.Error("Camera", "Failed to start camera", ex,
-                    ("CameraIndex", cameraIndex));
-                CameraError?.Invoke(this, $"Failed to start camera: {ex.Message}");
+                    LoggingService.Hardware.Error("Camera", $"Failed to start camera (attempt {attempt}/{maxRetries})", ex,
+                        ("CameraIndex", cameraIndex),
+                        ("ExceptionType", ex.GetType().Name));
+                    
+                    string errorMessage = GetUserFriendlyErrorMessage(ex);
+                    
+                    if (attempt == maxRetries)
+                    {
+                        LoggingService.Hardware.Error("Camera", "All camera start attempts failed", ex);
+                        CameraError?.Invoke(this, errorMessage);
                 return false;
             }
+                    
+                    // Clean up before retry
+                    try
+                    {
+                        if (_videoSource != null)
+                        {
+                            _videoSource.NewFrame -= OnNewFrame;
+                            _videoSource.VideoSourceError -= OnVideoSourceError;
+                            if (_videoSource.IsRunning)
+                            {
+                                _videoSource.SignalToStop();
+                                _videoSource.WaitForStop();
+                            }
+                            _videoSource = null;
+                        }
+                        _isCapturing = false;
+                    }
+                    catch (Exception cleanupEx)
+                    {
+                        LoggingService.Hardware.Error("Camera", "Error during cleanup before retry", cleanupEx);
+                    }
+                }
+            }
+
+            return false;
         }
 
         /// <summary>
@@ -414,6 +506,117 @@ namespace Photobooth.Services
         /// Check if photo capture is currently active
         /// </summary>
         public bool IsPhotoCaptureActive => _isPhotoCaptureActive;
+
+        /// <summary>
+        /// Run comprehensive camera diagnostics to identify common issues
+        /// </summary>
+        public async Task<CameraDiagnosticResult> RunDiagnosticsAsync()
+        {
+            var result = new CameraDiagnosticResult();
+            
+            try
+            {
+                LoggingService.Hardware.Information("Camera", "Starting camera diagnostics");
+                
+                // 1. Check camera privacy settings
+                result.PrivacySettingsAllowed = IsCameraAccessAllowed();
+                if (!result.PrivacySettingsAllowed)
+                {
+                    result.Issues.Add("Camera access is blocked in Windows privacy settings");
+                    result.Solutions.Add("Go to Windows Settings > Privacy & Security > Camera and enable access");
+                }
+                
+                // 2. Check for available cameras
+                var cameras = GetAvailableCameras();
+                result.CamerasDetected = cameras.Count;
+                if (cameras.Count == 0)
+                {
+                    result.Issues.Add("No cameras detected");
+                    result.Solutions.Add("Check camera connection and drivers");
+                }
+                
+                // 3. Check if camera is in use by another process
+                if (cameras.Count > 0)
+                {
+                    bool canAccessCamera = false;
+                    try
+                    {
+                        var testCamera = new VideoCaptureDevice(cameras[0].MonikerString);
+                        testCamera.Start();
+                        await Task.Delay(100); // Brief test
+                        testCamera.SignalToStop();
+                        testCamera.WaitForStop();
+                        canAccessCamera = true;
+                    }
+                    catch (Exception ex)
+                    {
+                        result.Issues.Add($"Cannot access camera: {ex.Message}");
+                        if (ex.Message.ToLower().Contains("busy") || ex.Message.ToLower().Contains("in use"))
+                        {
+                            result.Solutions.Add("Close other applications using the camera (Skype, Teams, etc.)");
+                        }
+                    }
+                    
+                    result.CanAccessCamera = canAccessCamera;
+                }
+                
+                // 4. Check Windows version and compatibility
+                var osVersion = Environment.OSVersion.Version;
+                result.WindowsVersion = $"{osVersion.Major}.{osVersion.Minor}.{osVersion.Build}";
+                
+                // 5. Check for common problematic processes
+                var problematicProcesses = new[] { "Skype", "Teams", "Zoom", "WebexMeetings", "Camera", "WindowsCamera" };
+                var runningProblematic = new List<string>();
+                
+                try
+                {
+                    var processes = System.Diagnostics.Process.GetProcesses();
+                    foreach (var process in processes)
+                    {
+                        try
+                        {
+                            if (problematicProcesses.Any(p => process.ProcessName.Contains(p, StringComparison.OrdinalIgnoreCase)))
+                            {
+                                runningProblematic.Add(process.ProcessName);
+                            }
+                        }
+                        catch
+                        {
+                            // Ignore access denied errors for system processes
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LoggingService.Hardware.Error("Camera", "Could not check for problematic processes", ex);
+                }
+                
+                if (runningProblematic.Any())
+                {
+                    result.Issues.Add($"Applications that may conflict with camera: {string.Join(", ", runningProblematic)}");
+                    result.Solutions.Add("Close conflicting applications and try again");
+                }
+                
+                result.ConflictingProcesses = runningProblematic;
+                
+                // Generate overall status
+                result.OverallStatus = result.Issues.Count == 0 ? "Healthy" : "Issues Detected";
+                
+                LoggingService.Hardware.Information("Camera", "Camera diagnostics completed", 
+                    ("OverallStatus", result.OverallStatus),
+                    ("IssueCount", result.Issues.Count),
+                    ("CamerasDetected", result.CamerasDetected));
+                
+                return result;
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Hardware.Error("Camera", "Error during camera diagnostics", ex);
+                result.Issues.Add($"Diagnostic error: {ex.Message}");
+                result.OverallStatus = "Diagnostic Failed";
+                return result;
+            }
+        }
 
         #endregion
 
@@ -620,9 +823,113 @@ namespace Photobooth.Services
 
         private void OnVideoSourceError(object sender, VideoSourceErrorEventArgs eventArgs)
         {
-            var errorMessage = $"Camera error: {eventArgs.Description}";
-            LoggingService.Hardware.Error("Camera", errorMessage);
+            var errorMessage = GetUserFriendlyErrorMessage(new Exception(eventArgs.Description));
+            LoggingService.Hardware.Error("Camera", $"Video source error: {eventArgs.Description}");
             CameraError?.Invoke(this, errorMessage);
+        }
+
+        /// <summary>
+        /// Convert technical error messages to user-friendly ones with actionable guidance
+        /// </summary>
+        private string GetUserFriendlyErrorMessage(Exception ex)
+        {
+            var message = ex.Message.ToLower();
+            
+            // Handle the specific error from the screenshot
+            if (message.Contains("0x800703e3") || message.Contains("operation has been aborted"))
+            {
+                return "Camera error: The camera operation was interrupted.\n\n" +
+                       "This usually means:\n" +
+                       "• Another application is using the camera (close other camera apps)\n" +
+                       "• Windows camera privacy settings are blocking access\n" +
+                       "• Camera drivers need updating\n" +
+                       "• Camera hardware connection issue\n\n" +
+                       "Solutions:\n" +
+                       "1. Close all other camera applications (Skype, Teams, etc.)\n" +
+                       "2. Check Windows Privacy Settings > Camera > Allow desktop apps\n" +
+                       "3. Reconnect your camera if it's USB\n" +
+                       "4. Restart the application";
+            }
+            
+            if (message.Contains("access") || message.Contains("denied"))
+            {
+                return "Camera access denied.\n\n" +
+                       "Solutions:\n" +
+                       "1. Go to Windows Settings > Privacy & Security > Camera\n" +
+                       "2. Enable 'Camera access' and 'Let desktop apps access your camera'\n" +
+                       "3. Restart this application";
+            }
+            
+            if (message.Contains("busy") || message.Contains("in use"))
+            {
+                return "Camera is currently being used by another application.\n\n" +
+                       "Solutions:\n" +
+                       "1. Close other camera applications (Skype, Teams, Zoom, etc.)\n" +
+                       "2. Check Windows Camera app and close it\n" +
+                       "3. Restart this application";
+            }
+            
+            if (message.Contains("not found") || message.Contains("device"))
+            {
+                return "Camera device not found.\n\n" +
+                       "Solutions:\n" +
+                       "1. Check camera connection (USB or built-in)\n" +
+                       "2. Update camera drivers in Device Manager\n" +
+                       "3. Try a different USB port if using external camera\n" +
+                       "4. Restart your computer";
+            }
+            
+            // Generic fallback with the original error
+            return $"Camera error: {ex.Message}\n\n" +
+                   "Common solutions:\n" +
+                   "1. Close other camera applications\n" +
+                   "2. Check Windows camera privacy settings\n" +
+                   "3. Restart the application\n" +
+                   "4. Reconnect camera hardware";
+        }
+
+        /// <summary>
+        /// Check if camera access is allowed in Windows privacy settings
+        /// </summary>
+        private bool IsCameraAccessAllowed()
+        {
+            try
+            {
+                // Check Windows 10/11 camera privacy settings via registry
+                using (var key = Registry.CurrentUser.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\webcam"))
+                {
+                    if (key != null)
+                    {
+                        var value = key.GetValue("Value");
+                        if (value != null && value.ToString() == "Deny")
+                        {
+                            LoggingService.Hardware.Warning("Camera", "Camera access is denied in Windows privacy settings");
+                            return false;
+                        }
+                    }
+                }
+                
+                // Also check if desktop apps can access camera
+                using (var key = Registry.CurrentUser.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\webcam\NonPackaged"))
+                {
+                    if (key != null)
+                    {
+                        var value = key.GetValue("Value");
+                        if (value != null && value.ToString() == "Deny")
+                        {
+                            LoggingService.Hardware.Warning("Camera", "Desktop app camera access is denied in Windows privacy settings");
+                            return false;
+                        }
+                    }
+                }
+                
+                return true;
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Hardware.Error("Camera", "Could not check camera privacy settings", ex);
+                return true; // Assume allowed if we can't check
+            }
         }
 
         #endregion
