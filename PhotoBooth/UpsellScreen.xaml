@@ -1,0 +1,680 @@
+<UserControl x:Class="Photobooth.UpsellScreen"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <UserControl.Resources>
+        <!-- Main Background Gradient: from-purple-900 via-blue-900 to-indigo-900 (matches Welcome screen) -->
+        <LinearGradientBrush x:Key="MainBackgroundGradient" StartPoint="0,0" EndPoint="1,1">
+            <GradientStop Color="#581C87" Offset="0"/> <!-- purple-900 -->
+            <GradientStop Color="#1E3A8A" Offset="0.5"/> <!-- blue-900 -->
+            <GradientStop Color="#312E81" Offset="1"/> <!-- indigo-900 -->
+        </LinearGradientBrush>
+
+        <!-- Title Gradient: from-white via-purple-200 to-blue-200 -->
+        <LinearGradientBrush x:Key="TitleGradient" StartPoint="0,0" EndPoint="1,0">
+            <GradientStop Color="#FFFFFF" Offset="0"/> <!-- white -->
+            <GradientStop Color="#DDD6FE" Offset="0.5"/> <!-- purple-200 -->
+            <GradientStop Color="#BFDBFE" Offset="1"/> <!-- blue-200 -->
+        </LinearGradientBrush>
+
+        <!-- Accent Gradient: from-cyan-200 to-blue-200 -->
+        <LinearGradientBrush x:Key="AccentGradient" StartPoint="0,0" EndPoint="1,0">
+            <GradientStop Color="#A5F3FC" Offset="0"/> <!-- cyan-200 -->
+            <GradientStop Color="#BFDBFE" Offset="1"/> <!-- blue-200 -->
+        </LinearGradientBrush>
+
+        <!-- Button Styles with theme colors -->
+        <Style x:Key="UpsellButtonStyle" TargetType="Button">
+            <Setter Property="Background">
+                <Setter.Value>
+                    <SolidColorBrush Color="White" Opacity="0.15"/>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Foreground" Value="#DDD6FE"/> <!-- purple-200 -->
+            <Setter Property="FontSize" Value="20"/>
+            <Setter Property="FontWeight" Value="Medium"/>
+            <Setter Property="Padding" Value="32,16"/>
+            <Setter Property="Margin" Value="16"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush">
+                <Setter.Value>
+                    <SolidColorBrush Color="White" Opacity="0.2"/>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <DropShadowEffect BlurRadius="8" Opacity="0.2" ShadowDepth="2"/>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="12"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background">
+                                    <Setter.Value>
+                                        <SolidColorBrush Color="White" Opacity="0.25"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="Background">
+                                    <Setter.Value>
+                                        <SolidColorBrush Color="White" Opacity="0.35"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="QuantityButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#A855F7"/> <!-- purple-500 -->
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontSize" Value="28"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Width" Value="120"/>
+            <Setter Property="Height" Value="120"/>
+            <Setter Property="Margin" Value="16"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <DropShadowEffect BlurRadius="12" Opacity="0.3" ShadowDepth="4"/>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                CornerRadius="16"
+                                Width="{TemplateBinding Width}"
+                                Height="{TemplateBinding Height}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#9333EA"/> <!-- purple-600 -->
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="Background" Value="#7C3AED"/> <!-- purple-700 -->
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="DeclineButtonStyle" TargetType="Button">
+            <Setter Property="Background">
+                <Setter.Value>
+                    <SolidColorBrush Color="White" Opacity="0.1"/>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Foreground" Value="#E5E7EB"/> <!-- gray-200 -->
+            <Setter Property="FontSize" Value="18"/>
+            <Setter Property="FontWeight" Value="Medium"/>
+            <Setter Property="Padding" Value="24,12"/>
+            <Setter Property="Margin" Value="16"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush">
+                <Setter.Value>
+                    <SolidColorBrush Color="White" Opacity="0.15"/>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background">
+                                    <Setter.Value>
+                                        <SolidColorBrush Color="White" Opacity="0.15"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="CrossSellButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#06B6D4"/> <!-- cyan-500 (matches welcome theme) -->
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontSize" Value="24"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Padding" Value="40,20"/>
+            <Setter Property="Margin" Value="20"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="MinWidth" Value="320"/>
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <DropShadowEffect BlurRadius="12" Opacity="0.3" ShadowDepth="4"/>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                CornerRadius="16"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#0891B2"/> <!-- cyan-600 -->
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="Background" Value="#0E7490"/> <!-- cyan-700 -->
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="TimeoutProgressStyle" TargetType="ProgressBar">
+            <Setter Property="Height" Value="8"/>
+            <Setter Property="Background">
+                <Setter.Value>
+                    <SolidColorBrush Color="White" Opacity="0.1"/>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Foreground" Value="#EC4899"/> <!-- pink-500 (matches welcome orb colors) -->
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ProgressBar">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="4">
+                            <Border Name="PART_Track" CornerRadius="4">
+                                <Border Name="PART_Indicator" Background="{TemplateBinding Foreground}" 
+                                        HorizontalAlignment="Left" CornerRadius="4"/>
+                            </Border>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Card Style for Extra Copies Options -->
+        <Style x:Key="ExtraCopyCardStyle" TargetType="Border">
+            <Setter Property="Background">
+                <Setter.Value>
+                    <SolidColorBrush Color="White" Opacity="0.1"/>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="BorderBrush">
+                <Setter.Value>
+                    <SolidColorBrush Color="White" Opacity="0.2"/>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="16"/>
+            <Setter Property="Padding" Value="24"/>
+            <Setter Property="Margin" Value="12"/>
+            <Setter Property="MinWidth" Value="280"/>
+            <Setter Property="MinHeight" Value="320"/>
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <DropShadowEffect BlurRadius="12" Opacity="0.2" ShadowDepth="4"/>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Card Button Style -->
+        <Style x:Key="CardButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="16">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background">
+                                    <Setter.Value>
+                                        <SolidColorBrush Color="White" Opacity="0.05"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="Background">
+                                    <Setter.Value>
+                                        <SolidColorBrush Color="White" Opacity="0.1"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+
+
+        <!-- Quantity Selector Button Style -->
+        <Style x:Key="QuantitySelectorButtonStyle" TargetType="Button">
+            <Setter Property="Background">
+                <Setter.Value>
+                    <SolidColorBrush Color="White" Opacity="0.2"/>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontSize" Value="20"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Width" Value="36"/>
+            <Setter Property="Height" Value="36"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="18">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background">
+                                    <Setter.Value>
+                                        <SolidColorBrush Color="White" Opacity="0.3"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Select Button Style -->
+        <Style x:Key="SelectButtonStyle" TargetType="Button">
+            <Setter Property="Background">
+                <Setter.Value>
+                    <SolidColorBrush Color="White" Opacity="0.2"/>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="FontWeight" Value="Medium"/>
+            <Setter Property="Padding" Value="20,8"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="Margin" Value="0,16,0,0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="8" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background">
+                                    <Setter.Value>
+                                        <SolidColorBrush Color="White" Opacity="0.3"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Photo Navigation Button Style -->
+        <Style x:Key="PhotoNavButtonStyle" TargetType="Button">
+            <Setter Property="Background">
+                <Setter.Value>
+                    <SolidColorBrush Color="Black" Opacity="0.5"/>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontSize" Value="24"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Width" Value="40"/>
+            <Setter Property="Height" Value="40"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="20">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background">
+                                    <Setter.Value>
+                                        <SolidColorBrush Color="Black" Opacity="0.7"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Background">
+                                    <Setter.Value>
+                                        <SolidColorBrush Color="Black" Opacity="0.2"/>
+                                    </Setter.Value>
+                                </Setter>
+                                <Setter Property="Foreground">
+                                    <Setter.Value>
+                                        <SolidColorBrush Color="White" Opacity="0.3"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Background="{StaticResource MainBackgroundGradient}" ClipToBounds="True">
+        <!-- Floating Orbs Layer (matches welcome screen exactly) -->
+        <Canvas Name="FloatingOrbsCanvas">
+            <!-- Purple orb -->
+            <Ellipse Width="96" Height="96" 
+                     Fill="#A855F7" Opacity="0.2" 
+                     Canvas.Left="128" Canvas.Top="128">
+                <Ellipse.Effect>
+                    <BlurEffect Radius="15"/>
+                </Ellipse.Effect>
+            </Ellipse>
+
+            <!-- Blue orb -->
+            <Ellipse Width="80" Height="80" 
+                     Fill="#3B82F6" Opacity="0.25" 
+                     Canvas.Left="1680" Canvas.Top="80">
+                <Ellipse.Effect>
+                    <BlurEffect Radius="15"/>
+                </Ellipse.Effect>
+            </Ellipse>
+
+            <!-- Pink orb -->
+            <Ellipse Width="128" Height="128" 
+                     Fill="#EC4899" Opacity="0.15" 
+                     Canvas.Left="480" Canvas.Top="792">
+                <Ellipse.Effect>
+                    <BlurEffect Radius="15"/>
+                </Ellipse.Effect>
+            </Ellipse>
+
+            <!-- Cyan orb -->
+            <Ellipse Width="80" Height="80" 
+                     Fill="#06B6D4" Opacity="0.2" 
+                     Canvas.Left="1712" Canvas.Top="872">
+                <Ellipse.Effect>
+                    <BlurEffect Radius="15"/>
+                </Ellipse.Effect>
+            </Ellipse>
+        </Canvas>
+
+        <!-- Floating Particles Canvas (matches welcome screen) -->
+        <Canvas Name="ParticlesCanvas" ClipToBounds="True">
+            <!-- Particles will be added programmatically -->
+        </Canvas>
+
+        <!-- Main Content -->
+        <Grid Margin="60">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Timeout Progress Bar -->
+            <ProgressBar Grid.Row="0" Name="TimeoutProgress" 
+                         Style="{StaticResource TimeoutProgressStyle}"
+                         Margin="0,0,0,30"/>
+
+            <!-- Title Section -->
+            <StackPanel Grid.Row="1" HorizontalAlignment="Center" Margin="0,0,0,40">
+                <TextBlock Name="TitleText" 
+                           Text="You look great!" 
+                           FontSize="56" 
+                           FontWeight="Bold" 
+                           Foreground="{StaticResource TitleGradient}" 
+                           HorizontalAlignment="Center"
+                           Margin="0,0,0,16">
+                    <!-- Glow Effect -->
+                    <TextBlock.Effect>
+                        <DropShadowEffect Color="White" Opacity="0.1" BlurRadius="20" ShadowDepth="0"/>
+                    </TextBlock.Effect>
+                </TextBlock>
+                <TextBlock Name="SubtitleText" 
+                           Text="Would you like extra copies?" 
+                           FontSize="28" 
+                           Foreground="#DDD6FE" 
+                           HorizontalAlignment="Center"/>
+            </StackPanel>
+
+            <!-- Extra Copies Section -->
+            <StackPanel Grid.Row="2" Name="ExtraCopiesSection" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <!-- Card-based Quantity Options -->
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,40">
+                    
+                    <!-- 1 Extra Copy Card -->
+                    <Button Name="OneCopyButton" Style="{StaticResource CardButtonStyle}" Click="CopyButton_Click" Tag="1">
+                        <Border Style="{StaticResource ExtraCopyCardStyle}">
+                            <StackPanel HorizontalAlignment="Center">
+                                <!-- Camera Icon -->
+                                <Image Source="/Assets/Images/camera_icon.png" Width="64" Height="64" 
+                                       HorizontalAlignment="Center" Margin="0,0,0,16"/>
+                                <TextBlock Text="✨" FontSize="24" HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                                
+                                <!-- Title -->
+                                <TextBlock Text="1 Extra Copy" FontSize="24" FontWeight="Bold" 
+                                           Foreground="White" HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                                
+                                <!-- Description -->
+                                <TextBlock Text="Perfect for a friend" FontSize="16" 
+                                           Foreground="#DDD6FE" HorizontalAlignment="Center" Margin="0,0,0,20"/>
+                                
+                                <!-- Price -->
+                                <TextBlock Name="OneCopyPrice" Text="$3" FontSize="32" FontWeight="Bold" 
+                                           Foreground="White" HorizontalAlignment="Center"/>
+                                
+                                <!-- Select Button -->
+                                <Button Content="Select" Style="{StaticResource SelectButtonStyle}"/>
+                            </StackPanel>
+                        </Border>
+                    </Button>
+
+                    <!-- 2 Extra Copies Card -->
+                    <Button Name="TwoCopyButton" Style="{StaticResource CardButtonStyle}" Click="CopyButton_Click" Tag="2">
+                        <Grid>
+                            <Border Style="{StaticResource ExtraCopyCardStyle}">
+                                <StackPanel HorizontalAlignment="Center">
+                                    <!-- Camera Icons -->
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,16">
+                                        <Image Source="/Assets/Images/camera_icon.png" Width="64" Height="64" Margin="0,0,8,0"/>
+                                        <Image Source="/Assets/Images/camera_icon.png" Width="64" Height="64" Margin="8,0,0,0"/>
+                                    </StackPanel>
+                                    <TextBlock Text="✨" FontSize="24" HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                                    
+                                    <!-- Title -->
+                                    <TextBlock Text="2 Extra Copies" FontSize="24" FontWeight="Bold" 
+                                               Foreground="White" HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                                    
+                                    <!-- Description -->
+                                    <TextBlock Text="Share with family &amp; friends" FontSize="16" 
+                                               Foreground="#DDD6FE" HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                                    
+                                    <!-- Per Copy Price -->
+                                    <TextBlock Text="($4 per copy)" FontSize="14" 
+                                               Foreground="#A5A5A5" HorizontalAlignment="Center" Margin="0,0,0,12"/>
+                                    
+                                    <!-- Price -->
+                                    <TextBlock Name="TwoCopyPrice" Text="$8" FontSize="32" FontWeight="Bold" 
+                                               Foreground="White" HorizontalAlignment="Center"/>
+                                    
+                                    <!-- Select Button -->
+                                    <Button Content="Select" Style="{StaticResource SelectButtonStyle}"/>
+                                </StackPanel>
+                            </Border>
+                            
+                            <!-- Save Tag - Positioned absolutely on top border -->
+                            <Border Background="#F97316" CornerRadius="12" Padding="12,4" 
+                                    HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,4,0,0">
+                                <TextBlock Text="Save 20%" FontSize="12" FontWeight="Bold" Foreground="White"/>
+                            </Border>
+                        </Grid>
+                    </Button>
+
+                    <!-- 4+ Extra Copies Card -->
+                    <Button Name="FourCopyButton" Style="{StaticResource CardButtonStyle}" Click="CopyButton_Click" Tag="4">
+                        <Grid>
+                            <Border Style="{StaticResource ExtraCopyCardStyle}">
+                                <StackPanel HorizontalAlignment="Center">
+                                    <!-- Camera Icons with Sparkles -->
+                                    <StackPanel HorizontalAlignment="Center" Margin="0,0,0,16">
+                                        <Image Source="/Assets/Images/camera_icon.png" Width="64" Height="64" HorizontalAlignment="Center"/>
+                                        <TextBlock Text="✨✨" FontSize="28" HorizontalAlignment="Center" Margin="0,4,0,0"/>
+                                    </StackPanel>
+                                    
+                                    <!-- Title -->
+                                    <TextBlock Text="4+ Extra Copies" FontSize="24" FontWeight="Bold" 
+                                               Foreground="White" HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                                    
+                                    <!-- Description -->
+                                    <TextBlock Text="For the whole group!" FontSize="16" 
+                                               Foreground="#DDD6FE" HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                                    
+                                    <!-- Per Copy Price -->
+                                    <TextBlock Text="($3.00 per copy)" FontSize="14" 
+                                               Foreground="#A5A5A5" HorizontalAlignment="Center" Margin="0,0,0,16"/>
+                                    
+                                    <!-- Quantity Selector -->
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,16">
+                                        <Button Name="CardMinusButton" Content="−" Style="{StaticResource QuantitySelectorButtonStyle}" Click="MinusButton_Click"/>
+                                        <TextBlock Name="CardQuantityDisplay" Text="4" FontSize="24" FontWeight="Bold" 
+                                                   Foreground="White" VerticalAlignment="Center" Margin="16,0"/>
+                                        <Button Name="CardPlusButton" Content="+" Style="{StaticResource QuantitySelectorButtonStyle}" Click="PlusButton_Click"/>
+                                    </StackPanel>
+                                    
+                                    <!-- Price -->
+                                    <TextBlock Name="FourCopyPrice" Text="$12" FontSize="32" FontWeight="Bold" 
+                                               Foreground="White" HorizontalAlignment="Center"/>
+                                    
+                                    <!-- Select Button -->
+                                    <Button Name="ConfirmQuantityButton" Content="Select 4 Copies" Style="{StaticResource SelectButtonStyle}" Click="ConfirmQuantity_Click"/>
+                                </StackPanel>
+                            </Border>
+                            
+                            <!-- Best Value Tag - Positioned absolutely on top border -->
+                            <Border Background="#10B981" CornerRadius="12" Padding="12,4" 
+                                    HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,4,0,0">
+                                <TextBlock Text="Best Value" FontSize="12" FontWeight="Bold" Foreground="White"/>
+                            </Border>
+                        </Grid>
+                    </Button>
+                </StackPanel>
+
+
+            </StackPanel>
+
+            <!-- Cross-Sell Section -->
+            <StackPanel Grid.Row="2" Name="CrossSellSection" HorizontalAlignment="Center" VerticalAlignment="Center" 
+                        Visibility="Collapsed">
+                <TextBlock Name="CrossSellTitle" 
+                           Text="Try a different style?" 
+                           FontSize="28" 
+                           FontWeight="Bold" 
+                           Foreground="{StaticResource AccentGradient}" 
+                           HorizontalAlignment="Center"
+                           Margin="0,0,0,40">
+                    <!-- Glow Effect -->
+                    <TextBlock.Effect>
+                        <DropShadowEffect Color="Cyan" Opacity="0.2" BlurRadius="10" ShadowDepth="0"/>
+                    </TextBlock.Effect>
+                </TextBlock>
+                
+                <!-- Photo Carousel -->
+                <Grid HorizontalAlignment="Center" Margin="0,0,0,60">
+                    <!-- Previous Photo Button -->
+                    <Button Name="PrevPhotoButton" Click="PrevPhoto_Click" 
+                            HorizontalAlignment="Left" VerticalAlignment="Center" 
+                            Style="{StaticResource PhotoNavButtonStyle}" 
+                            IsEnabled="False" Margin="-60,0,0,0" Panel.ZIndex="10">
+                        <TextBlock Text="‹" FontSize="24" FontWeight="Bold" Foreground="White"/>
+                    </Button>
+                    
+                    <!-- Cross-sell preview image -->
+                    <Border Name="CrossSellPreview" Width="200" Height="300" CornerRadius="12">
+                        <Border.Background>
+                            <SolidColorBrush Color="White" Opacity="0.1"/>
+                        </Border.Background>
+                        <Border.BorderBrush>
+                            <SolidColorBrush Color="White" Opacity="0.2"/>
+                        </Border.BorderBrush>
+                        <Border.BorderThickness>1</Border.BorderThickness>
+                        <TextBlock Text="📷" FontSize="48" HorizontalAlignment="Center" VerticalAlignment="Center" 
+                                   Foreground="#DDD6FE"/>
+                    </Border>
+                    
+                    <!-- Next Photo Button -->
+                    <Button Name="NextPhotoButton" Click="NextPhoto_Click" 
+                            HorizontalAlignment="Right" VerticalAlignment="Center" 
+                            Style="{StaticResource PhotoNavButtonStyle}" 
+                            IsEnabled="False" Margin="0,0,-60,0" Panel.ZIndex="10">
+                        <TextBlock Text="›" FontSize="24" FontWeight="Bold" Foreground="White"/>
+                    </Button>
+                    
+                    <!-- Photo Counter -->
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" 
+                                VerticalAlignment="Bottom" Margin="0,0,0,-30">
+                        <Border Background="Black" CornerRadius="12" Padding="8,4" Opacity="0.7">
+                            <TextBlock Name="PhotoCounter" Text="1 / 1" FontSize="12" 
+                                       Foreground="White" FontWeight="Medium"/>
+                        </Border>
+                    </StackPanel>
+                </Grid>
+                
+                <!-- Cross-sell Accept Button -->
+                <Button Name="ContinueButton" Content="Yes! Add 4x6 Photos" 
+                        Style="{StaticResource UpsellButtonStyle}" 
+                        Click="Continue_Click" HorizontalAlignment="Center"/>
+            </StackPanel>
+
+            <!-- Action Buttons -->
+            <StackPanel Grid.Row="4" HorizontalAlignment="Center" Margin="0,30,0,20">
+                <!-- Single Clear Decline Option -->
+                <Button Name="NoThanksButton" Click="NoThanks_Click" 
+                        Background="Transparent" BorderThickness="0" Cursor="Hand">
+                    <TextBlock Text="No thanks, just print one copy" 
+                               FontSize="16" FontWeight="Medium" 
+                               Foreground="#A5A5A5" 
+                               HorizontalAlignment="Center"
+                               TextDecorations="Underline"/>
+                </Button>
+            </StackPanel>
+        </Grid>
+
+        <!-- Audio indicator (hidden but triggers sound) -->
+        <MediaElement Name="AudioPlayer" Visibility="Hidden"/>
+    </Grid>
+</UserControl> 
