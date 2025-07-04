@@ -412,7 +412,7 @@ namespace Photobooth
                         Width = 140,
                         Height = 45,
                         Margin = new Thickness(0, 0, 10, 0),
-                        Style = CreateWelcomeScreenButtonStyle(),
+                        Style = (Style)FindResource("WelcomeScreenButtonStyle"),
                         HorizontalAlignment = HorizontalAlignment.Center
                     };
                     
@@ -427,7 +427,7 @@ namespace Photobooth
                         Width = 140,
                         Height = 45,
                         Margin = new Thickness(10, 0, 0, 0),
-                        Style = CreateWelcomeScreenButtonStyle(),
+                        Style = (Style)FindResource("WelcomeScreenButtonStyle"),
                         HorizontalAlignment = HorizontalAlignment.Center
                     };
                     
@@ -571,68 +571,7 @@ namespace Photobooth
             MessageBox.Show(message, "Camera Diagnostics", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
-        /// <summary>
-        /// Create a button style that matches the welcome screen's ProductButtonStyle
-        /// </summary>
-        private Style CreateWelcomeScreenButtonStyle()
-        {
-            var style = new Style(typeof(Button));
-            
-            // Background: SolidColorBrush Color="White" Opacity="0.1"
-            style.Setters.Add(new Setter(Button.BackgroundProperty, 
-                new SolidColorBrush(Colors.White) { Opacity = 0.1 }));
-            
-            // Foreground: #DDD6FE (purple-100)
-            style.Setters.Add(new Setter(Button.ForegroundProperty, 
-                new SolidColorBrush(Color.FromRgb(0xDD, 0xD6, 0xFE))));
-            
-            // Typography
-            style.Setters.Add(new Setter(Button.FontSizeProperty, 18.0));
-            style.Setters.Add(new Setter(Button.FontWeightProperty, FontWeights.Medium));
-            style.Setters.Add(new Setter(Button.PaddingProperty, new Thickness(16, 8, 16, 8)));
-            
-            // Border
-            style.Setters.Add(new Setter(Button.BorderThicknessProperty, new Thickness(1)));
-            style.Setters.Add(new Setter(Button.BorderBrushProperty, 
-                new SolidColorBrush(Colors.White) { Opacity = 0.2 }));
-            
-            // Cursor and effects
-            style.Setters.Add(new Setter(Button.CursorProperty, Cursors.Hand));
-            style.Setters.Add(new Setter(Button.EffectProperty, 
-                new DropShadowEffect { BlurRadius = 8, Opacity = 0.1, ShadowDepth = 2 }));
-            
-            // Template with rounded corners
-            var template = new ControlTemplate(typeof(Button));
-            var border = new FrameworkElementFactory(typeof(Border));
-            border.SetBinding(Border.BackgroundProperty, new Binding("Background") { RelativeSource = RelativeSource.TemplatedParent });
-            border.SetBinding(Border.BorderBrushProperty, new Binding("BorderBrush") { RelativeSource = RelativeSource.TemplatedParent });
-            border.SetBinding(Border.BorderThicknessProperty, new Binding("BorderThickness") { RelativeSource = RelativeSource.TemplatedParent });
-            border.SetBinding(Border.PaddingProperty, new Binding("Padding") { RelativeSource = RelativeSource.TemplatedParent });
-            border.SetValue(Border.CornerRadiusProperty, new CornerRadius(20));
-            
-            var contentPresenter = new FrameworkElementFactory(typeof(ContentPresenter));
-            contentPresenter.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Center);
-            contentPresenter.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
-            
-            border.AppendChild(contentPresenter);
-            template.VisualTree = border;
-            
-            // Triggers for hover and press states
-            var hoverTrigger = new Trigger { Property = Button.IsMouseOverProperty, Value = true };
-            hoverTrigger.Setters.Add(new Setter(Button.BackgroundProperty, 
-                new SolidColorBrush(Colors.White) { Opacity = 0.15 }));
-            
-            var pressTrigger = new Trigger { Property = Button.IsPressedProperty, Value = true };
-            pressTrigger.Setters.Add(new Setter(Button.BackgroundProperty, 
-                new SolidColorBrush(Colors.White) { Opacity = 0.2 }));
-            
-            template.Triggers.Add(hoverTrigger);
-            template.Triggers.Add(pressTrigger);
-            
-            style.Setters.Add(new Setter(Button.TemplateProperty, template));
-            
-            return style;
-        }
+
 
         /// <summary>
         /// Add subtle entrance animation to buttons (similar to welcome screen animations)

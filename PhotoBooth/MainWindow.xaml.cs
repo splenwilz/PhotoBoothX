@@ -39,6 +39,12 @@ namespace Photobooth
         private TemplateInfo? currentTemplate;
         private AdminAccessLevel currentAdminAccess = AdminAccessLevel.None;
 
+        // Upsell timeout context - stored to handle timeouts gracefully
+        private Template? _currentUpsellTemplate;
+        private ProductInfo? _currentUpsellOriginalProduct;
+        private string? _currentUpsellComposedImagePath;
+        private List<string>? _currentUpsellCapturedPhotosPaths;
+
 
 
         // Database service
@@ -200,6 +206,7 @@ namespace Photobooth
                 currentProduct = null;
                 currentCategory = null;
                 currentTemplate = null;
+                ClearUpsellContext();
                 
                 LoggingService.Application.Information("Welcome screen loaded successfully");
             }
@@ -711,6 +718,12 @@ namespace Photobooth
                     ("TemplateName", template.Name ?? "Unknown"),
                     ("OriginalProduct", originalProduct.Type),
                     ("ComposedImagePath", composedImagePath));
+
+                // Store context for timeout handling - ensures customer gets original order if they timeout
+                _currentUpsellTemplate = template;
+                _currentUpsellOriginalProduct = originalProduct;
+                _currentUpsellComposedImagePath = composedImagePath;
+                _currentUpsellCapturedPhotosPaths = capturedPhotosPaths;
 
                 if (upsellScreen == null)
                 {
@@ -1562,6 +1575,9 @@ namespace Photobooth
                     ("CrossSellAccepted", e.Result.CrossSellAccepted),
                     ("TotalAdditionalCost", e.Result.TotalAdditionalCost));
 
+                // Clear upsell context since we're completing successfully
+                ClearUpsellContext();
+
                 // Navigate to printing with upsell results
                 await NavigateToPrinting(
                     e.Result.OriginalTemplate,
@@ -1584,21 +1600,59 @@ namespace Photobooth
         /// <summary>
         /// Handles upsell timeout
         /// </summary>
-        private void UpsellScreen_UpsellTimeout(object? sender, EventArgs e)
+        private async void UpsellScreen_UpsellTimeout(object? sender, EventArgs e)
         {
             try
             {
                 LoggingService.Application.Warning("Upsell timeout - proceeding to print original order only");
                 
-                // For timeout, just navigate to welcome since we don't have easy access to the template context
-                // In a production system, you might want to store this context or have the upsell screen handle timeouts internally
-                NavigateToWelcome();
+                // Use stored context to proceed with printing the original order
+                if (_currentUpsellTemplate != null && 
+                    _currentUpsellOriginalProduct != null && 
+                    _currentUpsellComposedImagePath != null && 
+                    _currentUpsellCapturedPhotosPaths != null)
+                {
+                    LoggingService.Application.Information("Processing original order after timeout",
+                        ("TemplateName", _currentUpsellTemplate.Name ?? "Unknown"),
+                        ("OriginalProduct", _currentUpsellOriginalProduct.Type));
+
+                    // Proceed to print original order with no upsells
+                    await NavigateToPrinting(
+                        _currentUpsellTemplate,
+                        _currentUpsellOriginalProduct,
+                        _currentUpsellComposedImagePath,
+                        _currentUpsellCapturedPhotosPaths,
+                        0, // No extra copies
+                        null, // No cross-sell
+                        0, // No additional cost
+                        false // Cross-sell not accepted
+                    );
+
+                    // Clear context after successful processing
+                    ClearUpsellContext();
+                }
+                else
+                {
+                    LoggingService.Application.Error("Upsell timeout context missing - cannot process original order");
+                    NavigateToWelcome();
+                }
             }
             catch (Exception ex)
             {
                 LoggingService.Application.Error("Upsell timeout handling failed", ex);
                 NavigateToWelcome();
             }
+        }
+
+        /// <summary>
+        /// Clear stored upsell context to prevent memory leaks and state issues
+        /// </summary>
+        private void ClearUpsellContext()
+        {
+            _currentUpsellTemplate = null;
+            _currentUpsellOriginalProduct = null;
+            _currentUpsellComposedImagePath = null;
+            _currentUpsellCapturedPhotosPaths = null;
         }
 
 

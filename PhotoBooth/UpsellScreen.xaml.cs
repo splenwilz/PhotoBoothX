@@ -367,9 +367,16 @@ namespace Photobooth
                 _crossSellPrice = _crossSellProduct?.Price ?? 0;
                 
                 // Get the selected photo for the cross-sell
-                _selectedPhotoForCrossSell = (_capturedPhotos.Count > 0 && _selectedPhotoIndex >= 0 && _selectedPhotoIndex < _capturedPhotos.Count) 
-                    ? _capturedPhotos[_selectedPhotoIndex] 
-                    : null;
+                if (_capturedPhotos.Count > 0 && 
+                    _selectedPhotoIndex >= 0 && 
+                    _selectedPhotoIndex < _capturedPhotos.Count)
+                {
+                    _selectedPhotoForCrossSell = _capturedPhotos[_selectedPhotoIndex];
+                }
+                else
+                {
+                    _selectedPhotoForCrossSell = null;
+                }
                 
                 LoggingService.Application.Information("Cross-sell accepted",
                     ("CrossSellProduct", _crossSellProduct?.Type ?? "Unknown"),
@@ -457,7 +464,7 @@ namespace Photobooth
         /// <summary>
         /// Get the appropriate cross-sell product
         /// </summary>
-        private ProductInfo? GetCrossSellProduct()
+        public ProductInfo? GetCrossSellProduct()
         {
             if (_originalProduct == null) return null;
 
@@ -480,6 +487,28 @@ namespace Photobooth
                 },
                 _ => null // No cross-sell for phone prints or unknown types
             };
+        }
+
+        /// <summary>
+        /// Calculate extra copy pricing based on quantity
+        /// </summary>
+        public decimal CalculateExtraCopyPrice(int copies)
+        {
+            return copies switch
+            {
+                1 => EXTRA_COPY_PRICE_1,
+                2 => EXTRA_COPY_PRICE_2,
+                >= 4 => EXTRA_COPY_PRICE_4_BASE + ((copies - 4) * EXTRA_COPY_PRICE_PER_ADDITIONAL),
+                _ => 0
+            };
+        }
+
+        /// <summary>
+        /// Set the original product for testing purposes
+        /// </summary>
+        public void SetOriginalProductForTesting(ProductInfo product)
+        {
+            _originalProduct = product;
         }
 
         /// <summary>
@@ -547,6 +576,12 @@ namespace Photobooth
 
                 var photoPath = _capturedPhotos[_selectedPhotoIndex];
                 Console.WriteLine($"[DEBUG] Displaying photo {_selectedPhotoIndex + 1}/{_capturedPhotos.Count}: {photoPath}");
+
+                // Dispose previous image if exists
+                if (CrossSellPreview.Child is Image oldImage)
+                {
+                    oldImage.Source = null;
+                }
 
                 var image = new Image
                 {

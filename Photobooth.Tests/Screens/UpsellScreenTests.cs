@@ -176,97 +176,177 @@ namespace Photobooth.Tests.Screens
         #region Business Logic Tests
 
         [TestMethod]
-        public void ExtraCopyPricing_OneCopy_CalculatesCorrectly()
+        public async Task ExtraCopyPricing_OneCopy_CalculatesCorrectly()
         {
-            // Arrange
-            const decimal expectedPrice = 3.00m;
-
-            // Act & Assert - Testing pricing constants
-            const decimal EXTRA_COPY_PRICE_1 = 3.00m;
-            EXTRA_COPY_PRICE_1.Should().Be(expectedPrice);
-        }
-
-        [TestMethod]
-        public void ExtraCopyPricing_TwoCopies_CalculatesCorrectly()
-        {
-            // Arrange
-            const decimal expectedPrice = 5.00m;
-
-            // Act & Assert - Testing pricing constants
-            const decimal EXTRA_COPY_PRICE_2 = 5.00m;
-            EXTRA_COPY_PRICE_2.Should().Be(expectedPrice);
-        }
-
-        [TestMethod]
-        public void ExtraCopyPricing_FourCopies_CalculatesCorrectly()
-        {
-            // Arrange
-            const decimal basePrice = 8.00m;
-            const decimal perAdditionalPrice = 1.50m;
-
-            // Act
-            var fourCopyPrice = basePrice; // 4 copies = base price
-            var fiveCopyPrice = basePrice + perAdditionalPrice; // 5 copies = base + 1 additional
-            var sixCopyPrice = basePrice + (2 * perAdditionalPrice); // 6 copies = base + 2 additional
-
-            // Assert
-            fourCopyPrice.Should().Be(8.00m);
-            fiveCopyPrice.Should().Be(9.50m);
-            sixCopyPrice.Should().Be(11.00m);
-        }
-
-        [TestMethod]
-        public void CrossSellProduct_StripsToPhoto4x6_ReturnsCorrectProduct()
-        {
-            // Arrange
-            var stripsProduct = new ProductInfo { Type = "strips" };
-
-            // Act - Simulate the cross-sell logic
-            var crossSellType = stripsProduct.Type?.ToLower() switch
+            // Arrange & Act
+            await Application.Current.Dispatcher.InvokeAsync(() =>
             {
-                "strips" => "4x6",
-                "4x6" => "strips",
-                _ => null
-            };
+                var actualPrice = _upsellScreen.CalculateExtraCopyPrice(1);
 
-            // Assert
-            crossSellType.Should().Be("4x6");
+                // Assert
+                actualPrice.Should().Be(3.00m);
+            });
         }
 
         [TestMethod]
-        public void CrossSellProduct_Photo4x6ToStrips_ReturnsCorrectProduct()
+        public async Task ExtraCopyPricing_TwoCopies_CalculatesCorrectly()
         {
-            // Arrange
-            var photo4x6Product = new ProductInfo { Type = "4x6" };
-
-            // Act - Simulate the cross-sell logic
-            var crossSellType = photo4x6Product.Type?.ToLower() switch
+            // Arrange & Act
+            await Application.Current.Dispatcher.InvokeAsync(() =>
             {
-                "strips" => "4x6",
-                "4x6" => "strips",
-                _ => null
-            };
+                var actualPrice = _upsellScreen.CalculateExtraCopyPrice(2);
 
-            // Assert
-            crossSellType.Should().Be("strips");
+                // Assert
+                actualPrice.Should().Be(5.00m);
+            });
         }
 
         [TestMethod]
-        public void CrossSellProduct_PhoneProduct_ReturnsNull()
+        public async Task ExtraCopyPricing_FourCopies_CalculatesCorrectly()
         {
-            // Arrange
-            var phoneProduct = new ProductInfo { Type = "phone" };
-
-            // Act - Simulate the cross-sell logic
-            var crossSellType = phoneProduct.Type?.ToLower() switch
+            // Arrange & Act
+            await Application.Current.Dispatcher.InvokeAsync(() =>
             {
-                "strips" => "4x6",
-                "4x6" => "strips",
-                _ => null
-            };
+                var fourCopyPrice = _upsellScreen.CalculateExtraCopyPrice(4);
+                var fiveCopyPrice = _upsellScreen.CalculateExtraCopyPrice(5);
+                var sixCopyPrice = _upsellScreen.CalculateExtraCopyPrice(6);
 
-            // Assert
-            crossSellType.Should().BeNull();
+                // Assert
+                fourCopyPrice.Should().Be(8.00m);   // Base price for 4 copies
+                fiveCopyPrice.Should().Be(9.50m);   // Base + 1 additional
+                sixCopyPrice.Should().Be(11.00m);   // Base + 2 additional
+            });
+        }
+
+        [TestMethod]
+        public async Task CrossSellProduct_StripsToPhoto4x6_ReturnsCorrectProduct()
+        {
+            // Arrange & Act
+            await Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                var stripsProduct = new ProductInfo { Type = "strips" };
+                _upsellScreen.SetOriginalProductForTesting(stripsProduct);
+
+                var crossSellProduct = _upsellScreen.GetCrossSellProduct();
+
+                // Assert
+                crossSellProduct.Should().NotBeNull();
+                crossSellProduct!.Type.Should().Be("4x6");
+                crossSellProduct.Name.Should().Be("4x6 Photos");
+                crossSellProduct.Price.Should().Be(3.00m);
+            });
+        }
+
+        [TestMethod]
+        public async Task CrossSellProduct_Photo4x6ToStrips_ReturnsCorrectProduct()
+        {
+            // Arrange & Act
+            await Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                var photo4x6Product = new ProductInfo { Type = "4x6" };
+                _upsellScreen.SetOriginalProductForTesting(photo4x6Product);
+
+                var crossSellProduct = _upsellScreen.GetCrossSellProduct();
+
+                // Assert
+                crossSellProduct.Should().NotBeNull();
+                crossSellProduct!.Type.Should().Be("strips");
+                crossSellProduct.Name.Should().Be("Photo Strips");
+                crossSellProduct.Price.Should().Be(5.00m);
+            });
+        }
+
+        [TestMethod]
+        public async Task CrossSellProduct_PhoneProduct_ReturnsNull()
+        {
+            // Arrange & Act
+            await Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                var phoneProduct = new ProductInfo { Type = "phone" };
+                _upsellScreen.SetOriginalProductForTesting(phoneProduct);
+
+                var crossSellProduct = _upsellScreen.GetCrossSellProduct();
+
+                // Assert
+                crossSellProduct.Should().BeNull();
+            });
+        }
+
+        [TestMethod]
+        public async Task CrossSellProduct_PhotoStripsVariant_ReturnsCorrectProduct()
+        {
+            // Arrange & Act
+            await Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                var photoStripsProduct = new ProductInfo { Type = "photostrips" };
+                _upsellScreen.SetOriginalProductForTesting(photoStripsProduct);
+
+                var crossSellProduct = _upsellScreen.GetCrossSellProduct();
+
+                // Assert
+                crossSellProduct.Should().NotBeNull();
+                crossSellProduct!.Type.Should().Be("4x6");
+                crossSellProduct.Name.Should().Be("4x6 Photos");
+            });
+        }
+
+        [TestMethod]
+        public async Task CrossSellProduct_Photo4x6Variant_ReturnsCorrectProduct()
+        {
+            // Arrange & Act
+            await Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                var photo4x6Product = new ProductInfo { Type = "photo4x6" };
+                _upsellScreen.SetOriginalProductForTesting(photo4x6Product);
+
+                var crossSellProduct = _upsellScreen.GetCrossSellProduct();
+
+                // Assert
+                crossSellProduct.Should().NotBeNull();
+                crossSellProduct!.Type.Should().Be("strips");
+            });
+        }
+
+        [TestMethod]
+        public async Task CrossSellProduct_UnknownProductType_ReturnsNull()
+        {
+            // Arrange & Act
+            await Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                var unknownProduct = new ProductInfo { Type = "unknown" };
+                _upsellScreen.SetOriginalProductForTesting(unknownProduct);
+
+                var crossSellProduct = _upsellScreen.GetCrossSellProduct();
+
+                // Assert
+                crossSellProduct.Should().BeNull();
+            });
+        }
+
+        [TestMethod]
+        public async Task CalculateExtraCopyPrice_ZeroCopies_ReturnsZero()
+        {
+            // Arrange & Act
+            await Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                var price = _upsellScreen.CalculateExtraCopyPrice(0);
+
+                // Assert
+                price.Should().Be(0);
+            });
+        }
+
+        [TestMethod]
+        public async Task CalculateExtraCopyPrice_ThreeCopies_ReturnsZero()
+        {
+            // Arrange & Act
+            await Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                var price = _upsellScreen.CalculateExtraCopyPrice(3);
+
+                // Assert
+                price.Should().Be(0); // Invalid quantity
+            });
         }
 
         #endregion

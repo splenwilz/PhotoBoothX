@@ -70,26 +70,11 @@ namespace Photobooth.Tests.Screens
 
         #region Timeout Tests
 
-        [TestMethod]
-        public async Task UpsellTimeout_Event_ShouldFireAfterDelay()
-        {
-            // Arrange
-            var timeoutFired = false;
-            var mockTemplate = CreateMockTemplate();
-            var mockProduct = CreateMockProduct("strips");
-            var mockPhotos = CreateMockPhotoList(3);
-
-            await Application.Current.Dispatcher.InvokeAsync(async () =>
-            {
-                _upsellScreen.UpsellTimeout += (sender, e) => timeoutFired = true;
-                await _upsellScreen.InitializeAsync(mockTemplate, mockProduct, mockPhotos[0], mockPhotos);
-
-                // Note: In real tests, we'd need to either wait for the actual timeout
-                // or provide a way to mock/accelerate the timer
-                // For now, we verify the event can be subscribed to
-                timeoutFired.Should().BeFalse(); // Haven't triggered timeout yet
-            });
-        }
+        // NOTE: Timeout behavior is not unit tested here because:
+        // 1. Real timeout is 180 seconds (too long for unit tests)
+        // 2. DispatcherTimer behavior is UI-dependent and complex to mock properly
+        // 3. Timeout logic is better verified through integration/manual testing
+        // 4. The timeout automatically progresses workflow stages, which is business logic tested elsewhere
 
         #endregion
 

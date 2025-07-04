@@ -41,9 +41,7 @@
             Padding="16,12"
             MinHeight="60"
             MaxWidth="500"
-            Margin="16"
-            Cursor="Hand"
-            MouseLeftButtonDown="CloseNotification_Click">
+            Margin="16">
         
         <Border.Effect>
             <DropShadowEffect Color="#000000" BlurRadius="15" ShadowDepth="3" Opacity="0.2"/>
