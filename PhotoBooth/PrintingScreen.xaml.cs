@@ -18,11 +18,18 @@ namespace Photobooth
         #pragma warning restore CS0067
         #endregion
 
+        #region Constants
+        private static readonly TimeSpan PROGRESS_TIMER_INTERVAL = TimeSpan.FromMilliseconds(100);
+        private static readonly TimeSpan COUNTDOWN_TIMER_INTERVAL = TimeSpan.FromSeconds(1);
+        private const int LOW_SUPPLIES_THRESHOLD = 50;
+        private const int DEFAULT_COUNTDOWN_SECONDS = 10;
+        #endregion
+
         #region Private Fields
         private DispatcherTimer? _progressTimer;
         private DispatcherTimer? _countdownTimer;
         private double _currentProgress = 0;
-        private int _countdownSeconds = 10;
+        private int _countdownSeconds = DEFAULT_COUNTDOWN_SECONDS;
         private bool _disposed = false;
 
         // Print job details
@@ -132,10 +139,16 @@ namespace Photobooth
                 CopiesText.Text = copiesText;
             }
 
-            // Update printer status (simulation)
-            PrinterNameText.Text = "DNP DS620A"; // This would come from actual printer service
-            PrintsRemainingText.Text = "642"; // This would come from consumables tracking
-            QueuePositionText.Text = "1 of 1"; // This would come from print queue
+            // TODO: Replace with actual printer service integration
+            // - PrinterNameText.Text should come from IPrinterService.GetConnectedPrinters()
+            // - PrintsRemainingText.Text should come from IConsumablesService.GetRemainingSupplies()
+            // - QueuePositionText.Text should come from IPrintQueueService.GetPosition()
+            // - EstimatedTimeText.Text should be calculated from actual queue and printer speed
+            
+            // Update printer status (simulation data)
+            PrinterNameText.Text = "DNP DS620A"; 
+            PrintsRemainingText.Text = "642"; 
+            QueuePositionText.Text = "1 of 1"; 
             EstimatedTimeText.Text = CalculateEstimatedTime();
         }
 
@@ -271,6 +284,8 @@ namespace Photobooth
         {
             var startProgress = _currentProgress;
             var progressDelta = targetProgress - startProgress;
+            
+            // TODO: Make animation parameters configurable for customization
             var steps = 50; // 20ms per step for smooth animation
             var stepDuration = duration.TotalMilliseconds / steps;
             var progressPerStep = progressDelta / steps;
@@ -359,7 +374,7 @@ namespace Photobooth
                 PrintsRemainingText.Text = newRemaining.ToString();
 
                 // Show warning if low supplies
-                if (newRemaining < 50)
+                if (newRemaining < LOW_SUPPLIES_THRESHOLD)
                 {
                     PrintsRemainingText.Foreground = System.Windows.Media.Brushes.Orange;
                     LoggingService.Application.Warning("Low consumables detected", ("RemainingPrints", newRemaining));
@@ -408,7 +423,7 @@ namespace Photobooth
             
             _progressTimer = new DispatcherTimer
             {
-                Interval = TimeSpan.FromMilliseconds(100)
+                Interval = PROGRESS_TIMER_INTERVAL
             };
             _progressTimer.Tick += ProgressTimer_Tick;
             _progressTimer.Start();
@@ -434,10 +449,10 @@ namespace Photobooth
         {
             StopCountdownTimer();
             
-            _countdownSeconds = 10;
+            _countdownSeconds = DEFAULT_COUNTDOWN_SECONDS;
             _countdownTimer = new DispatcherTimer
             {
-                Interval = TimeSpan.FromSeconds(1)
+                Interval = COUNTDOWN_TIMER_INTERVAL
             };
             _countdownTimer.Tick += CountdownTimer_Tick;
             _countdownTimer.Start();
