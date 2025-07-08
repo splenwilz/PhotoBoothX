@@ -29,6 +29,7 @@ namespace Photobooth
         private CameraCaptureScreen? cameraCaptureScreen;
         private PhotoPreviewScreen? photoPreviewScreen;
         private UpsellScreen? upsellScreen;
+        private PrintingScreen? printingScreen;
         private AdminLoginScreen? adminLoginScreen;
         private AdminDashboardScreen? adminDashboardScreen;
         private ForcedPasswordChangeScreen? forcedPasswordChangeScreen;
@@ -774,17 +775,8 @@ namespace Photobooth
                         ("Amount", totalAdditionalCost));
                 }
 
-                // TODO: Send to print queue
-                // This is where you would integrate with your printer service
-                await SimulatePrintingProcess(template, originalProduct, composedImagePath, extraCopies, crossSellProduct);
-
-                // Show printing confirmation and return to welcome
-                var message = BuildPrintingMessage(originalProduct, extraCopies, crossSellProduct, totalAdditionalCost);
-                NotificationService.Instance.ShowSuccess("Printing Started!", message, 6);
-
-                // Wait a bit then return to welcome
-                await Task.Delay(3000);
-                NavigateToWelcome();
+                // Navigate to printing screen
+                await NavigateToPrintingScreen(template, originalProduct, composedImagePath, extraCopies, crossSellProduct);
             }
             catch (Exception ex)
             {
@@ -793,6 +785,40 @@ namespace Photobooth
                 
                 // Return to welcome after error
                 await Task.Delay(2000);
+                NavigateToWelcome();
+            }
+        }
+
+        /// <summary>
+        /// Navigate to the printing screen with progress tracking
+        /// </summary>
+        private async Task NavigateToPrintingScreen(Template template, ProductInfo originalProduct, string composedImagePath, 
+            int extraCopies, ProductInfo? crossSellProduct)
+        {
+            try
+            {
+                if (printingScreen == null)
+                {
+                    printingScreen = new PrintingScreen();
+                    // Subscribe to printing completion events
+                    printingScreen.PrintingCompleted += PrintingScreen_PrintingCompleted;
+                    printingScreen.PrintingCancelled += PrintingScreen_PrintingCancelled;
+                }
+
+                // Show printing screen
+                CurrentScreenContainer.Content = printingScreen;
+
+                // Initialize with print job details
+                await printingScreen.InitializePrintJob(template, originalProduct, composedImagePath, extraCopies, crossSellProduct);
+
+                LoggingService.Application.Information("Printing screen loaded successfully");
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Printing screen navigation failed", ex);
+                NotificationService.Instance.ShowError("Printing Error", $"Failed to start printing: {ex.Message}");
+                
+                // Fallback to welcome
                 NavigateToWelcome();
             }
         }
@@ -1655,6 +1681,40 @@ namespace Photobooth
             _currentUpsellCapturedPhotosPaths = null;
         }
 
+        /// <summary>
+        /// Handle printing completion
+        /// </summary>
+        private void PrintingScreen_PrintingCompleted(object? sender, EventArgs e)
+        {
+            try
+            {
+                LoggingService.Application.Information("Printing completed - returning to welcome screen");
+                NavigateToWelcome();
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Print completion handling failed", ex);
+                NavigateToWelcome();
+            }
+        }
+
+        /// <summary>
+        /// Handle printing cancellation
+        /// </summary>
+        private void PrintingScreen_PrintingCancelled(object? sender, EventArgs e)
+        {
+            try
+            {
+                LoggingService.Application.Information("Printing cancelled - returning to welcome screen");
+                NavigateToWelcome();
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Print cancellation handling failed", ex);
+                NavigateToWelcome();
+            }
+        }
+
 
 
         /// <summary>
@@ -1833,6 +1893,9 @@ namespace Photobooth
                 // Dispose camera and photo preview screens
                 cameraCaptureScreen?.Dispose();
                 photoPreviewScreen?.Dispose();
+                
+                // Dispose printing screen
+                printingScreen?.Dispose();
 
                 // Unsubscribe from welcome screen events
                 if (welcomeScreen != null)

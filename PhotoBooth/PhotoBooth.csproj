@@ -39,6 +39,7 @@
 		<None Remove="Assets\Images\4x6-sample.jpg" />
 		<None Remove="Assets\Images\strip-sample.jpg" />
 		<None Remove="Assets\Images\camera_icon.png" />
+		<None Remove="Assets\Images\printer.svg" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -49,6 +50,9 @@
 			<CopyToOutputDirectory>Never</CopyToOutputDirectory>
 		</Resource>
 		<Resource Include="Assets\Images\camera_icon.png">
+			<CopyToOutputDirectory>Never</CopyToOutputDirectory>
+		</Resource>
+		<Resource Include="Assets\Images\printer.svg">
 			<CopyToOutputDirectory>Never</CopyToOutputDirectory>
 		</Resource>
 	</ItemGroup>
