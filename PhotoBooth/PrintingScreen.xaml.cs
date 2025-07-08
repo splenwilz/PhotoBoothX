@@ -169,6 +169,17 @@ namespace Photobooth
         {
             try
             {
+                // Validate required state
+                if (_template == null || _product == null || string.IsNullOrEmpty(_composedImagePath))
+                {
+                    LoggingService.Application.Error("Cannot retry - missing required print job data", null,
+                        ("HasTemplate", _template != null),
+                        ("HasProduct", _product != null),
+                        ("HasComposedImage", !string.IsNullOrEmpty(_composedImagePath)));
+                    ShowError("Cannot retry print job. Please start a new session.");
+                    return;
+                }
+
                 // Reset UI state and restart printing
                 ResetPrintingState();
                 
@@ -268,8 +279,9 @@ namespace Photobooth
             {
                 _currentProgress += progressPerStep;
                 
-                Application.Current.Dispatcher.Invoke(() =>
+                await Application.Current.Dispatcher.InvokeAsync(() =>
                 {
+                    if (_disposed) return;
                     PrintProgress.Value = _currentProgress;
                     ProgressText.Text = $"{_currentProgress:F0}%";
                 });
@@ -279,8 +291,9 @@ namespace Photobooth
 
             // Ensure we hit the exact target
             _currentProgress = targetProgress;
-            Application.Current.Dispatcher.Invoke(() =>
+            await Application.Current.Dispatcher.InvokeAsync(() =>
             {
+                if (_disposed) return;
                 PrintProgress.Value = _currentProgress;
                 ProgressText.Text = $"{_currentProgress:F0}%";
             });
@@ -336,7 +349,12 @@ namespace Photobooth
                 await Task.Delay(100); // Simulate database update
 
                 // Update remaining prints display
-                var currentRemaining = int.Parse(PrintsRemainingText.Text);
+                if (!int.TryParse(PrintsRemainingText.Text, out var currentRemaining))
+                {
+                    LoggingService.Application.Warning("Invalid remaining prints value",
+                        ("Text", PrintsRemainingText.Text));
+                    currentRemaining = 0;
+                }
                 var newRemaining = Math.Max(0, currentRemaining - _totalCopies);
                 PrintsRemainingText.Text = newRemaining.ToString();
 
