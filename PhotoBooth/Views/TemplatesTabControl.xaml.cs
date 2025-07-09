@@ -1340,47 +1340,7 @@ namespace Photobooth.Views
             Grid.SetColumn(statusToggle, 2);
 
             // Hamburger menu button (replacing right-click context menu)
-            var hamburgerButton = new Button
-            {
-                Content = "⋯", // Three dots (hamburger menu)
-                Width = 32,
-                Height = 32,
-                FontSize = 16,
-                FontWeight = FontWeights.Bold,
-                Background = Brushes.Transparent,
-                BorderBrush = Brushes.Transparent,
-                BorderThickness = new Thickness(0),
-                Foreground = new SolidColorBrush(Color.FromRgb(107, 114, 128)), // Subtle gray color
-                VerticalAlignment = VerticalAlignment.Center,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                Cursor = Cursors.Hand,
-                ToolTip = "Template actions",
-                Margin = new Thickness(8, 0, 0, 0) // Add some spacing from toggle
-            };
-            
-            // Create simple transparent button style with hover effect
-            var buttonTemplate = new ControlTemplate(typeof(Button));
-            var borderFactory = new FrameworkElementFactory(typeof(Border));
-            borderFactory.SetValue(Border.BackgroundProperty, Brushes.Transparent);
-            borderFactory.SetValue(Border.BorderBrushProperty, Brushes.Transparent);
-            borderFactory.SetValue(Border.BorderThicknessProperty, new Thickness(0));
-            borderFactory.SetValue(Border.CornerRadiusProperty, new CornerRadius(4));
-            borderFactory.Name = "ButtonBorder";
-            
-            var contentFactory = new FrameworkElementFactory(typeof(ContentPresenter));
-            contentFactory.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Center);
-            contentFactory.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
-            borderFactory.AppendChild(contentFactory);
-            
-            buttonTemplate.VisualTree = borderFactory;
-            
-            // Add hover triggers for subtle feedback
-            var hoverTrigger = new Trigger { Property = Button.IsMouseOverProperty, Value = true };
-            hoverTrigger.Setters.Add(new Setter(Button.ForegroundProperty, new SolidColorBrush(Color.FromRgb(75, 85, 99)), "ButtonBorder"));
-            buttonTemplate.Triggers.Add(hoverTrigger);
-            hamburgerButton.Template = buttonTemplate;
-            
-            hamburgerButton.Click += (s, e) => ShowTemplateActionsDialog(template);
+            var hamburgerButton = CreateHamburgerButton(template);
             Grid.SetColumn(hamburgerButton, 3);
 
             actionsGrid.Children.Add(checkBox);
@@ -1500,47 +1460,7 @@ namespace Photobooth.Views
             Grid.SetColumn(statusToggle, 3);
 
             // Hamburger menu button for list view (replacing right-click context menu)
-            var hamburgerButtonList = new Button
-            {
-                Content = "⋯", // Three dots (hamburger menu)
-                Width = 32,
-                Height = 32,
-                FontSize = 16,
-                FontWeight = FontWeights.Bold,
-                Background = Brushes.Transparent,
-                BorderBrush = Brushes.Transparent,
-                BorderThickness = new Thickness(0),
-                Foreground = new SolidColorBrush(Color.FromRgb(107, 114, 128)), // Subtle gray color
-                VerticalAlignment = VerticalAlignment.Center,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                Cursor = Cursors.Hand,
-                ToolTip = "Template actions",
-                Margin = new Thickness(12, 0, 0, 0) // More spacing in list view
-            };
-            
-            // Create simple transparent button style for list view with hover effect
-            var buttonTemplateList = new ControlTemplate(typeof(Button));
-            var borderFactoryList = new FrameworkElementFactory(typeof(Border));
-            borderFactoryList.SetValue(Border.BackgroundProperty, Brushes.Transparent);
-            borderFactoryList.SetValue(Border.BorderBrushProperty, Brushes.Transparent);
-            borderFactoryList.SetValue(Border.BorderThicknessProperty, new Thickness(0));
-            borderFactoryList.SetValue(Border.CornerRadiusProperty, new CornerRadius(4));
-            borderFactoryList.Name = "ButtonBorderList";
-            
-            var contentFactoryList = new FrameworkElementFactory(typeof(ContentPresenter));
-            contentFactoryList.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Center);
-            contentFactoryList.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
-            borderFactoryList.AppendChild(contentFactoryList);
-            
-            buttonTemplateList.VisualTree = borderFactoryList;
-            
-            // Add hover triggers for subtle feedback in list view
-            var hoverTriggerList = new Trigger { Property = Button.IsMouseOverProperty, Value = true };
-            hoverTriggerList.Setters.Add(new Setter(Button.ForegroundProperty, new SolidColorBrush(Color.FromRgb(75, 85, 99)), "ButtonBorderList"));
-            buttonTemplateList.Triggers.Add(hoverTriggerList);
-            hamburgerButtonList.Template = buttonTemplateList;
-            
-            hamburgerButtonList.Click += (s, e) => ShowTemplateActionsDialog(template);
+            var hamburgerButtonList = CreateHamburgerButton(template, 12.0);
             Grid.SetColumn(hamburgerButtonList, 4);
 
             grid.Children.Add(checkBox);
@@ -1825,16 +1745,43 @@ namespace Photobooth.Views
         #region Template Actions Dialog
 
         /// <summary>
-        /// Show template actions dialog (replaces right-click context menu for touch-friendly interface)
+        /// Show template actions dialog using XAML UserControl (better maintainability than programmatic UI)
         /// </summary>
         private void ShowTemplateActionsDialog(Template template)
         {
             try
             {
-                // Create and show a clean, professional dialog
+                // Create the XAML-based dialog
+                var dialogContent = new Photobooth.Controls.TemplateActionsDialog(template);
+                
+                // Handle action selection events
+                dialogContent.ActionSelected += async (s, action) =>
+                {
+                    switch (action)
+                    {
+                        case "Edit":
+                            await EditTemplate_Click(template);
+                            break;
+                        case "Duplicate":
+                            await DuplicateTemplate_Click(template);
+                            break;
+                        case "Rename":
+                            await RenameTemplate_Click(template);
+                            break;
+                        case "Toggle":
+                            await ToggleTemplateStatusAsync(template.Id);
+                            break;
+                        case "Delete":
+                            await DeleteTemplate_Click(template);
+                            break;
+                    }
+                };
+
+                // Create window to host the UserControl
                 var dialog = new Window
                 {
                     Title = "Template Actions",
+                    Content = dialogContent,
                     Width = 400,
                     Height = 480,
                     WindowStartupLocation = WindowStartupLocation.CenterOwner,
@@ -1845,134 +1792,6 @@ namespace Photobooth.Views
                     Background = Brushes.Transparent
                 };
 
-                var mainBorder = new Border
-                {
-                    Background = Brushes.White,
-                    CornerRadius = new CornerRadius(16),
-                    BorderThickness = new Thickness(0),
-                    Margin = new Thickness(8)
-                };
-
-                mainBorder.Effect = new System.Windows.Media.Effects.DropShadowEffect
-                {
-                    Color = Colors.Black,
-                    Direction = 270,
-                    ShadowDepth = 8,
-                    BlurRadius = 30,
-                    Opacity = 0.15
-                };
-
-                var mainGrid = new Grid();
-                mainGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Header
-                mainGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // Content
-
-                // Header with close button
-                var headerBorder = new Border
-                {
-                    Background = new SolidColorBrush(Color.FromRgb(248, 250, 252)),
-                    CornerRadius = new CornerRadius(16, 16, 0, 0),
-                    Padding = new Thickness(24, 20, 24, 20)
-                };
-
-                var headerGrid = new Grid();
-                headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-                headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-                // Title section
-                var titlePanel = new StackPanel();
-                titlePanel.Children.Add(new TextBlock
-                {
-                    Text = "Template Actions",
-                    FontSize = 18,
-                    FontWeight = FontWeights.SemiBold,
-                    Foreground = new SolidColorBrush(Color.FromRgb(17, 24, 39))
-                });
-                titlePanel.Children.Add(new TextBlock
-                {
-                    Text = template.Name,
-                    FontSize = 14,
-                    Foreground = new SolidColorBrush(Color.FromRgb(107, 114, 128)),
-                    Margin = new Thickness(0, 2, 0, 0)
-                });
-
-                Grid.SetColumn(titlePanel, 0);
-
-                // Close button
-                var closeButton = new Button
-                {
-                    Content = "✕",
-                    Width = 32,
-                    Height = 32,
-                    Background = Brushes.Transparent,
-                    BorderThickness = new Thickness(0),
-                    FontSize = 14,
-                    Foreground = new SolidColorBrush(Color.FromRgb(107, 114, 128)),
-                    Cursor = Cursors.Hand,
-                    VerticalAlignment = VerticalAlignment.Center
-                };
-                closeButton.Click += (s, e) => dialog.Close();
-                Grid.SetColumn(closeButton, 1);
-
-                headerGrid.Children.Add(titlePanel);
-                headerGrid.Children.Add(closeButton);
-                headerBorder.Child = headerGrid;
-                Grid.SetRow(headerBorder, 0);
-
-                // Content area
-                var contentPanel = new StackPanel
-                {
-                    Margin = new Thickness(24, 20, 24, 20)
-                };
-
-                Grid.SetRow(contentPanel, 1);
-
-                // Action buttons with clean, professional styling
-                var editButton = CreateActionButton("Edit Template", "Modify template properties and settings");
-                editButton.Click += async (s, e) => {
-                    dialog.Close();
-                    await EditTemplate_Click(template);
-                };
-
-                var duplicateButton = CreateActionButton("Duplicate Template", "Create a copy of this template");
-                duplicateButton.Click += async (s, e) => {
-                    dialog.Close();
-                    await DuplicateTemplate_Click(template);
-                };
-
-                var renameButton = CreateActionButton("Rename Template", "Change the template name");
-                renameButton.Click += async (s, e) => {
-                    dialog.Close();
-                    await RenameTemplate_Click(template);
-                };
-
-                var toggleButton = CreateActionButton(
-                    template.IsActive ? "Disable Template" : "Enable Template",
-                    template.IsActive ? "Hide this template from users" : "Make this template available to users"
-                );
-                toggleButton.Click += async (s, e) => {
-                    dialog.Close();
-                    await ToggleTemplateStatusAsync(template.Id);
-                };
-
-                var deleteButton = CreateActionButton("Delete Template", "Permanently remove this template");
-                // Add subtle red accent for delete button
-                deleteButton.Foreground = new SolidColorBrush(Color.FromRgb(220, 38, 38));
-                deleteButton.Click += async (s, e) => {
-                    dialog.Close();
-                    await DeleteTemplate_Click(template);
-                };
-
-                contentPanel.Children.Add(editButton);
-                contentPanel.Children.Add(duplicateButton);
-                contentPanel.Children.Add(renameButton);
-                contentPanel.Children.Add(toggleButton);
-                contentPanel.Children.Add(deleteButton);
-
-                mainGrid.Children.Add(headerBorder);
-                mainGrid.Children.Add(contentPanel);
-                mainBorder.Child = mainGrid;
-                dialog.Content = mainBorder;
-
                 dialog.ShowDialog();
             }
             catch (Exception ex)
@@ -1982,78 +1801,7 @@ namespace Photobooth.Views
             }
         }
 
-        /// <summary>
-        /// Create a clean, professional action button for the template actions dialog
-        /// </summary>
-        private Button CreateActionButton(string title, string description)
-        {
-            var button = new Button
-            {
-                Height = 60,
-                Margin = new Thickness(0, 0, 0, 8),
-                Background = Brushes.White,
-                BorderBrush = new SolidColorBrush(Color.FromRgb(229, 231, 235)),
-                BorderThickness = new Thickness(1),
-                Cursor = Cursors.Hand,
-                HorizontalContentAlignment = HorizontalAlignment.Left,
-                Padding = new Thickness(20, 12, 20, 12)
-            };
 
-            var textPanel = new StackPanel
-            {
-                VerticalAlignment = VerticalAlignment.Center
-            };
-
-            textPanel.Children.Add(new TextBlock
-            {
-                Text = title,
-                FontSize = 14,
-                FontWeight = FontWeights.Medium,
-                Foreground = new SolidColorBrush(Color.FromRgb(17, 24, 39))
-            });
-
-            textPanel.Children.Add(new TextBlock
-            {
-                Text = description,
-                FontSize = 12,
-                Foreground = new SolidColorBrush(Color.FromRgb(107, 114, 128)),
-                Margin = new Thickness(0, 2, 0, 0),
-                TextWrapping = TextWrapping.Wrap
-            });
-
-            button.Content = textPanel;
-
-            // Create clean button template with subtle hover effects
-            var buttonTemplate = new ControlTemplate(typeof(Button));
-            var borderFactory = new FrameworkElementFactory(typeof(Border));
-            borderFactory.SetValue(Border.BackgroundProperty, new TemplateBindingExtension(Button.BackgroundProperty));
-            borderFactory.SetValue(Border.BorderBrushProperty, new TemplateBindingExtension(Button.BorderBrushProperty));
-            borderFactory.SetValue(Border.BorderThicknessProperty, new TemplateBindingExtension(Button.BorderThicknessProperty));
-            borderFactory.SetValue(Border.CornerRadiusProperty, new CornerRadius(8));
-            borderFactory.Name = "ButtonBorder";
-
-            var contentFactory = new FrameworkElementFactory(typeof(ContentPresenter));
-            contentFactory.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Stretch);
-            contentFactory.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Stretch);
-            contentFactory.SetValue(ContentPresenter.MarginProperty, new TemplateBindingExtension(Button.PaddingProperty));
-            borderFactory.AppendChild(contentFactory);
-
-            buttonTemplate.VisualTree = borderFactory;
-
-            // Add subtle hover effect
-            var hoverTrigger = new Trigger { Property = Button.IsMouseOverProperty, Value = true };
-            hoverTrigger.Setters.Add(new Setter(Button.BackgroundProperty, new SolidColorBrush(Color.FromRgb(249, 250, 251)), "ButtonBorder"));
-            hoverTrigger.Setters.Add(new Setter(Button.BorderBrushProperty, new SolidColorBrush(Color.FromRgb(209, 213, 219)), "ButtonBorder"));
-            buttonTemplate.Triggers.Add(hoverTrigger);
-
-            // Add subtle press effect
-            var pressTrigger = new Trigger { Property = Button.IsPressedProperty, Value = true };
-            pressTrigger.Setters.Add(new Setter(Button.BackgroundProperty, new SolidColorBrush(Color.FromRgb(243, 244, 246)), "ButtonBorder"));
-            buttonTemplate.Triggers.Add(pressTrigger);
-
-            button.Template = buttonTemplate;
-            return button;
-        }
 
         #endregion
 
@@ -2623,5 +2371,52 @@ namespace Photobooth.Views
         // All remaining modal methods removed - using CategoryManagementDialog instead
         
         #endregion
+
+        private Button CreateHamburgerButton(Template template, double leftMargin = 8.0)
+        {
+            var hamburgerButton = new Button
+            {
+                Content = "⋯", // Three dots (hamburger menu)
+                Width = 32,
+                Height = 32,
+                FontSize = 16,
+                FontWeight = FontWeights.Bold,
+                Background = Brushes.Transparent,
+                BorderBrush = Brushes.Transparent,
+                BorderThickness = new Thickness(0),
+                Foreground = new SolidColorBrush(Color.FromRgb(107, 114, 128)), // Subtle gray color
+                VerticalAlignment = VerticalAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Cursor = Cursors.Hand,
+                ToolTip = "Template actions",
+                Margin = new Thickness(leftMargin, 0, 0, 0)
+            };
+            
+            // Create simple transparent button style with hover effect
+            var buttonTemplate = new ControlTemplate(typeof(Button));
+            var borderFactory = new FrameworkElementFactory(typeof(Border));
+            borderFactory.SetValue(Border.BackgroundProperty, Brushes.Transparent);
+            borderFactory.SetValue(Border.BorderBrushProperty, Brushes.Transparent);
+            borderFactory.SetValue(Border.BorderThicknessProperty, new Thickness(0));
+            borderFactory.SetValue(Border.CornerRadiusProperty, new CornerRadius(4));
+            borderFactory.Name = "ButtonBorder";
+            
+            var contentFactory = new FrameworkElementFactory(typeof(ContentPresenter));
+            contentFactory.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+            contentFactory.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
+            borderFactory.AppendChild(contentFactory);
+            
+            buttonTemplate.VisualTree = borderFactory;
+            
+            // Add hover triggers for subtle feedback
+            var hoverTrigger = new Trigger { Property = Button.IsMouseOverProperty, Value = true };
+            hoverTrigger.Setters.Add(new Setter(Button.ForegroundProperty, new SolidColorBrush(Color.FromRgb(75, 85, 99)), "ButtonBorder"));
+            buttonTemplate.Triggers.Add(hoverTrigger);
+            hamburgerButton.Template = buttonTemplate;
+            
+            hamburgerButton.Click += (s, e) => ShowTemplateActionsDialog(template);
+            
+            return hamburgerButton;
+        }
     }
 }
