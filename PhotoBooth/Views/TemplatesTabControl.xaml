@@ -534,56 +534,8 @@
                             </Border>
                         </Grid>
                         
-                        <!-- Main Filter Controls -->
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="2*" MinWidth="280"/>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="1*" MinWidth="200"/>
-                            </Grid.ColumnDefinitions>
-                            
-                            <!-- Search Section -->
-                            <Border Grid.Column="0" Background="White" BorderBrush="#E5E7EB" 
-                                    BorderThickness="1" CornerRadius="8" Margin="0,0,16,0">
-                                <Grid Margin="16,12">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                    </Grid.ColumnDefinitions>
-                                    
-                                    <!-- Search Icon -->
-                                    <TextBlock Grid.Column="0" Text="🔍" FontSize="16" 
-                                              Foreground="#9CA3AF" VerticalAlignment="Center" Margin="0,0,12,0"/>
-                                    
-                                    <!-- Search Input -->
-                                    <Grid Grid.Column="1">
-                                        <TextBox Name="SearchTextBox" 
-                                                Background="Transparent" BorderThickness="0" 
-                                                FontSize="14" Foreground="#111827"
-                                                VerticalAlignment="Center"
-                                                behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True"
-                                                TextChanged="SearchTextBox_TextChanged"/>
-                                        <TextBlock Name="SearchPlaceholder" 
-                                                  Text="Search templates by name, category..." 
-                                                  FontSize="14" Foreground="#9CA3AF" 
-                                                  IsHitTestVisible="False" VerticalAlignment="Center"/>
-                                    </Grid>
-                                    
-                                    <!-- Clear Search Button -->
-                                    <Button Name="ClearSearchButton" Grid.Column="2" 
-                                            Width="20" Height="20" Background="Transparent" BorderThickness="0"
-                                            Cursor="Hand" Visibility="Collapsed" Click="ClearSearchButton_Click">
-                                        <TextBlock Text="✕" FontSize="12" Foreground="#6B7280"/>
-                                    </Button>
-                                </Grid>
-                            </Border>
-                            
-                            <!-- Divider -->
-                            <Border Grid.Column="1" Width="1" Background="#E5E7EB" Margin="0,8"/>
-                            
-                            <!-- Filter Controls Section -->
-                            <StackPanel Grid.Column="2" Margin="16,0,0,0">
+                        <!-- Main Filter Controls (Search box removed) -->
+                        <StackPanel>
                                 <!-- Category, Template Type and Sort Row -->
                                 <Grid Margin="0,0,0,12">
                                     <Grid.ColumnDefinitions>
@@ -691,7 +643,6 @@
                                     </Border>
                                 </Grid>
                             </StackPanel>
-                        </Grid>
                         
                         <!-- Active Filters Display -->
                         <StackPanel Name="ActiveFiltersPanel" Orientation="Horizontal" 
@@ -868,7 +819,6 @@
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
                 <!-- Page Info & Items Per Page -->
@@ -996,37 +946,7 @@
                     </Border>
                 </StackPanel>
 
-                <!-- Quick Jump -->
-                <Border Grid.Column="2" Background="White" BorderBrush="#E5E7EB" BorderThickness="1" 
-                        CornerRadius="8" Margin="16,0,0,0">
-                    <StackPanel Orientation="Horizontal" Margin="12,8">
-                        <TextBlock Text="Go to:" FontSize="13" Foreground="#6B7280" 
-                                  VerticalAlignment="Center" Margin="0,0,8,0"/>
-                        <TextBox Name="PageJumpTextBox" Width="50" Height="24" 
-                                Background="Transparent" BorderThickness="0" FontSize="13"
-                                VerticalAlignment="Center" HorizontalContentAlignment="Center"
-                                behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True"
-                                KeyDown="PageJumpTextBox_KeyDown">
-                            <TextBox.Style>
-                                <Style TargetType="TextBox">
-                                    <Style.Triggers>
-                                        <Trigger Property="Text" Value="">
-                                            <Setter Property="Background">
-                                                <Setter.Value>
-                                                    <VisualBrush AlignmentX="Center" AlignmentY="Center" Stretch="None">
-                                                        <VisualBrush.Visual>
-                                                            <TextBlock Text="Page #" FontSize="13" Foreground="#9CA3AF"/>
-                                                        </VisualBrush.Visual>
-                                                    </VisualBrush>
-                                                </Setter.Value>
-                                            </Setter>
-                                        </Trigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </TextBox.Style>
-                        </TextBox>
-                    </StackPanel>
-                </Border>
+
             </Grid>
         </Border>
         </Grid>

@@ -168,7 +168,11 @@ namespace Photobooth
             if (totalSeconds < 60)
                 return $"{totalSeconds} seconds";
             else
-                return $"{totalSeconds / 60}:{totalSeconds % 60:D2} minutes";
+            {
+                var minutes = totalSeconds / 60;
+                var seconds = totalSeconds % 60;
+                return $"{minutes}:{seconds:D2}";
+            }
         }
         #endregion
 
@@ -485,7 +489,7 @@ namespace Photobooth
         /// </summary>
         private void CountdownTimer_Tick(object? sender, EventArgs e)
         {
-            _countdownSeconds--;
+            _countdownSeconds = Math.Max(0, _countdownSeconds - 1);
             
             if (_countdownSeconds <= 0)
             {

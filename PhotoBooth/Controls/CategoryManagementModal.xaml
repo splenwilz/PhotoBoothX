@@ -1,7 +1,6 @@
 <UserControl x:Class="Photobooth.Controls.CategoryManagementModal"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:behaviors="clr-namespace:Photobooth.Behaviors"
              Width="650" Height="600">
     
     <UserControl.Resources>
@@ -123,10 +122,10 @@
                     </Grid.ColumnDefinitions>
                     
                     <StackPanel Grid.Column="0" Orientation="Horizontal">
-                        <TextBlock Text="📁" FontSize="20" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                        <TextBlock Text="📅" FontSize="20" Margin="0,0,12,0" VerticalAlignment="Center"/>
                         <StackPanel>
-                            <TextBlock Text="Manage Template Categories" FontSize="18" FontWeight="Bold" Foreground="#0F172A"/>
-                            <TextBlock Text="Add and organize template categories" FontSize="14" Foreground="#64748B"/>
+                            <TextBlock Text="Seasonal Category Dates" FontSize="18" FontWeight="Bold" Foreground="#0F172A"/>
+                            <TextBlock Text="Adjust seasonal category date ranges" FontSize="14" Foreground="#64748B"/>
                         </StackPanel>
                     </StackPanel>
                     
@@ -143,155 +142,21 @@
                         VerticalScrollBarVisibility="Auto" 
                         Padding="24">
                 <StackPanel>
-                    <!-- Add New Category Form -->
-                    <Border Background="#F8FAFC" CornerRadius="12" Padding="20" Margin="0,0,0,24">
+                    <!-- Info Panel -->
+                    <Border Background="#E0F2FE" CornerRadius="12" Padding="20" Margin="0,0,0,24">
                         <StackPanel>
-                            <TextBlock Text="Add New Category" FontSize="16" FontWeight="SemiBold" Foreground="#374151" Margin="0,0,0,16"/>
-                            
-                            <!-- Category Name -->
-                            <StackPanel Margin="0,0,0,16">
-                                <TextBlock Text="Category Name *" FontSize="12" FontWeight="Medium" Foreground="#374151" Margin="0,0,0,6"/>
-                                <TextBox Name="CategoryNameTextBox" 
-                                         Height="44" Padding="12,10" FontSize="14"
-                                         BorderBrush="#D1D5DB" Background="White" BorderThickness="1"
-                                         VerticalContentAlignment="Center"
-                                         behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True" />
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                <TextBlock Text="ℹ️" FontSize="16" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Seasonal Categories Information" FontSize="14" FontWeight="SemiBold" Foreground="#0369A1"/>
                             </StackPanel>
-                            
-                            <!-- Description -->
-                            <StackPanel Margin="0,0,0,16">
-                                <Grid Margin="0,0,0,8">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="Description (Optional)" FontSize="12" FontWeight="Medium" Foreground="#374151"/>
-                                    <TextBlock Name="DescriptionCharCount" Grid.Column="1" Text="0/200" FontSize="10" Foreground="#9CA3AF"/>
-                                </Grid>
-                                <TextBox Name="CategoryDescriptionTextBox" 
-                                         Height="80" Padding="12" FontSize="14"
-                                         BorderBrush="#D1D5DB" Background="White" BorderThickness="1"
-                                         TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto"
-                                         MaxLength="200" TextChanged="CategoryDescription_TextChanged"
-                                         behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True" />
-                                <TextBlock Text="Briefly describe what types of templates belong in this category" 
-                                           FontSize="11" Foreground="#9CA3AF" Margin="0,6,0,0"/>
-                            </StackPanel>
-
-                            <!-- Seasonal Configuration -->
-                            <StackPanel Margin="0,0,0,16">
-                                <TextBlock Text="Seasonal Configuration" FontSize="14" FontWeight="Medium" Foreground="#374151" Margin="0,0,0,12"/>
-                                
-                                <CheckBox Name="IsSeasonalCheckBox" 
-                                          Content="📅 This is a seasonal category" 
-                                          FontSize="13" Foreground="#374151" FontWeight="Medium"
-                                          Checked="IsSeasonalCheckBox_Checked" Unchecked="IsSeasonalCheckBox_Unchecked"/>
-                                
-                                <!-- Seasonal Settings Panel (Hidden by default) -->
-                                <StackPanel Name="SeasonalSettingsPanel" Visibility="Collapsed" Margin="0,12,0,0">
-                                    <Border Background="White" BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="8" Padding="16">
-                                        <StackPanel>
-                                            <!-- Season Date Range -->
-                                            <Grid Margin="0,0,0,16">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*"/>
-                                                    <ColumnDefinition Width="16"/>
-                                                    <ColumnDefinition Width="*"/>
-                                                </Grid.ColumnDefinitions>
-                                                
-                                                <!-- Start Date -->
-                                                <StackPanel Grid.Column="0">
-                                                    <TextBlock Text="Season Start" FontSize="12" FontWeight="Medium" Foreground="#374151" Margin="0,0,0,6"/>
-                                                    <Grid>
-                                                        <Grid.ColumnDefinitions>
-                                                            <ColumnDefinition Width="*"/>
-                                                            <ColumnDefinition Width="8"/>
-                                                            <ColumnDefinition Width="*"/>
-                                                        </Grid.ColumnDefinitions>
-                                                        <ComboBox Name="StartMonthComboBox" Grid.Column="0" Height="36" FontSize="13" SelectionChanged="StartMonthComboBox_SelectionChanged"/>
-                                                        <ComboBox Name="StartDayComboBox" Grid.Column="2" Height="36" FontSize="13" SelectionChanged="DateComboBox_SelectionChanged"/>
-                                                    </Grid>
-                                                </StackPanel>
-                                                
-                                                <!-- End Date -->
-                                                <StackPanel Grid.Column="2">
-                                                    <TextBlock Text="Season End" FontSize="12" FontWeight="Medium" Foreground="#374151" Margin="0,0,0,6"/>
-                                                    <Grid>
-                                                        <Grid.ColumnDefinitions>
-                                                            <ColumnDefinition Width="*"/>
-                                                            <ColumnDefinition Width="8"/>
-                                                            <ColumnDefinition Width="*"/>
-                                                        </Grid.ColumnDefinitions>
-                                                        <ComboBox Name="EndMonthComboBox" Grid.Column="0" Height="36" FontSize="13" SelectionChanged="EndMonthComboBox_SelectionChanged"/>
-                                                        <ComboBox Name="EndDayComboBox" Grid.Column="2" Height="36" FontSize="13" SelectionChanged="DateComboBox_SelectionChanged"/>
-                                                    </Grid>
-                                                </StackPanel>
-                                            </Grid>
-                                            
-                                            <!-- Season Priority -->
-                                            <StackPanel Margin="0,0,0,16">
-                                                <TextBlock Text="Season Priority" FontSize="12" FontWeight="Medium" Foreground="#374151" Margin="0,0,0,6"/>
-                                                <TextBox Name="SeasonPriorityTextBox" 
-                                                         Height="40" Padding="12,10" FontSize="13" Text="100"
-                                                         BorderBrush="#D1D5DB" Background="White" BorderThickness="1"
-                                                         VerticalContentAlignment="Center"
-                                                         PreviewTextInput="SeasonPriority_PreviewTextInput"
-                                                         TextChanged="SeasonPriority_TextChanged"
-                                                         behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True" />
-                                                <TextBlock Text="Higher priority categories appear first during their season (1-100)" 
-                                                           FontSize="10" Foreground="#9CA3AF" Margin="0,4,0,0"/>
-                                            </StackPanel>
-                                            
-                                            <!-- Season Preview -->
-                                            <Border Background="#F0F9FF" BorderBrush="#0EA5E9" BorderThickness="1" CornerRadius="6" Padding="12">
-                                                <StackPanel>
-                                                    <TextBlock Text="📅 Season Preview" FontSize="12" FontWeight="Medium" Foreground="#0369A1" Margin="0,0,0,4"/>
-                                                    <TextBlock Name="SeasonPreviewText" Text="Set dates to see preview" FontSize="11" Foreground="#0369A1"/>
-                                                </StackPanel>
-                                            </Border>
-                                        </StackPanel>
-                                    </Border>
-                                </StackPanel>
-                            </StackPanel>
-
-                            <!-- Action Buttons -->
-                            <Grid Margin="0,8,0,0">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                
-                                <!-- Cancel Edit Button (Hidden by default) -->
-                                <Button Name="CancelEditButton" 
-                                        Grid.Column="0" 
-                                        Style="{StaticResource SecondaryButtonStyle}"
-                                        Height="44" HorizontalAlignment="Left"
-                                        Visibility="Collapsed"
-                                        Click="CancelEdit_Click">
-                                    <StackPanel Orientation="Horizontal">
-                                        <TextBlock Text="✕" FontSize="14" Margin="0,0,8,0"/>
-                                        <TextBlock Text="Cancel Edit" FontSize="14" FontWeight="Medium"/>
-                                    </StackPanel>
-                                </Button>
-                                
-                                <!-- Add Category Button -->
-                                <Button Name="AddCategoryButton" 
-                                        Grid.Column="1" 
-                                        Style="{StaticResource ActionButtonStyle}"
-                                        Height="44" MinWidth="140"
-                                        Click="AddCategory_Click">
-                                    <StackPanel Orientation="Horizontal" Name="AddButtonContent">
-                                        <TextBlock Text="➕" FontSize="14" Margin="0,0,8,0"/>
-                                        <TextBlock Text="Add Category" FontSize="14" FontWeight="Medium"/>
-                                    </StackPanel>
-                                </Button>
-                            </Grid>
+                            <TextBlock Text="Click on any seasonal category below to adjust its date range. Only seasonal categories can be edited." 
+                                       FontSize="13" Foreground="#0369A1" TextWrapping="Wrap"/>
                         </StackPanel>
                     </Border>
 
-                    <!-- Existing Categories List -->
+                    <!-- Categories List -->
                     <StackPanel>
-                        <TextBlock Text="Existing Categories" FontSize="16" FontWeight="SemiBold" Foreground="#374151" Margin="0,0,0,16"/>
+                        <TextBlock Text="Template Categories" FontSize="16" FontWeight="SemiBold" Foreground="#374151" Margin="0,0,0,16"/>
                         <StackPanel Name="CategoriesListPanel">
                             <!-- Categories will be loaded dynamically -->
                         </StackPanel>
