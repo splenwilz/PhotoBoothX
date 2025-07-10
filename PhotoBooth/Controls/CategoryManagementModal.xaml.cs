@@ -38,8 +38,14 @@ namespace Photobooth.Controls
             return (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFromString(colorString) ?? fallback);
         }
 
+        private static int GetDaysInMonth(int month)
+        {
+            return DateTime.DaysInMonth(REFERENCE_YEAR, month);
+        }
+
         private const string DEFAULT_SEASON_START = "01-01";
         private const string DEFAULT_SEASON_END = "12-31";
+        private const int REFERENCE_YEAR = 2023; // Non-leap year for consistent date validation
 
         private readonly IDatabaseService _databaseService;
         private TemplateCategory? _currentlyEditingCategory = null;
@@ -659,8 +665,8 @@ namespace Photobooth.Controls
         }
 
         private async Task UpdateCategoryInDatabase(TemplateCategory category, string newStartDate, string newEndDate)
-        {
-            var result = await _databaseService.UpdateTemplateCategoryAsync(
+                {
+                    var result = await _databaseService.UpdateTemplateCategoryAsync(
                 category.Id,
                 category.Name,
                 category.Description ?? "",
@@ -669,16 +675,16 @@ namespace Photobooth.Controls
                 newEndDate,
                 category.SeasonalPriority
             );
-                    
-            if (result.Success)
-            {
+                        
+                    if (result.Success)
+                    {
                 CategoriesChanged = true;
                 LoadCategories();
                 NotificationService.Instance.ShowSuccess("Dates Updated", $"Season dates for {category.Name} updated successfully!");
                 CloseEditDropdown();
-            }
-            else
-            {
+                    }
+                    else
+                    {
                 NotificationService.Instance.ShowError("Update Failed", $"Failed to update dates: {result.ErrorMessage}");
             }
         }
@@ -840,9 +846,9 @@ namespace Photobooth.Controls
                 int currentDay = (int)dayLabel.Tag;
                 int newDay = currentDay == 1 ? 31 : currentDay - 1;
                 
-                // Basic validation for days in month
+                // Basic validation for days in month using reference year for consistent behavior
                 int currentMonth = (int)monthLabel.Tag;
-                var daysInMonth = DateTime.DaysInMonth(DateTime.Now.Year, currentMonth);
+                var daysInMonth = GetDaysInMonth(currentMonth);
                 if (newDay > daysInMonth) newDay = daysInMonth;
                 
                 dayLabel.Tag = newDay;
@@ -853,7 +859,7 @@ namespace Photobooth.Controls
             {
                 int currentDay = (int)dayLabel.Tag;
                 int currentMonth = (int)monthLabel.Tag;
-                var daysInMonth = DateTime.DaysInMonth(DateTime.Now.Year, currentMonth);
+                var daysInMonth = GetDaysInMonth(currentMonth);
                 
                 int newDay = currentDay == daysInMonth ? 1 : currentDay + 1;
                 
