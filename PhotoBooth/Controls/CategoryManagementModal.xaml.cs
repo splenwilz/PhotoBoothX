@@ -29,7 +29,17 @@ namespace Photobooth.Controls
             public const string MediumBlue = "#3B82F6";
             public const string LightGray = "#F8FAFC";
             public const string SlateGray = "#F1F5F9";
+            public const string DropdownBorder = "#E2E8F0";
+            public const string InfoBackground = "#DBEAFE";
         }
+
+        private static System.Windows.Media.Brush GetBrushFromColor(string colorString, System.Windows.Media.Brush fallback)
+        {
+            return (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFromString(colorString) ?? fallback);
+        }
+
+        private const string DEFAULT_SEASON_START = "01-01";
+        private const string DEFAULT_SEASON_END = "12-31";
 
         private readonly IDatabaseService _databaseService;
         private TemplateCategory? _currentlyEditingCategory = null;
@@ -103,11 +113,11 @@ namespace Photobooth.Controls
             return new Border
             {
                 Background = category.IsActive ? 
-                    (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFromString(ThemeColors.ActiveBackground) ?? System.Windows.Media.Brushes.White) : 
-                    (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFromString(ThemeColors.InactiveBackground) ?? System.Windows.Media.Brushes.WhiteSmoke),
+                    GetBrushFromColor(ThemeColors.ActiveBackground, System.Windows.Media.Brushes.White) : 
+                    GetBrushFromColor(ThemeColors.InactiveBackground, System.Windows.Media.Brushes.WhiteSmoke),
                 BorderBrush = category.IsActive ?
-                    (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFromString(ThemeColors.ActiveBorder) ?? System.Windows.Media.Brushes.LightGray) :
-                    (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFromString(ThemeColors.InactiveBorder) ?? System.Windows.Media.Brushes.Gray),
+                    GetBrushFromColor(ThemeColors.ActiveBorder, System.Windows.Media.Brushes.LightGray) :
+                    GetBrushFromColor(ThemeColors.InactiveBorder, System.Windows.Media.Brushes.Gray),
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(8),
                 Padding = new Thickness(20),
@@ -184,8 +194,8 @@ namespace Photobooth.Controls
                 FontSize = 18,
                 FontWeight = FontWeights.Medium,
                 Foreground = category.IsActive ?
-                    (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFromString(ThemeColors.ActiveText) ?? System.Windows.Media.Brushes.Black) :
-                    (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFromString(ThemeColors.InactiveText) ?? System.Windows.Media.Brushes.Gray),
+                    GetBrushFromColor(ThemeColors.ActiveText, System.Windows.Media.Brushes.Black) :
+                    GetBrushFromColor(ThemeColors.InactiveText, System.Windows.Media.Brushes.Gray),
                 VerticalAlignment = VerticalAlignment.Center
             };
             namePanel.Children.Add(nameBlock);
@@ -203,8 +213,8 @@ namespace Photobooth.Controls
             var statusBadge = new Border
             {
                 Background = category.IsActive ? 
-                    (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFrom(ThemeColors.SuccessBadge) ?? System.Windows.Media.Brushes.Green) :
-                    (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFrom(ThemeColors.InactiveBadge) ?? System.Windows.Media.Brushes.Gray),
+                    GetBrushFromColor(ThemeColors.SuccessBadge, System.Windows.Media.Brushes.Green) :
+                    GetBrushFromColor(ThemeColors.InactiveBadge, System.Windows.Media.Brushes.Gray),
                 CornerRadius = new CornerRadius(12),
                 Padding = new Thickness(10, 4, 10, 4),
                 Margin = new Thickness(12, 0, 0, 0),
@@ -229,7 +239,7 @@ namespace Photobooth.Controls
             {
                 Text = category.Description,
                 FontSize = 14,
-                Foreground = (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFrom(ThemeColors.SecondaryText) ?? System.Windows.Media.Brushes.Gray),
+                Foreground = GetBrushFromColor(ThemeColors.SecondaryText, System.Windows.Media.Brushes.Gray),
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 8)
             };
@@ -242,7 +252,7 @@ namespace Photobooth.Controls
                 Text = $"Season: {FormatSeasonDate(category.SeasonStartDate ?? "")} - {FormatSeasonDate(category.SeasonEndDate ?? "")}",
                 FontSize = 13,
                 FontWeight = FontWeights.Medium,
-                Foreground = (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFromString(ThemeColors.PrimaryBlue) ?? System.Windows.Media.Brushes.DarkBlue),
+                Foreground = GetBrushFromColor(ThemeColors.PrimaryBlue, System.Windows.Media.Brushes.DarkBlue),
                 Margin = new Thickness(0, 0, 0, 0)
             };
         }
@@ -271,8 +281,8 @@ namespace Photobooth.Controls
             {
                 Content = "EDIT DATES",
                 Style = (Style)FindResource("ModernActionButtonStyle"),
-                Background = (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFromString("#BFDBFE") ?? System.Windows.Media.Brushes.LightBlue),
-                Foreground = (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFromString("#1E40AF") ?? System.Windows.Media.Brushes.DarkBlue),
+                Background = GetBrushFromColor(ThemeColors.LightBlue, System.Windows.Media.Brushes.LightBlue),
+                Foreground = GetBrushFromColor(ThemeColors.PrimaryBlue, System.Windows.Media.Brushes.DarkBlue),
                 FontSize = 14,
                 Height = 44,
                 MinWidth = 120,
@@ -289,9 +299,9 @@ namespace Photobooth.Controls
                 Content = category.IsActive ? "DISABLE" : "ENABLE",
                 Style = (Style)FindResource("ModernActionButtonStyle"),
                 Background = category.IsActive ? 
-                    (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFromString("#E5E7EB") ?? System.Windows.Media.Brushes.LightGray) :
-                    (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFromString("#BFDBFE") ?? System.Windows.Media.Brushes.LightBlue),
-                Foreground = (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFromString("#374151") ?? System.Windows.Media.Brushes.DarkGray),
+                    GetBrushFromColor(ThemeColors.ActiveBorder, System.Windows.Media.Brushes.LightGray) :
+                    GetBrushFromColor(ThemeColors.LightBlue, System.Windows.Media.Brushes.LightBlue),
+                Foreground = GetBrushFromColor(ThemeColors.ActiveText, System.Windows.Media.Brushes.DarkGray),
                 FontSize = 14,
                 Height = 44,
                 MinWidth = 100,
@@ -402,8 +412,8 @@ namespace Photobooth.Controls
         {
             return new Border
             {
-                Background = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString("#F8FAFC") ?? System.Windows.Media.Brushes.AliceBlue,
-                BorderBrush = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString("#E2E8F0") ?? System.Windows.Media.Brushes.LightGray,
+                Background = GetBrushFromColor(ThemeColors.LightGray, System.Windows.Media.Brushes.AliceBlue),
+                BorderBrush = GetBrushFromColor(ThemeColors.DropdownBorder, System.Windows.Media.Brushes.LightGray),
                 BorderThickness = new Thickness(1, 0, 1, 1),
                 CornerRadius = new CornerRadius(0, 0, 8, 8),
                 Padding = new Thickness(20),
@@ -445,7 +455,7 @@ namespace Photobooth.Controls
                 Text = $"📅 Edit {category.Name} Dates",
                 FontSize = 18,
                 FontWeight = FontWeights.Bold,
-                Foreground = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString("#374151") ?? System.Windows.Media.Brushes.Black,
+                Foreground = GetBrushFromColor(ThemeColors.ActiveText, System.Windows.Media.Brushes.Black),
                 VerticalAlignment = VerticalAlignment.Center
             };
             Grid.SetColumn(titleBlock, 0);
@@ -458,8 +468,8 @@ namespace Photobooth.Controls
                 Height = 28,
                 FontSize = 14,
                 FontWeight = FontWeights.Bold,
-                Background = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString("#E5E7EB") ?? System.Windows.Media.Brushes.LightGray,
-                Foreground = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString("#374151") ?? System.Windows.Media.Brushes.DarkGray,
+                Background = GetBrushFromColor(ThemeColors.ActiveBorder, System.Windows.Media.Brushes.LightGray),
+                Foreground = GetBrushFromColor(ThemeColors.ActiveText, System.Windows.Media.Brushes.DarkGray),
                 BorderThickness = new Thickness(0),
                 Template = CreateRoundButtonTemplate()
             };
@@ -474,7 +484,7 @@ namespace Photobooth.Controls
         {
             var currentInfo = new Border
             {
-                Background = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString("#DBEAFE") ?? System.Windows.Media.Brushes.LightBlue,
+                Background = GetBrushFromColor(ThemeColors.InfoBackground, System.Windows.Media.Brushes.LightBlue),
                 CornerRadius = new CornerRadius(8),
                 Padding = new Thickness(15, 8, 15, 8),
                 Margin = new Thickness(0, 0, 0, 20)
@@ -485,7 +495,7 @@ namespace Photobooth.Controls
                 Text = $"Current: {FormatSeasonDate(category.SeasonStartDate ?? "")} - {FormatSeasonDate(category.SeasonEndDate ?? "")}",
                 FontSize = 14,
                 FontWeight = FontWeights.Medium,
-                Foreground = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString("#1E40AF") ?? System.Windows.Media.Brushes.DarkBlue,
+                Foreground = GetBrushFromColor(ThemeColors.PrimaryBlue, System.Windows.Media.Brushes.DarkBlue),
                 TextAlignment = TextAlignment.Center
             };
             currentInfo.Child = currentText;
@@ -525,8 +535,8 @@ namespace Photobooth.Controls
 
         private (int startMonth, int startDay, int endMonth, int endDay) ParseCategoryDates(TemplateCategory category)
         {
-            var startParts = (category.SeasonStartDate ?? "01-01").Split('-');
-            var endParts = (category.SeasonEndDate ?? "12-31").Split('-');
+            var startParts = (category.SeasonStartDate ?? DEFAULT_SEASON_START).Split('-');
+            var endParts = (category.SeasonEndDate ?? DEFAULT_SEASON_END).Split('-');
             
             int startMonth = int.TryParse(startParts[0], out var sm) ? sm : 1;
             int startDay = int.TryParse(startParts[1], out var sd) ? sd : 1;
@@ -561,8 +571,8 @@ namespace Photobooth.Controls
                 Width = 120,
                 Height = 40,
                 Margin = new Thickness(0, 0, 10, 0),
-                Background = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString("#BFDBFE") ?? System.Windows.Media.Brushes.LightBlue,
-                Foreground = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString("#1E40AF") ?? System.Windows.Media.Brushes.DarkBlue,
+                Background = GetBrushFromColor(ThemeColors.LightBlue, System.Windows.Media.Brushes.LightBlue),
+                Foreground = GetBrushFromColor(ThemeColors.PrimaryBlue, System.Windows.Media.Brushes.DarkBlue),
                 FontWeight = FontWeights.Bold,
                 FontSize = 14,
                 BorderThickness = new Thickness(0),
@@ -580,8 +590,8 @@ namespace Photobooth.Controls
                 Content = "❌ Cancel",
                 Width = 100,
                 Height = 40,
-                Background = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString("#E5E7EB") ?? System.Windows.Media.Brushes.LightGray,
-                Foreground = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString("#374151") ?? System.Windows.Media.Brushes.DarkGray,
+                Background = GetBrushFromColor(ThemeColors.ActiveBorder, System.Windows.Media.Brushes.LightGray),
+                Foreground = GetBrushFromColor(ThemeColors.ActiveText, System.Windows.Media.Brushes.DarkGray),
                 FontWeight = FontWeights.Bold,
                 FontSize = 14,
                 BorderThickness = new Thickness(0),
@@ -700,7 +710,7 @@ namespace Photobooth.Controls
                 FontSize = 16,
                 FontWeight = FontWeights.Bold,
                 TextAlignment = TextAlignment.Center,
-                Foreground = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString(ThemeColors.DateControlText) ?? System.Windows.Media.Brushes.DarkGray,
+                Foreground = GetBrushFromColor(ThemeColors.DateControlText, System.Windows.Media.Brushes.DarkGray),
                 Margin = new Thickness(0, 0, 0, 15)
             };
         }
@@ -724,7 +734,7 @@ namespace Photobooth.Controls
                 FontSize = 16,
                 FontWeight = FontWeights.Bold,
                 TextAlignment = TextAlignment.Center,
-                Foreground = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString(ThemeColors.PrimaryBlue) ?? System.Windows.Media.Brushes.DarkBlue,
+                Foreground = GetBrushFromColor(ThemeColors.PrimaryBlue, System.Windows.Media.Brushes.DarkBlue),
                 Tag = initialMonth
             };
             monthDisplay.Child = monthLabel;
@@ -759,7 +769,7 @@ namespace Photobooth.Controls
                 FontSize = 16,
                 FontWeight = FontWeights.Bold,
                 TextAlignment = TextAlignment.Center,
-                Foreground = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString(ThemeColors.PrimaryBlue) ?? System.Windows.Media.Brushes.DarkGray,
+                Foreground = GetBrushFromColor(ThemeColors.PrimaryBlue, System.Windows.Media.Brushes.DarkGray),
                 Tag = initialDay
             };
             dayDisplay.Child = dayLabel;
@@ -786,7 +796,7 @@ namespace Photobooth.Controls
                 Height = 45,
                 FontSize = 20,
                 FontWeight = FontWeights.Bold,
-                Background = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString(backgroundColor) ?? System.Windows.Media.Brushes.Blue,
+                Background = GetBrushFromColor(backgroundColor, System.Windows.Media.Brushes.Blue),
                 Foreground = System.Windows.Media.Brushes.White,
                 BorderThickness = new Thickness(0),
                 Template = CreateRoundButtonTemplate()
@@ -797,7 +807,7 @@ namespace Photobooth.Controls
         {
             return new Border
             {
-                Background = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString(backgroundColor) ?? System.Windows.Media.Brushes.LightBlue,
+                Background = GetBrushFromColor(backgroundColor, System.Windows.Media.Brushes.LightBlue),
                 CornerRadius = new CornerRadius(8),
                 Padding = new Thickness(10, 8, 10, 8),
                 Margin = new Thickness(5, 0, 5, 0)

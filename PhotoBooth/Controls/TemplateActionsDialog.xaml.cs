@@ -8,6 +8,12 @@ namespace Photobooth.Controls
 {
     public partial class TemplateActionsDialog : UserControl
     {
+        private const string ACTION_EDIT = "Edit";
+        private const string ACTION_DUPLICATE = "Duplicate";
+        private const string ACTION_RENAME = "Rename";
+        private const string ACTION_TOGGLE = "Toggle";
+        private const string ACTION_DELETE = "Delete";
+
         private Template? _selectedTemplate;
         
         public Template? SelectedTemplate 
@@ -62,7 +68,7 @@ namespace Photobooth.Controls
         {
             try
             {
-                ActionSelected?.Invoke(this, "Edit");
+                ActionSelected?.Invoke(this, ACTION_EDIT);
                 CloseDialog();
             }
             catch (Exception ex)
@@ -75,7 +81,7 @@ namespace Photobooth.Controls
         {
             try
             {
-                ActionSelected?.Invoke(this, "Duplicate");
+                ActionSelected?.Invoke(this, ACTION_DUPLICATE);
                 CloseDialog();
             }
             catch (Exception ex)
@@ -88,7 +94,7 @@ namespace Photobooth.Controls
         {
             try
             {
-                ActionSelected?.Invoke(this, "Rename");
+                ActionSelected?.Invoke(this, ACTION_RENAME);
                 CloseDialog();
             }
             catch (Exception ex)
@@ -101,7 +107,7 @@ namespace Photobooth.Controls
         {
             try
             {
-                ActionSelected?.Invoke(this, "Toggle");
+                ActionSelected?.Invoke(this, ACTION_TOGGLE);
                 CloseDialog();
             }
             catch (Exception ex)
@@ -114,7 +120,7 @@ namespace Photobooth.Controls
         {
             try
             {
-                ActionSelected?.Invoke(this, "Delete");
+                ActionSelected?.Invoke(this, ACTION_DELETE);
                 CloseDialog();
             }
             catch (Exception ex)
