@@ -665,8 +665,8 @@ namespace Photobooth.Controls
         }
 
         private async Task UpdateCategoryInDatabase(TemplateCategory category, string newStartDate, string newEndDate)
-                {
-                    var result = await _databaseService.UpdateTemplateCategoryAsync(
+        {
+            var result = await _databaseService.UpdateTemplateCategoryAsync(
                 category.Id,
                 category.Name,
                 category.Description ?? "",
@@ -676,15 +676,15 @@ namespace Photobooth.Controls
                 category.SeasonalPriority
             );
                         
-                    if (result.Success)
-                    {
+            if (result.Success)
+            {
                 CategoriesChanged = true;
                 LoadCategories();
                 NotificationService.Instance.ShowSuccess("Dates Updated", $"Season dates for {category.Name} updated successfully!");
                 CloseEditDropdown();
-                    }
-                    else
-                    {
+            }
+            else
+            {
                 NotificationService.Instance.ShowError("Update Failed", $"Failed to update dates: {result.ErrorMessage}");
             }
         }
