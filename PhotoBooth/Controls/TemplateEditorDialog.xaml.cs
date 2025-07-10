@@ -24,6 +24,10 @@ namespace Photobooth.Controls
         private Template _template;
         private List<TemplateCategory> _categories = new List<TemplateCategory>();
         private Action<int>? _refreshTemplateCallback;
+        
+        // Track current values for button-based controls
+        private decimal _currentPrice;
+        private int _currentSortOrder;
 
         #endregion
 
@@ -91,47 +95,59 @@ namespace Photobooth.Controls
             ReplaceTemplateFile();
         }
 
+        // Button event handlers for price and sort order controls
+        private void PriceDecreaseButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_currentPrice > 0)
+            {
+                _currentPrice = Math.Max(0, _currentPrice - 0.25m); // Decrease by $0.25
+                UpdatePriceDisplay();
+            }
+        }
+
+        private void PriceIncreaseButton_Click(object sender, RoutedEventArgs e)
+        {
+            _currentPrice += 0.25m; // Increase by $0.25
+            UpdatePriceDisplay();
+        }
+
+        private void SortOrderDecreaseButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_currentSortOrder > 1)
+            {
+                _currentSortOrder--;
+                UpdateSortOrderDisplay();
+            }
+        }
+
+        private void SortOrderIncreaseButton_Click(object sender, RoutedEventArgs e)
+        {
+            _currentSortOrder++;
+            UpdateSortOrderDisplay();
+        }
+
         // EditConfigButton_Click method removed - no longer using config.json files in layout-based system
 
         #endregion
 
         #region Private Methods
 
-        #region Input Validation Methods
+        #region Button Control Helper Methods
 
         /// <summary>
-        /// Validate numeric input for price and sort order fields
+        /// Update the price display control with the current price value
         /// </summary>
-        private void NumericTextBox_PreviewTextInput(object sender, TextCompositionEventArgs e)
+        private void UpdatePriceDisplay()
         {
-            var textBox = sender as TextBox;
-            if (textBox == null) return;
+            PriceDisplay.Text = _currentPrice.ToString("C2", CultureInfo.CurrentCulture);
+        }
 
-            try
-            {
-                // Allow decimal point for price fields, only integers for sort order
-                bool allowDecimal = textBox.Name == "PriceTextBox";
-                
-                // Check if the input is a digit
-                if (char.IsDigit(e.Text, 0))
-                {
-                    return; // Allow digits
-                }
-                
-                // For price fields, allow decimal point if not already present
-                if (allowDecimal && e.Text == "." && !textBox.Text.Contains("."))
-                {
-                    return; // Allow single decimal point
-                }
-                
-                // Block all other characters
-                e.Handled = true;
-            }
-            catch (Exception ex)
-            {
-                LoggingService.Application.Error("Error validating numeric input", ex);
-                e.Handled = true; // Block input on error for safety
-            }
+        /// <summary>
+        /// Update the sort order display control with the current sort order value
+        /// </summary>
+        private void UpdateSortOrderDisplay()
+        {
+            SortOrderDisplay.Text = _currentSortOrder.ToString();
         }
 
         #endregion
@@ -394,9 +410,9 @@ namespace Photobooth.Controls
             // Header
             TemplateNameHeader.Text = _template.Name;
             
-            // Basic Information
-            NameTextBox.Text = _template.Name;
-            DescriptionTextBox.Text = _template.Description ?? "";
+            // Basic Information (now read-only)
+            NameTextBlock.Text = _template.Name;
+            DescriptionTextBlock.Text = _template.Description ?? "No description provided";
             
             // Set selected category
             if (_template.CategoryId > 0)
@@ -407,9 +423,11 @@ namespace Photobooth.Controls
             // Set selected template type
             TemplateTypeComboBox.SelectedIndex = (int)_template.TemplateType;
             
-            // Pricing & Settings
-            PriceTextBox.Text = _template.Price.ToString("F2", CultureInfo.InvariantCulture);
-            SortOrderTextBox.Text = _template.SortOrder.ToString();
+            // Pricing & Settings (now button-based)
+            _currentPrice = _template.Price;
+            _currentSortOrder = _template.SortOrder;
+            UpdatePriceDisplay();
+            UpdateSortOrderDisplay();
             IsActiveCheckBox.IsChecked = _template.IsActive;
             
             // Template Information (Read-only)
@@ -455,27 +473,9 @@ namespace Photobooth.Controls
         {
             try
             {
-                // Validate inputs
-                if (string.IsNullOrWhiteSpace(NameTextBox.Text))
-                {
-                    _notificationService.ShowWarning("Validation Error", "Template name is required.");
-                    NameTextBox.Focus();
-                    return;
-                }
-
-                if (!decimal.TryParse(PriceTextBox.Text, NumberStyles.Currency | NumberStyles.Number, CultureInfo.InvariantCulture, out decimal price) || price < 0)
-                {
-                    _notificationService.ShowWarning("Validation Error", "Please enter a valid price (0 or greater).");
-                    PriceTextBox.Focus();
-                    return;
-                }
-
-                if (!int.TryParse(SortOrderTextBox.Text, out int sortOrder))
-                {
-                    _notificationService.ShowWarning("Validation Error", "Please enter a valid sort order number.");
-                    SortOrderTextBox.Focus();
-                    return;
-                }
+                // Get values from button-based controls (no validation needed since they're controlled)
+                decimal price = _currentPrice;
+                int sortOrder = _currentSortOrder;
 
                 // Photo count is now read-only and derived from PhotoAreas in config
                 int photoCount = _template.PhotoCount;
@@ -501,8 +501,9 @@ namespace Photobooth.Controls
                 SaveButton.IsEnabled = false;
                 SaveButton.Content = "Saving...";
 
-                var newTemplateName = NameTextBox.Text.Trim();
-                var nameChanged = newTemplateName != _template.Name;
+                // Name is now read-only, so use the existing template name
+                var newTemplateName = _template.Name;
+                var nameChanged = false; // Name cannot be changed in kiosk mode
                 string newFolderPath = _template.FolderPath;
                 string newTemplatePath = _template.TemplatePath;
                 string newPreviewPath = _template.PreviewPath;
@@ -670,7 +671,7 @@ namespace Photobooth.Controls
                 {
                     Id = _template.Id,
                     Name = newTemplateName,
-                    Description = DescriptionTextBox.Text.Trim(),
+                    Description = _template.Description, // Description is now read-only
                     CategoryId = selectedCategoryId,
                     CategoryName = categoryName,
                     Price = price,

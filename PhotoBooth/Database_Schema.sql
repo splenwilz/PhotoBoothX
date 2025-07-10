@@ -385,14 +385,19 @@ INSERT INTO TemplateCategories (Name, Description, SortOrder, IsSeasonalCategory
     ('Fun', 'Colorful and playful templates', 2, 0, NULL, NULL, 0),
     ('Elegant', 'Sophisticated template designs', 3, 0, NULL, NULL, 0),
     ('Premium', 'High-end template designs', 4, 0, NULL, NULL, 0),
-    -- Seasonal Categories
-    ('Valentine''s Day', 'Love and romance themed templates', 10, 1, '02-01', '02-20', 100),
-    ('Easter', 'Spring and Easter celebration templates', 11, 1, '03-15', '04-15', 90),
-    ('Halloween', 'Spooky and fun Halloween templates', 12, 1, '10-15', '11-01', 85),
-    ('Christmas', 'Holiday and winter celebration templates', 13, 1, '12-01', '01-05', 95),
-    ('New Year', 'Party and celebration templates', 14, 1, '12-25', '01-15', 80),
-    ('Summer', 'Bright and sunny summer templates', 15, 1, '06-01', '08-31', 70),
-    ('Back to School', 'Education and school-themed templates', 16, 1, '08-15', '09-15', 75);
+    -- Seasonal Categories (ordered chronologically through the year)
+    ('New Year', 'New Year celebration and party templates', 10, 1, '12-26', '01-07', 95),
+    ('Valentine''s Day', 'Love and romance themed templates', 11, 1, '02-01', '02-15', 100),
+    ('Mardi Gras', 'Carnival and Mardi Gras celebration templates', 12, 1, '02-12', '02-20', 85),
+    ('St Patrick''s Day', 'Irish celebration and green themed templates', 13, 1, '03-10', '03-25', 80),
+    ('Easter', 'Spring and Easter celebration templates', 14, 1, '03-15', '04-15', 90),
+    ('Cinco De Mayo', 'Mexican celebration and fiesta templates', 15, 1, '05-01', '05-10', 75),
+    ('Pride Day', 'Pride celebration and rainbow themed templates', 16, 1, '06-20', '06-30', 85),
+    ('Fourth of July', 'Independence Day and patriotic templates', 17, 1, '06-25', '07-05', 90),
+    ('Summer', 'Bright and sunny summer templates', 18, 1, '06-01', '08-31', 70),
+    ('Halloween', 'Spooky and fun Halloween templates', 20, 1, '10-01', '10-31', 85),
+    ('Thanksgiving', 'Thanksgiving and autumn harvest templates', 21, 1, '11-01', '11-30', 80),
+    ('Christmas', 'Holiday and winter celebration templates', 22, 1, '12-01', '12-26', 95);
 
 -- Insert template layouts (predefined photo area configurations)
 INSERT INTO TemplateLayouts (Id, LayoutKey, Name, Description, Width, Height, PhotoCount, ProductCategoryId, SortOrder) VALUES

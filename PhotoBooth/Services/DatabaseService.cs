@@ -1545,7 +1545,6 @@ namespace Photobooth.Services
                     SELECT Id, Name, Description, IsActive, IsPremium, SortOrder, 
                            IsSeasonalCategory, SeasonStartDate, SeasonEndDate, SeasonalPriority, CreatedAt
                     FROM TemplateCategories
-                    WHERE IsActive = 1
                     ORDER BY 
                         CASE 
                             WHEN IsSeasonalCategory = 1 THEN SeasonalPriority 
