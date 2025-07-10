@@ -624,6 +624,13 @@ namespace Photobooth.Controls
                 }
 
                 var (startMonth, startDay, endMonth, endDay) = ExtractDateValues();
+                
+                if (!ValidateDateRange(startMonth, startDay, endMonth, endDay))
+                {
+                    NotificationService.Instance.ShowError("Invalid Dates", "Please check that all date values are valid.");
+                    return;
+                }
+                
                 var (newStartDate, newEndDate) = FormatDateStrings(startMonth, startDay, endMonth, endDay);
                 
                 await UpdateCategoryInDatabase(category, newStartDate, newEndDate);
@@ -654,6 +661,14 @@ namespace Photobooth.Controls
             int endDay = (int)_currentEndDayLabel!.Tag;
             
             return (startMonth, startDay, endMonth, endDay);
+        }
+
+        private bool ValidateDateRange(int startMonth, int startDay, int endMonth, int endDay)
+        {
+            return startMonth >= 1 && startMonth <= 12 &&
+                   endMonth >= 1 && endMonth <= 12 &&
+                   startDay >= 1 && startDay <= GetDaysInMonth(startMonth) &&
+                   endDay >= 1 && endDay <= GetDaysInMonth(endMonth);
         }
 
         private (string startDate, string endDate) FormatDateStrings(int startMonth, int startDay, int endMonth, int endDay)
