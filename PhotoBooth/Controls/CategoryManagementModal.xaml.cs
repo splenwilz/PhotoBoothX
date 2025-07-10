@@ -46,6 +46,7 @@ namespace Photobooth.Controls
         private const string DEFAULT_SEASON_START = "01-01";
         private const string DEFAULT_SEASON_END = "12-31";
         private const int REFERENCE_YEAR = 2023; // Non-leap year for consistent date validation
+        private static readonly string[] MONTH_NAMES = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
 
         private readonly IDatabaseService _databaseService;
         private TemplateCategory? _currentlyEditingCategory = null;
@@ -326,10 +327,9 @@ namespace Photobooth.Controls
             
             if (int.TryParse(parts[0], out int month) && int.TryParse(parts[1], out int day))
             {
-                var monthNames = new string[] { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
                 if (month >= 1 && month <= 12)
                 {
-                    return $"{monthNames[month - 1]} {day}";
+                    return $"{MONTH_NAMES[month - 1]} {day}";
                 }
             }
             
@@ -723,8 +723,6 @@ namespace Photobooth.Controls
 
         private Grid CreateMonthControl(int initialMonth, out TextBlock monthLabel)
         {
-            var monthNames = new string[] { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
-            
             var monthGrid = new Grid { Margin = new Thickness(0, 0, 0, 15) };
             monthGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(45) });
             monthGrid.ColumnDefinitions.Add(new ColumnDefinition());
@@ -736,7 +734,7 @@ namespace Photobooth.Controls
 
             monthLabel = new TextBlock
             {
-                Text = monthNames[initialMonth - 1],
+                Text = MONTH_NAMES[initialMonth - 1],
                 FontSize = 16,
                 FontWeight = FontWeights.Bold,
                 TextAlignment = TextAlignment.Center,
@@ -746,7 +744,7 @@ namespace Photobooth.Controls
             monthDisplay.Child = monthLabel;
 
             // Set up month navigation event handlers
-            SetupMonthNavigation(monthLeftBtn, monthRightBtn, monthLabel, monthNames);
+            SetupMonthNavigation(monthLeftBtn, monthRightBtn, monthLabel, MONTH_NAMES);
 
             Grid.SetColumn(monthLeftBtn, 0);
             Grid.SetColumn(monthDisplay, 1);
