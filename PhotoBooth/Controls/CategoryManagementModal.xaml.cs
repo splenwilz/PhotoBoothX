@@ -495,8 +495,24 @@ namespace Photobooth.Controls
         {
             var mainPanel = new StackPanel();
             
-            // Compact section title
-            var titleBlock = new TextBlock
+            // Create title section
+            var titleBlock = CreateDateControlTitle(title);
+            mainPanel.Children.Add(titleBlock);
+
+            // Create month control
+            var monthControl = CreateMonthControl(initialMonth, out monthLabel);
+            mainPanel.Children.Add(monthControl);
+
+            // Create day control
+            var dayControl = CreateDayControl(initialDay, monthLabel, out dayLabel);
+            mainPanel.Children.Add(dayControl);
+
+            return mainPanel;
+        }
+
+        private TextBlock CreateDateControlTitle(string title)
+        {
+            return new TextBlock
             {
                 Text = title,
                 FontSize = 16,
@@ -505,41 +521,20 @@ namespace Photobooth.Controls
                 Foreground = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString("#4B5563") ?? System.Windows.Media.Brushes.DarkGray,
                 Margin = new Thickness(0, 0, 0, 15)
             };
-            mainPanel.Children.Add(titleBlock);
+        }
 
+        private Grid CreateMonthControl(int initialMonth, out TextBlock monthLabel)
+        {
             var monthNames = new string[] { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
             
-            // Clean unified color scheme - light blue theme
-            var primaryColor = "#BFDBFE";                              // Very light blue for all buttons
-            var secondaryColor = "#1E40AF";                            // Dark blue for text (contrast)
-            var lightColor = "#F8FAFC";                                // Very light gray background
-
-            // Compact month control
             var monthGrid = new Grid { Margin = new Thickness(0, 0, 0, 15) };
             monthGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(45) });
             monthGrid.ColumnDefinitions.Add(new ColumnDefinition());
             monthGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(45) });
 
-            var monthLeftBtn = new Button
-            {
-                Content = "←",
-                Width = 45,
-                Height = 45,
-                FontSize = 20,
-                FontWeight = FontWeights.Bold,
-                Background = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString(primaryColor) ?? System.Windows.Media.Brushes.Blue,
-                Foreground = System.Windows.Media.Brushes.White,
-                BorderThickness = new Thickness(0),
-                Template = CreateRoundButtonTemplate()
-            };
-
-            var monthDisplay = new Border
-            {
-                Background = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString(lightColor) ?? System.Windows.Media.Brushes.LightBlue,
-                CornerRadius = new CornerRadius(8),
-                Padding = new Thickness(10, 8, 10, 8),
-                Margin = new Thickness(5, 0, 5, 0)
-            };
+            var monthLeftBtn = CreateNavigationButton("←", "#BFDBFE");
+            var monthDisplay = CreateDisplayBorder("#F8FAFC");
+            var monthRightBtn = CreateNavigationButton("→", "#BFDBFE");
 
             monthLabel = new TextBlock
             {
@@ -547,43 +542,13 @@ namespace Photobooth.Controls
                 FontSize = 16,
                 FontWeight = FontWeights.Bold,
                 TextAlignment = TextAlignment.Center,
-                Foreground = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString(secondaryColor) ?? System.Windows.Media.Brushes.DarkBlue,
+                Foreground = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString("#1E40AF") ?? System.Windows.Media.Brushes.DarkBlue,
                 Tag = initialMonth
             };
             monthDisplay.Child = monthLabel;
 
-            var monthRightBtn = new Button
-            {
-                Content = "→",
-                Width = 45,
-                Height = 45,
-                FontSize = 20,
-                FontWeight = FontWeights.Bold,
-                Background = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString(primaryColor) ?? System.Windows.Media.Brushes.Blue,
-                Foreground = System.Windows.Media.Brushes.White,
-                BorderThickness = new Thickness(0),
-                Template = CreateRoundButtonTemplate()
-            };
-
-            // Capture the label references for use in lambdas
-            var monthLabelRef = monthLabel;
-            var monthNamesRef = monthNames;
-            
-            monthLeftBtn.Click += (s, e) =>
-            {
-                int currentMonth = (int)monthLabelRef.Tag;
-                int newMonth = currentMonth == 1 ? 12 : currentMonth - 1;
-                monthLabelRef.Tag = newMonth;
-                monthLabelRef.Text = monthNamesRef[newMonth - 1];
-            };
-
-            monthRightBtn.Click += (s, e) =>
-            {
-                int currentMonth = (int)monthLabelRef.Tag;
-                int newMonth = currentMonth == 12 ? 1 : currentMonth + 1;
-                monthLabelRef.Tag = newMonth;
-                monthLabelRef.Text = monthNamesRef[newMonth - 1];
-            };
+            // Set up month navigation event handlers
+            SetupMonthNavigation(monthLeftBtn, monthRightBtn, monthLabel, monthNames);
 
             Grid.SetColumn(monthLeftBtn, 0);
             Grid.SetColumn(monthDisplay, 1);
@@ -591,39 +556,20 @@ namespace Photobooth.Controls
             monthGrid.Children.Add(monthLeftBtn);
             monthGrid.Children.Add(monthDisplay);
             monthGrid.Children.Add(monthRightBtn);
-            mainPanel.Children.Add(monthGrid);
 
-            // Compact day control
+            return monthGrid;
+        }
+
+        private Grid CreateDayControl(int initialDay, TextBlock monthLabel, out TextBlock dayLabel)
+        {
             var dayGrid = new Grid();
             dayGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(45) });
             dayGrid.ColumnDefinitions.Add(new ColumnDefinition());
             dayGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(45) });
 
-            // Use same unified blue theme for days
-            var dayColor = "#3B82F6";                                 // Same blue as months
-            var dayLightColor = "#F1F5F9";                            // Same light gray background
-            var dayTextColor = "#1E40AF";                             // Same dark blue text
-
-            var dayLeftBtn = new Button
-            {
-                Content = "←",
-                Width = 45,
-                Height = 45,
-                FontSize = 20,
-                FontWeight = FontWeights.Bold,
-                Background = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString(dayColor) ?? System.Windows.Media.Brushes.Gray,
-                Foreground = System.Windows.Media.Brushes.White,
-                BorderThickness = new Thickness(0),
-                Template = CreateRoundButtonTemplate()
-            };
-
-            var dayDisplay = new Border
-            {
-                Background = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString(dayLightColor) ?? System.Windows.Media.Brushes.LightGray,
-                CornerRadius = new CornerRadius(8),
-                Padding = new Thickness(10, 8, 10, 8),
-                Margin = new Thickness(5, 0, 5, 0)
-            };
+            var dayLeftBtn = CreateNavigationButton("←", "#3B82F6");
+            var dayDisplay = CreateDisplayBorder("#F1F5F9");
+            var dayRightBtn = CreateNavigationButton("→", "#3B82F6");
 
             dayLabel = new TextBlock
             {
@@ -631,55 +577,13 @@ namespace Photobooth.Controls
                 FontSize = 16,
                 FontWeight = FontWeights.Bold,
                 TextAlignment = TextAlignment.Center,
-                Foreground = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString(dayTextColor) ?? System.Windows.Media.Brushes.DarkGray,
+                Foreground = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString("#1E40AF") ?? System.Windows.Media.Brushes.DarkGray,
                 Tag = initialDay
             };
             dayDisplay.Child = dayLabel;
 
-            var dayRightBtn = new Button
-            {
-                Content = "→",
-                Width = 45,
-                Height = 45,
-                FontSize = 20,
-                FontWeight = FontWeights.Bold,
-                Background = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString(dayColor) ?? System.Windows.Media.Brushes.Gray,
-                Foreground = System.Windows.Media.Brushes.White,
-                BorderThickness = new Thickness(0),
-                Template = CreateRoundButtonTemplate()
-            };
-
-            // Capture day label reference for use in lambdas
-            var dayLabelRef = dayLabel;
-            
-            dayLeftBtn.Click += (s, e) =>
-            {
-                int currentDay = (int)dayLabelRef.Tag;
-                int newDay = currentDay == 1 ? 31 : currentDay - 1;
-                
-                // Basic validation for days in month
-                int currentMonth = (int)monthLabelRef.Tag;
-                var daysInMonth = DateTime.DaysInMonth(DateTime.Now.Year, currentMonth);
-                if (newDay > daysInMonth) newDay = daysInMonth;
-                
-                dayLabelRef.Tag = newDay;
-                dayLabelRef.Text = newDay.ToString();
-            };
-
-            dayRightBtn.Click += (s, e) =>
-            {
-                int currentDay = (int)dayLabelRef.Tag;
-                int currentMonth = (int)monthLabelRef.Tag;
-                var daysInMonth = DateTime.DaysInMonth(DateTime.Now.Year, currentMonth);
-                
-                int newDay = currentDay == daysInMonth ? 1 : currentDay + 1;
-                
-                // Add upper bound validation to match the decrease logic
-                if (newDay > daysInMonth) newDay = daysInMonth;
-                
-                dayLabelRef.Tag = newDay;
-                dayLabelRef.Text = newDay.ToString();
-            };
+            // Set up day navigation event handlers
+            SetupDayNavigation(dayLeftBtn, dayRightBtn, dayLabel, monthLabel);
 
             Grid.SetColumn(dayLeftBtn, 0);
             Grid.SetColumn(dayDisplay, 1);
@@ -687,9 +591,83 @@ namespace Photobooth.Controls
             dayGrid.Children.Add(dayLeftBtn);
             dayGrid.Children.Add(dayDisplay);
             dayGrid.Children.Add(dayRightBtn);
-            mainPanel.Children.Add(dayGrid);
 
-            return mainPanel;
+            return dayGrid;
+        }
+
+        private Button CreateNavigationButton(string content, string backgroundColor)
+        {
+            return new Button
+            {
+                Content = content,
+                Width = 45,
+                Height = 45,
+                FontSize = 20,
+                FontWeight = FontWeights.Bold,
+                Background = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString(backgroundColor) ?? System.Windows.Media.Brushes.Blue,
+                Foreground = System.Windows.Media.Brushes.White,
+                BorderThickness = new Thickness(0),
+                Template = CreateRoundButtonTemplate()
+            };
+        }
+
+        private Border CreateDisplayBorder(string backgroundColor)
+        {
+            return new Border
+            {
+                Background = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString(backgroundColor) ?? System.Windows.Media.Brushes.LightBlue,
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(10, 8, 10, 8),
+                Margin = new Thickness(5, 0, 5, 0)
+            };
+        }
+
+        private void SetupMonthNavigation(Button leftBtn, Button rightBtn, TextBlock monthLabel, string[] monthNames)
+        {
+            leftBtn.Click += (s, e) =>
+            {
+                int currentMonth = (int)monthLabel.Tag;
+                int newMonth = currentMonth == 1 ? 12 : currentMonth - 1;
+                monthLabel.Tag = newMonth;
+                monthLabel.Text = monthNames[newMonth - 1];
+            };
+
+            rightBtn.Click += (s, e) =>
+            {
+                int currentMonth = (int)monthLabel.Tag;
+                int newMonth = currentMonth == 12 ? 1 : currentMonth + 1;
+                monthLabel.Tag = newMonth;
+                monthLabel.Text = monthNames[newMonth - 1];
+            };
+        }
+
+        private void SetupDayNavigation(Button leftBtn, Button rightBtn, TextBlock dayLabel, TextBlock monthLabel)
+        {
+            leftBtn.Click += (s, e) =>
+            {
+                int currentDay = (int)dayLabel.Tag;
+                int newDay = currentDay == 1 ? 31 : currentDay - 1;
+                
+                // Basic validation for days in month
+                int currentMonth = (int)monthLabel.Tag;
+                var daysInMonth = DateTime.DaysInMonth(DateTime.Now.Year, currentMonth);
+                if (newDay > daysInMonth) newDay = daysInMonth;
+                
+                dayLabel.Tag = newDay;
+                dayLabel.Text = newDay.ToString();
+            };
+
+            rightBtn.Click += (s, e) =>
+            {
+                int currentDay = (int)dayLabel.Tag;
+                int currentMonth = (int)monthLabel.Tag;
+                var daysInMonth = DateTime.DaysInMonth(DateTime.Now.Year, currentMonth);
+                
+                int newDay = currentDay == daysInMonth ? 1 : currentDay + 1;
+                
+                dayLabel.Tag = newDay;
+                dayLabel.Text = newDay.ToString();
+            };
         }
 
 
