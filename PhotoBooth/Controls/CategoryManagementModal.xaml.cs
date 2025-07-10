@@ -12,6 +12,25 @@ namespace Photobooth.Controls
 {
     public partial class CategoryManagementModal : UserControl
     {
+        private static class ThemeColors
+        {
+            public const string ActiveBackground = "#FFFFFF";
+            public const string InactiveBackground = "#F9FAFB";
+            public const string ActiveBorder = "#E5E7EB";
+            public const string InactiveBorder = "#D1D5DB";
+            public const string ActiveText = "#374151";
+            public const string InactiveText = "#9CA3AF";
+            public const string SuccessBadge = "#10B981";
+            public const string InactiveBadge = "#6B7280";
+            public const string SecondaryText = "#6B7280";
+            public const string PrimaryBlue = "#1E40AF";
+            public const string DateControlText = "#4B5563";
+            public const string LightBlue = "#BFDBFE";
+            public const string MediumBlue = "#3B82F6";
+            public const string LightGray = "#F8FAFC";
+            public const string SlateGray = "#F1F5F9";
+        }
+
         private readonly IDatabaseService _databaseService;
         private TemplateCategory? _currentlyEditingCategory = null;
         private Border? _currentEditDropdown = null;
@@ -68,28 +87,81 @@ namespace Photobooth.Controls
         {
             var container = new StackPanel { Margin = new Thickness(0, 0, 0, 12) };
             
-            var border = new Border
+            // Create category border with styling
+            var border = CreateCategoryBorder(category);
+            
+            // Create main grid layout
+            var grid = CreateCategoryGrid(category);
+            
+            border.Child = grid;
+            container.Children.Add(border);
+            return container;
+        }
+
+        private Border CreateCategoryBorder(TemplateCategory category)
+        {
+            return new Border
             {
                 Background = category.IsActive ? 
-                    System.Windows.Media.Brushes.White : 
-                    (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFromString("#F9FAFB") ?? System.Windows.Media.Brushes.WhiteSmoke), // Slightly gray background for disabled
+                    (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFromString(ThemeColors.ActiveBackground) ?? System.Windows.Media.Brushes.White) : 
+                    (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFromString(ThemeColors.InactiveBackground) ?? System.Windows.Media.Brushes.WhiteSmoke),
                 BorderBrush = category.IsActive ?
-                    (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFromString("#E5E7EB") ?? System.Windows.Media.Brushes.LightGray) :
-                    (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFromString("#D1D5DB") ?? System.Windows.Media.Brushes.Gray), // Darker border for disabled
+                    (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFromString(ThemeColors.ActiveBorder) ?? System.Windows.Media.Brushes.LightGray) :
+                    (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFromString(ThemeColors.InactiveBorder) ?? System.Windows.Media.Brushes.Gray),
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(8),
                 Padding = new Thickness(20),
-                Tag = category, // Store category reference for easy access
-                Opacity = category.IsActive ? 1.0 : 0.7 // Slightly transparent for disabled categories
+                Tag = category,
+                Opacity = category.IsActive ? 1.0 : 0.7
             };
+        }
 
+        private Grid CreateCategoryGrid(TemplateCategory category)
+        {
             var grid = new Grid();
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
+            // Create info panel (left side)
+            var infoPanel = CreateCategoryInfo(category);
+            Grid.SetColumn(infoPanel, 0);
+            grid.Children.Add(infoPanel);
+
+            // Create button panel (right side)
+            var buttonPanel = CreateCategoryButtons(category);
+            Grid.SetColumn(buttonPanel, 1);
+            grid.Children.Add(buttonPanel);
+
+            return grid;
+        }
+
+        private StackPanel CreateCategoryInfo(TemplateCategory category)
+        {
             var infoPanel = new StackPanel();
             
-            // Category name with seasonal indicator
+            // Create name panel with seasonal indicator and status badge
+            var namePanel = CreateCategoryNamePanel(category);
+            infoPanel.Children.Add(namePanel);
+
+            // Add description if available
+            if (!string.IsNullOrEmpty(category.Description))
+            {
+                var descBlock = CreateDescriptionBlock(category);
+                infoPanel.Children.Add(descBlock);
+            }
+
+            // Add seasonal info if applicable
+            if (category.IsSeasonalCategory && !string.IsNullOrEmpty(category.SeasonStartDate) && !string.IsNullOrEmpty(category.SeasonEndDate))
+            {
+                var seasonalInfo = CreateSeasonalInfoBlock(category);
+                infoPanel.Children.Add(seasonalInfo);
+            }
+
+            return infoPanel;
+        }
+
+        private StackPanel CreateCategoryNamePanel(TemplateCategory category)
+        {
             var namePanel = new StackPanel { Orientation = Orientation.Horizontal };
             
             // Add seasonal emoji for seasonal categories
@@ -105,24 +177,34 @@ namespace Photobooth.Controls
                 namePanel.Children.Add(seasonalIcon);
             }
             
+            // Category name
             var nameBlock = new TextBlock
             {
                 Text = category.Name,
                 FontSize = 18,
                 FontWeight = FontWeights.Medium,
                 Foreground = category.IsActive ?
-                    (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFromString("#374151") ?? System.Windows.Media.Brushes.Black) :
-                    (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFromString("#9CA3AF") ?? System.Windows.Media.Brushes.Gray), // Grayed out for disabled
+                    (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFromString(ThemeColors.ActiveText) ?? System.Windows.Media.Brushes.Black) :
+                    (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFromString(ThemeColors.InactiveText) ?? System.Windows.Media.Brushes.Gray),
                 VerticalAlignment = VerticalAlignment.Center
             };
             namePanel.Children.Add(nameBlock);
             
             // Status badge
+            var statusBadge = CreateStatusBadge(category);
+            namePanel.Children.Add(statusBadge);
+            
+            namePanel.Margin = new Thickness(0, 0, 0, 8);
+            return namePanel;
+        }
+
+        private Border CreateStatusBadge(TemplateCategory category)
+        {
             var statusBadge = new Border
             {
                 Background = category.IsActive ? 
-                    (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFrom("#10B981") ?? System.Windows.Media.Brushes.Green) :
-                    (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFrom("#6B7280") ?? System.Windows.Media.Brushes.Gray),
+                    (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFrom(ThemeColors.SuccessBadge) ?? System.Windows.Media.Brushes.Green) :
+                    (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFrom(ThemeColors.InactiveBadge) ?? System.Windows.Media.Brushes.Gray),
                 CornerRadius = new CornerRadius(12),
                 Padding = new Thickness(10, 4, 10, 4),
                 Margin = new Thickness(12, 0, 0, 0),
@@ -137,86 +219,86 @@ namespace Photobooth.Controls
                 Foreground = System.Windows.Media.Brushes.White
             };
             statusBadge.Child = statusText;
-            namePanel.Children.Add(statusBadge);
-            namePanel.Margin = new Thickness(0, 0, 0, 8);
             
-            infoPanel.Children.Add(namePanel);
+            return statusBadge;
+        }
 
-            // Show description if available
-            if (!string.IsNullOrEmpty(category.Description))
+        private TextBlock CreateDescriptionBlock(TemplateCategory category)
+        {
+            return new TextBlock
             {
-                var descBlock = new TextBlock
-                {
-                    Text = category.Description,
-                    FontSize = 14,
-                    Foreground = (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFrom("#6B7280") ?? System.Windows.Media.Brushes.Gray),
-                    TextWrapping = TextWrapping.Wrap,
-                    Margin = new Thickness(0, 0, 0, 8)
-                };
-                infoPanel.Children.Add(descBlock);
-            }
+                Text = category.Description,
+                FontSize = 14,
+                Foreground = (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFrom(ThemeColors.SecondaryText) ?? System.Windows.Media.Brushes.Gray),
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 8)
+            };
+        }
 
-            // Show seasonal info if it's a seasonal category
-            if (category.IsSeasonalCategory && !string.IsNullOrEmpty(category.SeasonStartDate) && !string.IsNullOrEmpty(category.SeasonEndDate))
+        private TextBlock CreateSeasonalInfoBlock(TemplateCategory category)
+        {
+            return new TextBlock
             {
-                var seasonalInfo = new TextBlock
-                {
-                    Text = $"Season: {FormatSeasonDate(category.SeasonStartDate)} - {FormatSeasonDate(category.SeasonEndDate)}",
-                    FontSize = 13,
-                    FontWeight = FontWeights.Medium,
-                    Foreground = (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFromString("#1E40AF") ?? System.Windows.Media.Brushes.DarkBlue),     // Dark blue for better contrast with light theme
-                    Margin = new Thickness(0, 0, 0, 0)
-                };
-                infoPanel.Children.Add(seasonalInfo);
-            }
+                Text = $"Season: {FormatSeasonDate(category.SeasonStartDate ?? "")} - {FormatSeasonDate(category.SeasonEndDate ?? "")}",
+                FontSize = 13,
+                FontWeight = FontWeights.Medium,
+                Foreground = (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFromString(ThemeColors.PrimaryBlue) ?? System.Windows.Media.Brushes.DarkBlue),
+                Margin = new Thickness(0, 0, 0, 0)
+            };
+        }
 
-            Grid.SetColumn(infoPanel, 0);
-            grid.Children.Add(infoPanel);
-
-            // Action buttons
+        private StackPanel CreateCategoryButtons(TemplateCategory category)
+        {
             var buttonPanel = new StackPanel { Orientation = Orientation.Horizontal };
 
             // Only show edit button for seasonal categories
             if (category.IsSeasonalCategory)
             {
-                var editButton = new Button
-                {
-                    Content = "EDIT DATES",
-                    Style = (Style)FindResource("ModernActionButtonStyle"),
-                    Background = (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFromString("#BFDBFE") ?? System.Windows.Media.Brushes.LightBlue), // Very light blue
-                    Foreground = (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFromString("#1E40AF") ?? System.Windows.Media.Brushes.DarkBlue), // Dark blue text
-                    FontSize = 14,
-                    Height = 44,
-                    MinWidth = 120,
-                    ToolTip = "Edit the date range for this seasonal category"
-                };
-                editButton.Click += (s, e) => EditCategoryDates(category);
+                var editButton = CreateEditDatesButton(category);
                 buttonPanel.Children.Add(editButton);
             }
 
             // Toggle Active/Inactive Button  
+            var toggleButton = CreateToggleButton(category);
+            buttonPanel.Children.Add(toggleButton);
+
+            return buttonPanel;
+        }
+
+        private Button CreateEditDatesButton(TemplateCategory category)
+        {
+            var editButton = new Button
+            {
+                Content = "EDIT DATES",
+                Style = (Style)FindResource("ModernActionButtonStyle"),
+                Background = (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFromString("#BFDBFE") ?? System.Windows.Media.Brushes.LightBlue),
+                Foreground = (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFromString("#1E40AF") ?? System.Windows.Media.Brushes.DarkBlue),
+                FontSize = 14,
+                Height = 44,
+                MinWidth = 120,
+                ToolTip = "Edit the date range for this seasonal category"
+            };
+            editButton.Click += (s, e) => EditCategoryDates(category);
+            return editButton;
+        }
+
+        private Button CreateToggleButton(TemplateCategory category)
+        {
             var toggleButton = new Button
             {
                 Content = category.IsActive ? "DISABLE" : "ENABLE",
                 Style = (Style)FindResource("ModernActionButtonStyle"),
                 Background = category.IsActive ? 
-                    (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFromString("#E5E7EB") ?? System.Windows.Media.Brushes.LightGray) :      // Light gray for disable
-                    (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFromString("#BFDBFE") ?? System.Windows.Media.Brushes.LightBlue),     // Same light blue for enable
-                Foreground = (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFromString("#374151") ?? System.Windows.Media.Brushes.DarkGray), // Dark text for contrast
+                    (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFromString("#E5E7EB") ?? System.Windows.Media.Brushes.LightGray) :
+                    (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFromString("#BFDBFE") ?? System.Windows.Media.Brushes.LightBlue),
+                Foreground = (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFromString("#374151") ?? System.Windows.Media.Brushes.DarkGray),
                 FontSize = 14,
                 Height = 44,
                 MinWidth = 100,
                 ToolTip = category.IsActive ? "Disable this category" : "Enable this category"
             };
             toggleButton.Click += (s, e) => ToggleCategory(category);
-            buttonPanel.Children.Add(toggleButton);
-
-            Grid.SetColumn(buttonPanel, 1);
-            grid.Children.Add(buttonPanel);
-
-            border.Child = grid;
-            container.Children.Add(border);
-            return container;
+            return toggleButton;
         }
 
         private string FormatSeasonDate(string dateString)
@@ -306,189 +388,289 @@ namespace Photobooth.Controls
 
         private Border CreateEditDropdown(TemplateCategory category)
         {
-            // Create dropdown container with smooth animation feel
-            var dropdownBorder = new Border
+            // Create dropdown container
+            var dropdownBorder = CreateDropdownContainer();
+            
+            // Create main panel with all content
+            var mainPanel = CreateDropdownMainPanel(category);
+            
+            dropdownBorder.Child = mainPanel;
+            return dropdownBorder;
+        }
+
+        private Border CreateDropdownContainer()
+        {
+            return new Border
             {
                 Background = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString("#F8FAFC") ?? System.Windows.Media.Brushes.AliceBlue,
                 BorderBrush = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString("#E2E8F0") ?? System.Windows.Media.Brushes.LightGray,
-                BorderThickness = new Thickness(1, 0, 1, 1), // No top border to connect with category item
-                CornerRadius = new CornerRadius(0, 0, 8, 8), // Only bottom corners rounded
+                BorderThickness = new Thickness(1, 0, 1, 1),
+                CornerRadius = new CornerRadius(0, 0, 8, 8),
                 Padding = new Thickness(20),
-                Margin = new Thickness(0, -1, 0, 0) // Slight overlap to connect visually
+                Margin = new Thickness(0, -1, 0, 0)
             };
+        }
 
+        private StackPanel CreateDropdownMainPanel(TemplateCategory category)
+        {
             var mainPanel = new StackPanel();
-                
-                // Compact header for dropdown
-                var headerGrid = new Grid { Margin = new Thickness(0, 0, 0, 20) };
-                headerGrid.ColumnDefinitions.Add(new ColumnDefinition());
-                headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            
+            // Create header section
+            var headerGrid = CreateDropdownHeader(category);
+            mainPanel.Children.Add(headerGrid);
 
-                var titleBlock = new TextBlock
-                {
-                    Text = $"📅 Edit {category.Name} Dates",
-                    FontSize = 18,
-                    FontWeight = FontWeights.Bold,
-                    Foreground = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString("#374151") ?? System.Windows.Media.Brushes.Black,
-                    VerticalAlignment = VerticalAlignment.Center
-                };
-                Grid.SetColumn(titleBlock, 0);
-                headerGrid.Children.Add(titleBlock);
+            // Create current dates display
+            var currentInfo = CreateCurrentDateDisplay(category);
+            mainPanel.Children.Add(currentInfo);
 
-                var closeBtn = new Button
-                {
-                    Content = "✕",
-                    Width = 28,
-                    Height = 28,
-                    FontSize = 14,
-                    FontWeight = FontWeights.Bold,
-                    Background = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString("#E5E7EB") ?? System.Windows.Media.Brushes.LightGray,         // Light gray to match theme
-                    Foreground = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString("#374151") ?? System.Windows.Media.Brushes.DarkGray,         // Dark gray text
-                    BorderThickness = new Thickness(0),
-                    Template = CreateRoundButtonTemplate()
-                };
-                closeBtn.Click += (s, e) => CloseEditDropdown();
-                Grid.SetColumn(closeBtn, 1);
-                headerGrid.Children.Add(closeBtn);
-                mainPanel.Children.Add(headerGrid);
+            // Create date editing controls
+            var dateEditGrid = CreateDateEditGrid(category);
+            mainPanel.Children.Add(dateEditGrid);
 
-                // Compact current dates display
-                var currentInfo = new Border
-                {
-                    Background = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString("#DBEAFE") ?? System.Windows.Media.Brushes.LightBlue,
-                    CornerRadius = new CornerRadius(8),
-                    Padding = new Thickness(15, 8, 15, 8),
-                    Margin = new Thickness(0, 0, 0, 20)
-                };
-                
-                var currentText = new TextBlock
-                {
-                    Text = $"Current: {FormatSeasonDate(category.SeasonStartDate ?? "")} - {FormatSeasonDate(category.SeasonEndDate ?? "")}",
-                    FontSize = 14,
-                    FontWeight = FontWeights.Medium,
-                    Foreground = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString("#1E40AF") ?? System.Windows.Media.Brushes.DarkBlue,
-                    TextAlignment = TextAlignment.Center
-                };
-                currentInfo.Child = currentText;
-                mainPanel.Children.Add(currentInfo);
+            // Create action buttons
+            var buttonPanel = CreateDropdownActions(category);
+            mainPanel.Children.Add(buttonPanel);
 
-                // Parse current dates
-                var startParts = (category.SeasonStartDate ?? "01-01").Split('-');
-                var endParts = (category.SeasonEndDate ?? "12-31").Split('-');
-                
-                int startMonth = int.TryParse(startParts[0], out var sm) ? sm : 1;
-                int startDay = int.TryParse(startParts[1], out var sd) ? sd : 1;
-                int endMonth = int.TryParse(endParts[0], out var em) ? em : 12;
-                int endDay = int.TryParse(endParts[1], out var ed) ? ed : 31;
+            return mainPanel;
+        }
 
-                // Create compact date controls for dropdown
-                TextBlock startMonthLabel, startDayLabel, endMonthLabel, endDayLabel;
-                var startDatePanel = CreateCompactDateControl("Season Start", startMonth, startDay, true, out startMonthLabel, out startDayLabel);
-                var endDatePanel = CreateCompactDateControl("Season End", endMonth, endDay, false, out endMonthLabel, out endDayLabel);
+        private Grid CreateDropdownHeader(TemplateCategory category)
+        {
+            var headerGrid = new Grid { Margin = new Thickness(0, 0, 0, 20) };
+            headerGrid.ColumnDefinitions.Add(new ColumnDefinition());
+            headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-                // Compact date editing grid
-                var dateEditGrid = new Grid { Margin = new Thickness(0, 0, 0, 20) };
-                dateEditGrid.ColumnDefinitions.Add(new ColumnDefinition());
-                dateEditGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(15) });
-                dateEditGrid.ColumnDefinitions.Add(new ColumnDefinition());
+            var titleBlock = new TextBlock
+            {
+                Text = $"📅 Edit {category.Name} Dates",
+                FontSize = 18,
+                FontWeight = FontWeights.Bold,
+                Foreground = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString("#374151") ?? System.Windows.Media.Brushes.Black,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            Grid.SetColumn(titleBlock, 0);
+            headerGrid.Children.Add(titleBlock);
 
-                Grid.SetColumn(startDatePanel, 0);
-                Grid.SetColumn(endDatePanel, 2);
-                dateEditGrid.Children.Add(startDatePanel);
-                dateEditGrid.Children.Add(endDatePanel);
+            var closeBtn = new Button
+            {
+                Content = "✕",
+                Width = 28,
+                Height = 28,
+                FontSize = 14,
+                FontWeight = FontWeights.Bold,
+                Background = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString("#E5E7EB") ?? System.Windows.Media.Brushes.LightGray,
+                Foreground = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString("#374151") ?? System.Windows.Media.Brushes.DarkGray,
+                BorderThickness = new Thickness(0),
+                Template = CreateRoundButtonTemplate()
+            };
+            closeBtn.Click += (s, e) => CloseEditDropdown();
+            Grid.SetColumn(closeBtn, 1);
+            headerGrid.Children.Add(closeBtn);
 
-                mainPanel.Children.Add(dateEditGrid);
+            return headerGrid;
+        }
 
-                // Compact action buttons
-                var buttonPanel = new StackPanel { 
-                    Orientation = Orientation.Horizontal, 
-                    HorizontalAlignment = HorizontalAlignment.Center,
-                    Margin = new Thickness(0, 20, 0, 0)
-                };
-                
-                var saveButton = new Button
-                {
-                    Content = "💾 Save",
-                    Width = 120,
-                    Height = 40,
-                    Margin = new Thickness(0, 0, 10, 0),
-                    Background = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString("#BFDBFE") ?? System.Windows.Media.Brushes.LightBlue,        // Light blue theme
-                    Foreground = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString("#1E40AF") ?? System.Windows.Media.Brushes.DarkBlue,        // Dark blue text
-                    FontWeight = FontWeights.Bold,
-                    FontSize = 14,
-                    BorderThickness = new Thickness(0),
-                    Template = CreateModernButtonTemplate()
-                };
-                
-                var cancelButton = new Button
-                {
-                    Content = "❌ Cancel",
-                    Width = 100,
-                    Height = 40,
-                    Background = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString("#E5E7EB") ?? System.Windows.Media.Brushes.LightGray,         // Light gray for cancel
-                    Foreground = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString("#374151") ?? System.Windows.Media.Brushes.DarkGray,         // Dark gray text
-                    FontWeight = FontWeights.Bold,
-                    FontSize = 14,
-                    BorderThickness = new Thickness(0),
-                    Template = CreateModernButtonTemplate()
-                };
+        private Border CreateCurrentDateDisplay(TemplateCategory category)
+        {
+            var currentInfo = new Border
+            {
+                Background = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString("#DBEAFE") ?? System.Windows.Media.Brushes.LightBlue,
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(15, 8, 15, 8),
+                Margin = new Thickness(0, 0, 0, 20)
+            };
+            
+            var currentText = new TextBlock
+            {
+                Text = $"Current: {FormatSeasonDate(category.SeasonStartDate ?? "")} - {FormatSeasonDate(category.SeasonEndDate ?? "")}",
+                FontSize = 14,
+                FontWeight = FontWeights.Medium,
+                Foreground = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString("#1E40AF") ?? System.Windows.Media.Brushes.DarkBlue,
+                TextAlignment = TextAlignment.Center
+            };
+            currentInfo.Child = currentText;
+            
+            return currentInfo;
+        }
 
-                saveButton.Click += async (s, e) =>
+        private Grid CreateDateEditGrid(TemplateCategory category)
+        {
+            // Parse current dates
+            var (startMonth, startDay, endMonth, endDay) = ParseCategoryDates(category);
+
+            // Create compact date controls for dropdown
+            TextBlock startMonthLabel, startDayLabel, endMonthLabel, endDayLabel;
+            var startDatePanel = CreateCompactDateControl("Season Start", startMonth, startDay, true, out startMonthLabel, out startDayLabel);
+            var endDatePanel = CreateCompactDateControl("Season End", endMonth, endDay, false, out endMonthLabel, out endDayLabel);
+
+            // Store references for save handler
+            _currentStartMonthLabel = startMonthLabel;
+            _currentStartDayLabel = startDayLabel;
+            _currentEndMonthLabel = endMonthLabel;
+            _currentEndDayLabel = endDayLabel;
+
+            // Create date editing grid
+            var dateEditGrid = new Grid { Margin = new Thickness(0, 0, 0, 20) };
+            dateEditGrid.ColumnDefinitions.Add(new ColumnDefinition());
+            dateEditGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(15) });
+            dateEditGrid.ColumnDefinitions.Add(new ColumnDefinition());
+
+            Grid.SetColumn(startDatePanel, 0);
+            Grid.SetColumn(endDatePanel, 2);
+            dateEditGrid.Children.Add(startDatePanel);
+            dateEditGrid.Children.Add(endDatePanel);
+
+            return dateEditGrid;
+        }
+
+        private (int startMonth, int startDay, int endMonth, int endDay) ParseCategoryDates(TemplateCategory category)
+        {
+            var startParts = (category.SeasonStartDate ?? "01-01").Split('-');
+            var endParts = (category.SeasonEndDate ?? "12-31").Split('-');
+            
+            int startMonth = int.TryParse(startParts[0], out var sm) ? sm : 1;
+            int startDay = int.TryParse(startParts[1], out var sd) ? sd : 1;
+            int endMonth = int.TryParse(endParts[0], out var em) ? em : 12;
+            int endDay = int.TryParse(endParts[1], out var ed) ? ed : 31;
+
+            return (startMonth, startDay, endMonth, endDay);
+        }
+
+        private StackPanel CreateDropdownActions(TemplateCategory category)
+        {
+            var buttonPanel = new StackPanel { 
+                Orientation = Orientation.Horizontal, 
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(0, 20, 0, 0)
+            };
+            
+            var saveButton = CreateSaveButton(category);
+            var cancelButton = CreateCancelButton();
+            
+            buttonPanel.Children.Add(saveButton);
+            buttonPanel.Children.Add(cancelButton);
+            
+            return buttonPanel;
+        }
+
+        private Button CreateSaveButton(TemplateCategory category)
+        {
+            var saveButton = new Button
+            {
+                Content = "💾 Save",
+                Width = 120,
+                Height = 40,
+                Margin = new Thickness(0, 0, 10, 0),
+                Background = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString("#BFDBFE") ?? System.Windows.Media.Brushes.LightBlue,
+                Foreground = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString("#1E40AF") ?? System.Windows.Media.Brushes.DarkBlue,
+                FontWeight = FontWeights.Bold,
+                FontSize = 14,
+                BorderThickness = new Thickness(0),
+                Template = CreateModernButtonTemplate()
+            };
+            
+            saveButton.Click += async (s, e) => await SaveCategoryDates(category);
+            return saveButton;
+        }
+
+        private Button CreateCancelButton()
+        {
+            var cancelButton = new Button
+            {
+                Content = "❌ Cancel",
+                Width = 100,
+                Height = 40,
+                Background = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString("#E5E7EB") ?? System.Windows.Media.Brushes.LightGray,
+                Foreground = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString("#374151") ?? System.Windows.Media.Brushes.DarkGray,
+                FontWeight = FontWeights.Bold,
+                FontSize = 14,
+                BorderThickness = new Thickness(0),
+                Template = CreateModernButtonTemplate()
+            };
+            
+            cancelButton.Click += (s, e) => CloseEditDropdown();
+            return cancelButton;
+        }
+
+        // Store references to current date controls for save handler
+        private TextBlock? _currentStartMonthLabel;
+        private TextBlock? _currentStartDayLabel;
+        private TextBlock? _currentEndMonthLabel;
+        private TextBlock? _currentEndDayLabel;
+
+        private async Task SaveCategoryDates(TemplateCategory category)
         {
             try
             {
-                        // Get values from stored references
-                        if (startMonthLabel == null || startDayLabel == null || endMonthLabel == null || endDayLabel == null)
+                if (!ValidateCurrentDateControls())
                 {
-                            NotificationService.Instance.ShowError("Save Error", "Control references are invalid. Please try again.");
-                        return;
-                    }
-
-                        int startMonth = (int)startMonthLabel.Tag;
-                        int startDay = (int)startDayLabel.Tag;
-                        int endMonth = (int)endMonthLabel.Tag;
-                        int endDay = (int)endDayLabel.Tag;
-                        
-                        string newStartDate = $"{startMonth:D2}-{startDay:D2}";
-                        string newEndDate = $"{endMonth:D2}-{endDay:D2}";
-                        
-                        var result = await _databaseService.UpdateTemplateCategoryAsync(
-                            category.Id,
-                            category.Name,
-                            category.Description ?? "",
-                            category.IsSeasonalCategory,
-                            newStartDate,
-                            newEndDate,
-                            category.SeasonalPriority
-                        );
-                        
-                        if (result.Success)
-                        {
-                            CategoriesChanged = true;
-                            LoadCategories();
-                            NotificationService.Instance.ShowSuccess("Dates Updated", $"Season dates for {category.Name} updated successfully!");
-                            CloseEditDropdown();
-                    }
-                    else
-                    {
-                            NotificationService.Instance.ShowError("Update Failed", $"Failed to update dates: {result.ErrorMessage}");
+                    return;
                 }
+
+                var (startMonth, startDay, endMonth, endDay) = ExtractDateValues();
+                var (newStartDate, newEndDate) = FormatDateStrings(startMonth, startDay, endMonth, endDay);
+                
+                await UpdateCategoryInDatabase(category, newStartDate, newEndDate);
             }
             catch (Exception ex)
             {
-                        LoggingService.Application.Error("Error saving category dates", ex);
-                        NotificationService.Instance.ShowError("Save Error", $"Error saving dates: {ex.Message}");
-                    }
-                };
-                
-                cancelButton.Click += (s, e) => CloseEditDropdown();
-                
-                buttonPanel.Children.Add(saveButton);
-                buttonPanel.Children.Add(cancelButton);
-                mainPanel.Children.Add(buttonPanel);
+                LoggingService.Application.Error("Error saving category dates", ex);
+                NotificationService.Instance.ShowError("Save Error", $"Error saving dates: {ex.Message}");
+            }
+        }
 
-                dropdownBorder.Child = mainPanel;
-                return dropdownBorder;
+        private bool ValidateCurrentDateControls()
+        {
+            if (_currentStartMonthLabel == null || _currentStartDayLabel == null || 
+                _currentEndMonthLabel == null || _currentEndDayLabel == null)
+            {
+                NotificationService.Instance.ShowError("Save Error", "Control references are invalid. Please try again.");
+                return false;
+            }
+            return true;
+        }
+
+        private (int startMonth, int startDay, int endMonth, int endDay) ExtractDateValues()
+        {
+            int startMonth = (int)_currentStartMonthLabel!.Tag;
+            int startDay = (int)_currentStartDayLabel!.Tag;
+            int endMonth = (int)_currentEndMonthLabel!.Tag;
+            int endDay = (int)_currentEndDayLabel!.Tag;
+            
+            return (startMonth, startDay, endMonth, endDay);
+        }
+
+        private (string startDate, string endDate) FormatDateStrings(int startMonth, int startDay, int endMonth, int endDay)
+        {
+            string newStartDate = $"{startMonth:D2}-{startDay:D2}";
+            string newEndDate = $"{endMonth:D2}-{endDay:D2}";
+            
+            return (newStartDate, newEndDate);
+        }
+
+        private async Task UpdateCategoryInDatabase(TemplateCategory category, string newStartDate, string newEndDate)
+        {
+            var result = await _databaseService.UpdateTemplateCategoryAsync(
+                category.Id,
+                category.Name,
+                category.Description ?? "",
+                category.IsSeasonalCategory,
+                newStartDate,
+                newEndDate,
+                category.SeasonalPriority
+            );
+                    
+            if (result.Success)
+            {
+                CategoriesChanged = true;
+                LoadCategories();
+                NotificationService.Instance.ShowSuccess("Dates Updated", $"Season dates for {category.Name} updated successfully!");
+                CloseEditDropdown();
+            }
+            else
+            {
+                NotificationService.Instance.ShowError("Update Failed", $"Failed to update dates: {result.ErrorMessage}");
+            }
         }
 
         private StackPanel CreateCompactDateControl(string title, int initialMonth, int initialDay, bool isStart, out TextBlock monthLabel, out TextBlock dayLabel)
@@ -518,7 +700,7 @@ namespace Photobooth.Controls
                 FontSize = 16,
                 FontWeight = FontWeights.Bold,
                 TextAlignment = TextAlignment.Center,
-                Foreground = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString("#4B5563") ?? System.Windows.Media.Brushes.DarkGray,
+                Foreground = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString(ThemeColors.DateControlText) ?? System.Windows.Media.Brushes.DarkGray,
                 Margin = new Thickness(0, 0, 0, 15)
             };
         }
@@ -532,9 +714,9 @@ namespace Photobooth.Controls
             monthGrid.ColumnDefinitions.Add(new ColumnDefinition());
             monthGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(45) });
 
-            var monthLeftBtn = CreateNavigationButton("←", "#BFDBFE");
-            var monthDisplay = CreateDisplayBorder("#F8FAFC");
-            var monthRightBtn = CreateNavigationButton("→", "#BFDBFE");
+            var monthLeftBtn = CreateNavigationButton("←", ThemeColors.LightBlue);
+            var monthDisplay = CreateDisplayBorder(ThemeColors.LightGray);
+            var monthRightBtn = CreateNavigationButton("→", ThemeColors.LightBlue);
 
             monthLabel = new TextBlock
             {
@@ -542,7 +724,7 @@ namespace Photobooth.Controls
                 FontSize = 16,
                 FontWeight = FontWeights.Bold,
                 TextAlignment = TextAlignment.Center,
-                Foreground = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString("#1E40AF") ?? System.Windows.Media.Brushes.DarkBlue,
+                Foreground = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString(ThemeColors.PrimaryBlue) ?? System.Windows.Media.Brushes.DarkBlue,
                 Tag = initialMonth
             };
             monthDisplay.Child = monthLabel;
@@ -567,9 +749,9 @@ namespace Photobooth.Controls
             dayGrid.ColumnDefinitions.Add(new ColumnDefinition());
             dayGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(45) });
 
-            var dayLeftBtn = CreateNavigationButton("←", "#3B82F6");
-            var dayDisplay = CreateDisplayBorder("#F1F5F9");
-            var dayRightBtn = CreateNavigationButton("→", "#3B82F6");
+            var dayLeftBtn = CreateNavigationButton("←", ThemeColors.MediumBlue);
+            var dayDisplay = CreateDisplayBorder(ThemeColors.SlateGray);
+            var dayRightBtn = CreateNavigationButton("→", ThemeColors.MediumBlue);
 
             dayLabel = new TextBlock
             {
@@ -577,7 +759,7 @@ namespace Photobooth.Controls
                 FontSize = 16,
                 FontWeight = FontWeights.Bold,
                 TextAlignment = TextAlignment.Center,
-                Foreground = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString("#1E40AF") ?? System.Windows.Media.Brushes.DarkGray,
+                Foreground = (System.Windows.Media.Brush?)new System.Windows.Media.BrushConverter().ConvertFromString(ThemeColors.PrimaryBlue) ?? System.Windows.Media.Brushes.DarkGray,
                 Tag = initialDay
             };
             dayDisplay.Child = dayLabel;
@@ -672,14 +854,14 @@ namespace Photobooth.Controls
 
 
 
-        private ControlTemplate CreateRoundButtonTemplate()
+        private ControlTemplate CreateButtonTemplate(double cornerRadius = 25, bool includeEffects = false, bool includePremiumEffects = false)
         {
             var template = new ControlTemplate(typeof(Button));
             
             // Create the visual tree
             var border = new FrameworkElementFactory(typeof(Border));
             border.SetValue(Border.BackgroundProperty, new TemplateBindingExtension(Control.BackgroundProperty));
-            border.SetValue(Border.CornerRadiusProperty, new CornerRadius(25)); // Perfect for 50px buttons
+            border.SetValue(Border.CornerRadiusProperty, new CornerRadius(cornerRadius));
             border.SetValue(Border.BorderThicknessProperty, new Thickness(0));
             
             var contentPresenter = new FrameworkElementFactory(typeof(ContentPresenter));
@@ -690,84 +872,48 @@ namespace Photobooth.Controls
             template.VisualTree = border;
             
             // Add hover effects
-            var trigger = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
-            trigger.Setters.Add(new Setter(UIElement.OpacityProperty, 0.85));
-            template.Triggers.Add(trigger);
-            
-            var pressTrigger = new Trigger { Property = Button.IsPressedProperty, Value = true };
-            pressTrigger.Setters.Add(new Setter(UIElement.OpacityProperty, 0.7));
-            template.Triggers.Add(pressTrigger);
-            
-            return template;
-        }
-
-        private ControlTemplate CreateModernButtonTemplate()
-        {
-            var template = new ControlTemplate(typeof(Button));
-            
-            // Create the visual tree for rounded buttons
-            var border = new FrameworkElementFactory(typeof(Border));
-            border.SetValue(Border.BackgroundProperty, new TemplateBindingExtension(Control.BackgroundProperty));
-            border.SetValue(Border.CornerRadiusProperty, new CornerRadius(15));
-            border.SetValue(Border.BorderThicknessProperty, new Thickness(0));
-            
-            var contentPresenter = new FrameworkElementFactory(typeof(ContentPresenter));
-            contentPresenter.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Center);
-            contentPresenter.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
-            
-            border.AppendChild(contentPresenter);
-            template.VisualTree = border;
-            
-            // Add modern hover and press effects
             var hoverTrigger = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
-            hoverTrigger.Setters.Add(new Setter(UIElement.OpacityProperty, 0.9));
-            hoverTrigger.Setters.Add(new Setter(Control.EffectProperty, new System.Windows.Media.Effects.DropShadowEffect
+            hoverTrigger.Setters.Add(new Setter(UIElement.OpacityProperty, includeEffects ? 0.9 : 0.85));
+            
+            if (includeEffects)
             {
-                Color = System.Windows.Media.Colors.Black,
-                BlurRadius = 12,
-                ShadowDepth = 3,
-                Opacity = 0.3
-            }));
+                hoverTrigger.Setters.Add(new Setter(Control.EffectProperty, new System.Windows.Media.Effects.DropShadowEffect
+                {
+                    Color = System.Windows.Media.Colors.Black,
+                    BlurRadius = 12,
+                    ShadowDepth = 3,
+                    Opacity = 0.3
+                }));
+            }
+            
+            if (includePremiumEffects)
+            {
+                hoverTrigger.Setters.Add(new Setter(FrameworkElement.RenderTransformProperty, new ScaleTransform(1.05, 1.05)));
+            }
+            
             template.Triggers.Add(hoverTrigger);
             
             var pressTrigger = new Trigger { Property = Button.IsPressedProperty, Value = true };
             pressTrigger.Setters.Add(new Setter(UIElement.OpacityProperty, 0.7));
-            pressTrigger.Setters.Add(new Setter(FrameworkElement.RenderTransformProperty, new ScaleTransform(0.98, 0.98)));
+            
+            if (includeEffects)
+            {
+                pressTrigger.Setters.Add(new Setter(FrameworkElement.RenderTransformProperty, new ScaleTransform(0.98, 0.98)));
+            }
+            
+            if (includePremiumEffects)
+            {
+                pressTrigger.Setters.Add(new Setter(FrameworkElement.RenderTransformProperty, new ScaleTransform(0.95, 0.95)));
+            }
+            
             template.Triggers.Add(pressTrigger);
             
             return template;
         }
 
-        private ControlTemplate CreatePremiumButtonTemplate()
-        {
-            var template = new ControlTemplate(typeof(Button));
-            
-            // Create premium rounded button with perfect circle design
-            var border = new FrameworkElementFactory(typeof(Border));
-            border.SetValue(Border.BackgroundProperty, new TemplateBindingExtension(Control.BackgroundProperty));
-            border.SetValue(Border.CornerRadiusProperty, new CornerRadius(35)); // Perfect circle for 70x70 button
-            border.SetValue(Border.BorderThicknessProperty, new Thickness(0));
-            
-            var contentPresenter = new FrameworkElementFactory(typeof(ContentPresenter));
-            contentPresenter.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Center);
-            contentPresenter.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
-            
-            border.AppendChild(contentPresenter);
-            template.VisualTree = border;
-            
-            // Premium animations and effects
-            var hoverTrigger = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
-            hoverTrigger.Setters.Add(new Setter(UIElement.OpacityProperty, 0.85));
-            hoverTrigger.Setters.Add(new Setter(FrameworkElement.RenderTransformProperty, new ScaleTransform(1.05, 1.05)));
-            template.Triggers.Add(hoverTrigger);
-            
-            var pressTrigger = new Trigger { Property = Button.IsPressedProperty, Value = true };
-            pressTrigger.Setters.Add(new Setter(UIElement.OpacityProperty, 0.7));
-            pressTrigger.Setters.Add(new Setter(FrameworkElement.RenderTransformProperty, new ScaleTransform(0.95, 0.95)));
-            template.Triggers.Add(pressTrigger);
-            
-            return template;
-        }
+        private ControlTemplate CreateRoundButtonTemplate() => CreateButtonTemplate(25, false, false);
+        private ControlTemplate CreateModernButtonTemplate() => CreateButtonTemplate(15, true, false);
+        private ControlTemplate CreatePremiumButtonTemplate() => CreateButtonTemplate(35, false, true);
 
         private DateTime ParseSeasonDate(string seasonDate, int year)
         {
@@ -855,41 +1001,57 @@ namespace Photobooth.Controls
                 // Close any open dropdown first
                 CloseEditDropdown();
                 
-                var parentWindow = Window.GetWindow(this);
-                if (parentWindow != null && parentWindow != Application.Current.MainWindow)
+                if (!TryCloseModal())
                 {
-                    // This is a standalone modal dialog window - close it properly
-                    LoggingService.Application.Information("Found standalone modal window, setting DialogResult to close");
-                    parentWindow.DialogResult = false;
-                    }
-                    else
-                    {
-                    // This is likely shown via ModalService as an overlay - use ModalService to close
-                    LoggingService.Application.Information("Modal shown via ModalService, using HideModal()");
-                    ModalService.Instance.HideModal();
+                    LoggingService.Application.Warning("Failed to close modal through normal methods");
+                    HandleModalCloseError();
                 }
             }
             catch (Exception ex)
             {
                 LoggingService.Application.Error("Error closing category modal", ex);
-                // Fallback: try ModalService first, then window methods
-                try
-                {
-                    if (ModalService.Instance.IsModalShown)
-                    {
-            ModalService.Instance.HideModal();
+                HandleModalCloseError();
+            }
         }
-                    else
-                    {
-                        var parentWindow = Window.GetWindow(this);
-                        parentWindow?.Hide();
-                    }
+
+        private bool TryCloseModal()
+        {
+            if (ModalService.Instance.IsModalShown)
+            {
+                ModalService.Instance.HideModal();
+                return true;
+            }
+            else
+            {
+                var parentWindow = Window.GetWindow(this);
+                if (parentWindow != null && parentWindow != Application.Current.MainWindow)
+                {
+                    parentWindow.DialogResult = false;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private void HandleModalCloseError()
+        {
+            // Fallback: try ModalService first, then window methods
+            try
+            {
+                if (ModalService.Instance.IsModalShown)
+                {
+                    ModalService.Instance.HideModal();
+                }
+                else
+                {
+                    var parentWindow = Window.GetWindow(this);
+                    parentWindow?.Hide();
+                }
             }
             catch
             {
-                    // Ignore secondary errors
+                // Last resort - ignore secondary errors to prevent infinite loops
             }
-        }
         }
 
 

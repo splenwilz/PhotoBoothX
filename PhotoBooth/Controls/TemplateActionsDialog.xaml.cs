@@ -30,7 +30,6 @@ namespace Photobooth.Controls
         public TemplateActionsDialog(Template template) : this()
         {
             SelectedTemplate = template;
-            UpdateUI();
         }
 
         private void UpdateUI()
@@ -174,12 +173,10 @@ namespace Photobooth.Controls
                 ("TemplateName", SelectedTemplate?.Name ?? "Unknown"),
                 ("Operation", operation));
             
-            // Show user-friendly error message
-            MessageBox.Show(
-                $"An error occurred while {operation}. Please try again.",
+            // Show kiosk-friendly error notification instead of MessageBox
+            NotificationService.Instance.ShowError(
                 "Template Action Error", 
-                MessageBoxButton.OK, 
-                MessageBoxImage.Warning);
+                $"An error occurred while {operation}. Please try again.");
             
             // Ensure dialog closes even on error to prevent UI lock-up
             try
