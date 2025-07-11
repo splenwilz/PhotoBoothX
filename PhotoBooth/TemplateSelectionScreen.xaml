@@ -179,8 +179,9 @@
                              Columns="4" 
                              HorizontalAlignment="Stretch" 
                              VerticalAlignment="Top"
-                             Margin="0">
-                    <!-- Templates will be added here dynamically -->
+                             Margin="0"
+                             SizeChanged="TemplatesUniformGrid_SizeChanged">
+                    <!-- Fixed 4-column layout for kiosk mode (responsive logic available but disabled) -->
                 </UniformGrid>
 
                 <!-- Empty State -->

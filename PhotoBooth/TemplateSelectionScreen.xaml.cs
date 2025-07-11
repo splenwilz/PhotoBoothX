@@ -373,6 +373,22 @@ namespace Photobooth
                 }
                 LoggingService.Application.Information("Template image found");
 
+                // Calculate actual file size from template.png
+                long templateFileSize = 0;
+                try
+                {
+                    var templateFileInfo = new FileInfo(templatePath);
+                    templateFileSize = templateFileInfo.Length;
+                    LoggingService.Application.Information("Template file size calculated", 
+                        ("FileSizeBytes", templateFileSize),
+                        ("FileSizeFormatted", FormatFileSize(templateFileSize)));
+                }
+                catch (Exception ex)
+                {
+                    LoggingService.Application.Warning("Could not calculate template file size", ("Exception", ex.Message));
+                    templateFileSize = 0; // Fallback to 0
+                }
+
                 // Calculate consistent display dimensions
                 var (displayWidth, displayHeight) = GetStandardDisplaySize(
                     config.Dimensions.Width,
@@ -399,7 +415,10 @@ namespace Photobooth
                     DimensionText = $"{config.Dimensions.Width} × {config.Dimensions.Height}",
                     AspectRatio = aspectRatio,
                     AspectRatioText = GetAspectRatioText(aspectRatio),
-                    TemplateSize = GetTemplateSizeCategory(aspectRatio)
+                    TemplateSize = GetTemplateSizeCategory(aspectRatio),
+                    
+                    // Actual file size
+                    FileSize = templateFileSize
                 };
             }
             catch (Exception ex)
@@ -617,27 +636,18 @@ namespace Photobooth
                 Cursor = Cursors.Hand
             };
 
-            // Create opacity mask using Rectangle geometry
+            // Use Clip for better performance
             previewImage.Loaded += (s, e) =>
             {
                 var img = s as Image;
                 if (img != null && img.ActualWidth > 0 && img.ActualHeight > 0)
                 {
-                    var maskRect = new Rectangle
+                    img.Clip = new RectangleGeometry
                     {
-                        Fill = Brushes.Black,
+                        Rect = new Rect(0, 0, img.ActualWidth, img.ActualHeight),
                         RadiusX = 8,
-                        RadiusY = 8,
-                        Width = img.ActualWidth,
-                        Height = img.ActualHeight
+                        RadiusY = 8
                     };
-                    
-                    var maskBrush = new VisualBrush(maskRect)
-                    {
-                        Stretch = Stretch.Fill
-                    };
-                    
-                    img.OpacityMask = maskBrush;
                 }
             };
 
@@ -729,11 +739,11 @@ namespace Photobooth
             };
             Grid.SetColumn(priceText, 0);
 
-            // Calculate approximate file size based on template dimensions (placeholder logic)
-            var approximateSize = template.Config?.Dimensions?.Width * template.Config?.Dimensions?.Height / 1024;
+            // Use actual file size from template data if available
+            var fileSize = template.FileSize > 0 ? template.FileSize : 100; // Fallback to 100 bytes if no file size
             var sizeText = new TextBlock
             {
-                Text = FormatFileSize(approximateSize ?? 100), // Use existing FormatFileSize method
+                Text = FormatFileSize(fileSize), // Use existing FormatFileSize method
                 FontSize = 14,
                 Foreground = new SolidColorBrush(Color.FromRgb(100, 116, 139)), // #64748B
                 HorizontalAlignment = HorizontalAlignment.Right
@@ -809,6 +819,53 @@ namespace Photobooth
             {
                 LoggingService.Application.Error("Back button error", ex);
                 System.Diagnostics.Debug.WriteLine($"Back button error: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Handles responsive column adjustment based on available width
+        /// Currently disabled to maintain fixed 4-column kiosk layout
+        /// </summary>
+        private void TemplatesUniformGrid_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            try
+            {
+                if (sender is UniformGrid grid)
+                {
+                    // Fixed 4-column layout for kiosk application
+                    // Responsive behavior disabled to maintain consistent admin layout match
+                    if (grid.Columns != 4)
+                    {
+                        grid.Columns = 4;
+                        LoggingService.Application.Information($"Template grid columns reset to 4 (kiosk mode) for width {e.NewSize.Width:F0}px");
+                    }
+
+                    /* RESPONSIVE LOGIC - Available if needed for different hardware configurations
+                    var width = e.NewSize.Width;
+                    
+                    // Calculate optimal columns based on available width
+                    // Each template card is roughly 300px wide with margins
+                    var optimalColumns = width switch
+                    {
+                        >= 1400 => 4, // Full kiosk resolution (1920x1080) - primary target  
+                        >= 1000 => 3, // Medium screens/smaller kiosks
+                        >= 700 => 2,  // Small screens/tablets
+                        _ => 1        // Very small screens (failsafe)
+                    };
+
+                    // Only update if columns actually changed to avoid unnecessary re-layout
+                    if (grid.Columns != optimalColumns)
+                    {
+                        grid.Columns = optimalColumns;
+                        LoggingService.Application.Information($"Template grid columns adjusted to {optimalColumns} for width {width:F0}px");
+                    }
+                    */
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Error in template grid size changed handler", ex);
+                System.Diagnostics.Debug.WriteLine($"Template grid size changed error: {ex.Message}");
             }
         }
 
@@ -1025,6 +1082,9 @@ namespace Photobooth
         public double AspectRatio { get; set; }
         public string AspectRatioText { get; set; } = "";
         public string TemplateSize { get; set; } = "";
+        
+        // Actual file size information
+        public long FileSize { get; set; }
     }
 
     /// <summary>
