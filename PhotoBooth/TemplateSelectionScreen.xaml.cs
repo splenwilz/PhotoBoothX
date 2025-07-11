@@ -10,6 +10,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
+using System.Windows.Shapes;
 using System.Windows.Threading;
 using Photobooth.Models;
 using Photobooth.Services;
@@ -231,6 +232,10 @@ namespace Photobooth
         {
             try
             {
+                // Show loading state
+                LoadingPanel.Visibility = Visibility.Visible;
+                EmptyStatePanel.Visibility = Visibility.Collapsed;
+                
                 LoggingService.Application.Information("Loading templates by type",
                     ("SelectedProductType", selectedProduct?.Type ?? "NULL"));
 
@@ -276,6 +281,9 @@ namespace Photobooth
                 // Show all templates without filtering
                 filteredTemplates = new List<TemplateInfo>(allTemplates);
                 
+                // Hide loading state
+                LoadingPanel.Visibility = Visibility.Collapsed;
+                
                 // Update display
                 UpdateTemplateDisplay();
 
@@ -283,6 +291,10 @@ namespace Photobooth
             }
             catch (Exception ex)
             {
+                // Hide loading state and show error
+                LoadingPanel.Visibility = Visibility.Collapsed;
+                EmptyStatePanel.Visibility = Visibility.Visible;
+                
                 LoggingService.Application.Error("Error loading templates", ex);
                 System.Diagnostics.Debug.WriteLine($"Template loading failed: {ex.Message}");
                 ShowErrorMessage($"Failed to load templates: {ex.Message}");
@@ -361,6 +373,22 @@ namespace Photobooth
                 }
                 LoggingService.Application.Information("Template image found");
 
+                // Calculate actual file size from template.png
+                long templateFileSize = 0;
+                try
+                {
+                    var templateFileInfo = new FileInfo(templatePath);
+                    templateFileSize = templateFileInfo.Length;
+                    LoggingService.Application.Information("Template file size calculated", 
+                        ("FileSizeBytes", templateFileSize),
+                        ("FileSizeFormatted", FormatFileSize(templateFileSize)));
+                }
+                catch (Exception ex)
+                {
+                    LoggingService.Application.Warning("Could not calculate template file size", ("Exception", ex.Message));
+                    templateFileSize = 0; // Fallback to 0
+                }
+
                 // Calculate consistent display dimensions
                 var (displayWidth, displayHeight) = GetStandardDisplaySize(
                     config.Dimensions.Width,
@@ -387,7 +415,10 @@ namespace Photobooth
                     DimensionText = $"{config.Dimensions.Width} × {config.Dimensions.Height}",
                     AspectRatio = aspectRatio,
                     AspectRatioText = GetAspectRatioText(aspectRatio),
-                    TemplateSize = GetTemplateSizeCategory(aspectRatio)
+                    TemplateSize = GetTemplateSizeCategory(aspectRatio),
+                    
+                    // Actual file size
+                    FileSize = templateFileSize
                 };
             }
             catch (Exception ex)
@@ -512,152 +543,263 @@ namespace Photobooth
 
 
         /// <summary>
-        /// Updates the template display for current page - unified view without categories
+        /// Updates the template display
         /// </summary>
         private void UpdateTemplateDisplay()
         {
             try
             {
-                if (CategorizedTemplatesContainer == null) return;
+                LoggingService.Application.Information("Updating template display",
+                    ("FilteredTemplateCount", filteredTemplates.Count));
 
-                // Clear existing content
-                CategorizedTemplatesContainer.Children.Clear();
+                // Clear existing templates
+                TemplatesUniformGrid.Children.Clear();
 
-                if (!filteredTemplates.Any())
+                if (filteredTemplates.Count == 0)
                 {
-                    // Show empty state
-                    var emptyMessage = new TextBlock
-                    {
-                        Text = "No templates available for the selected product type.",
-                        FontSize = 18,
-                        Foreground = Brushes.White,
-                        HorizontalAlignment = HorizontalAlignment.Center,
-                        Margin = new Thickness(0, 50, 0, 0),
-                        Opacity = 0.8
-                    };
-                    CategorizedTemplatesContainer.Children.Add(emptyMessage);
-                    
-                    if (TemplateCountInfo != null)
-                        TemplateCountInfo.Text = "No templates found";
+                    EmptyStatePanel.Visibility = Visibility.Visible;
                     return;
                 }
 
-                // Create a single unified grid for all templates
-                var templateGrid = CreateTemplateGrid(filteredTemplates);
-                CategorizedTemplatesContainer.Children.Add(templateGrid);
+                EmptyStatePanel.Visibility = Visibility.Collapsed;
 
-                // Update template count info
-                if (TemplateCountInfo != null)
-                    TemplateCountInfo.Text = $"{filteredTemplates.Count} templates available";
+                // Add templates to grid
+                foreach (var template in filteredTemplates)
+                {
+                    var templateCard = CreateTemplateCard(template);
+                    TemplatesUniformGrid.Children.Add(templateCard);
+                }
+
+                // Update template count
+                // TemplateCountInfo.Text = $"{filteredTemplates.Count} template{(filteredTemplates.Count == 1 ? "" : "s")} available";
+
+                LoggingService.Application.Information("Template display updated successfully",
+                    ("CardsCreated", filteredTemplates.Count));
             }
             catch (Exception ex)
             {
-                LoggingService.Application.Error("Template display update failed", ex);
-                System.Diagnostics.Debug.WriteLine($"Template display update failed: {ex.Message}");
+                LoggingService.Application.Error("Error updating template display", ex);
+                EmptyStatePanel.Visibility = Visibility.Visible;
+                // TemplateCountInfo.Text = "Error loading templates";
             }
         }
 
-
-
         /// <summary>
-        /// Creates a template grid for a category's templates
+        /// Creates a modern template card with admin-style layout
         /// </summary>
-        private UniformGrid CreateTemplateGrid(List<TemplateInfo> templates)
+        private Border CreateTemplateCard(TemplateInfo template)
         {
-            var grid = new UniformGrid
+            var card = new Border
             {
-                Columns = 4, // 4 templates per row (larger cards need fewer columns)
-                Margin = new Thickness(0, 0, 0, 20) // Minimal space after each category
-            };
-
-            foreach (var template in templates)
-            {
-                var templateCard = CreateTemplateCard(template);
-                grid.Children.Add(templateCard);
-            }
-
-            return grid;
-        }
-
-        /// <summary>
-        /// Creates a template card button
-        /// </summary>
-        private UIElement CreateTemplateCard(TemplateInfo template)
-        {
-            // Create container for image + text below
-            var container = new StackPanel
-            {
-                Margin = new Thickness(15), // More padding around template cards
-                HorizontalAlignment = HorizontalAlignment.Left // Left align the whole container
-            };
-
-            // Create the image button (no text overlay)
-            var imageButton = new Button
-            {
-                Width = template.DisplayWidth,
-                Height = template.DisplayHeight,
-                Tag = template,
-                Style = null, // Remove custom style
-                Background = Brushes.Transparent,
-                BorderBrush = Brushes.Transparent, // Remove border
-                BorderThickness = new Thickness(0), // No border
-                Padding = new Thickness(0),
+                Background = Brushes.White,
+                BorderBrush = new SolidColorBrush(Color.FromRgb(226, 232, 240)), // #E2E8F0
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(8),
+                Margin = new Thickness(16), // Increased margin for more spacing
+                HorizontalAlignment = HorizontalAlignment.Stretch,
                 Cursor = Cursors.Hand
             };
 
-            // Create the image content
-            var imageBorder = new Border
+            // Add hover effect
+            card.MouseEnter += (s, e) =>
             {
-                CornerRadius = new CornerRadius(16), // Larger border radius
-                ClipToBounds = true,
-                Background = Brushes.Black
+                card.Background = new SolidColorBrush(Color.FromRgb(248, 250, 252)); // #F8FAFC
+                card.BorderBrush = new SolidColorBrush(Color.FromRgb(203, 213, 225)); // #CBD5E1
+            };
+            card.MouseLeave += (s, e) =>
+            {
+                card.Background = Brushes.White;
+                card.BorderBrush = new SolidColorBrush(Color.FromRgb(226, 232, 240)); // #E2E8F0
             };
 
-            var image = new Image
+            var grid = new Grid();
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Auto height for preview
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Auto height for info
+
+            // Template preview container with rounded corners
+            var previewBorder = new Border
+            {
+                CornerRadius = new CornerRadius(8, 8, 0, 0), // Rounded top corners only
+                Background = new SolidColorBrush(Color.FromRgb(241, 245, 249)), // #F1F5F9
+                MinHeight = 300,
+                MaxHeight = 500,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                VerticalAlignment = VerticalAlignment.Stretch
+            };
+
+            var previewImage = new Image
             {
                 Source = new BitmapImage(new Uri(template.PreviewImagePath, UriKind.RelativeOrAbsolute)),
                 Stretch = Stretch.UniformToFill,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                VerticalAlignment = VerticalAlignment.Stretch,
+                Cursor = Cursors.Hand
             };
 
-            imageBorder.Child = image;
-            imageButton.Content = imageBorder;
-
-            // Add drop shadow to button
-            imageButton.Effect = new DropShadowEffect
+            // Use Clip for better performance
+            previewImage.Loaded += (s, e) =>
             {
-                BlurRadius = 8,
-                Opacity = 0.3,
-                ShadowDepth = 3
+                var img = s as Image;
+                if (img != null && img.ActualWidth > 0 && img.ActualHeight > 0)
+                {
+                    img.Clip = new RectangleGeometry
+                    {
+                        Rect = new Rect(0, 0, img.ActualWidth, img.ActualHeight),
+                        RadiusX = 8,
+                        RadiusY = 8
+                    };
+                }
             };
 
-            // Create the template name below the image
-            var nameLabel = new TextBlock
+            // Put the image directly in the rounded border
+            previewBorder.Child = previewImage;
+
+            Grid.SetRow(previewBorder, 0);
+
+            // Template info panel
+            var infoPanel = new StackPanel
+            {
+                Margin = new Thickness(16)
+            };
+
+            // Header with name and badges
+            var headerGrid = new Grid();
+            headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var nameText = new TextBlock
             {
                 Text = template.TemplateName,
-                Foreground = Brushes.White,
-                FontSize = 16,
-                FontWeight = FontWeights.SemiBold,
-                TextAlignment = TextAlignment.Left, // Left align template name
-                Margin = new Thickness(0, 10, 0, 0),
-                TextWrapping = TextWrapping.Wrap,
-                MaxWidth = template.DisplayWidth,
-                HorizontalAlignment = HorizontalAlignment.Left // Left align the text block
+                FontWeight = FontWeights.Medium,
+                Foreground = new SolidColorBrush(Color.FromRgb(55, 65, 81)), // #374151
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                FontSize = 16
+            };
+            Grid.SetColumn(nameText, 0);
+
+            // Category badge
+            var categoryBadge = new Border
+            {
+                Background = new SolidColorBrush(Color.FromRgb(243, 244, 246)), // #F3F4F6
+                BorderBrush = new SolidColorBrush(Color.FromRgb(209, 213, 219)), // #D1D5DB
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(8, 4, 8, 4),
+                Margin = new Thickness(0, 0, 6, 0),
+                Child = new TextBlock
+                {
+                    Text = template.Category ?? "Classic",
+                    FontSize = 12,
+                    Foreground = new SolidColorBrush(Color.FromRgb(75, 85, 99)) // #4B5563
+                }
+            };
+            Grid.SetColumn(categoryBadge, 1);
+
+            // Template Type Badge - Fix the detection logic
+            var isStrip = IsStripTemplate(template);
+            var templateTypeBadge = new Border
+            {
+                Background = isStrip ? 
+                    new SolidColorBrush(Color.FromRgb(254, 243, 199)) : // Yellow for Strip
+                    new SolidColorBrush(Color.FromRgb(219, 234, 254)), // Blue for 4x6
+                BorderBrush = isStrip ? 
+                    new SolidColorBrush(Color.FromRgb(245, 158, 11)) : // Yellow border for Strip
+                    new SolidColorBrush(Color.FromRgb(59, 130, 246)), // Blue border for 4x6
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(8, 4, 8, 4),
+                Child = new TextBlock
+                {
+                    Text = isStrip ? "Strip" : "4x6",
+                    FontSize = 12,
+                    FontWeight = FontWeights.Medium,
+                    Foreground = isStrip ? 
+                        new SolidColorBrush(Color.FromRgb(146, 64, 14)) : // Yellow text for Strip
+                        new SolidColorBrush(Color.FromRgb(30, 58, 138)) // Blue text for 4x6
+                }
+            };
+            Grid.SetColumn(templateTypeBadge, 2);
+
+            headerGrid.Children.Add(nameText);
+            headerGrid.Children.Add(categoryBadge);
+            headerGrid.Children.Add(templateTypeBadge);
+
+            // Details grid (matching admin exactly - price and file size)
+            var detailsGrid = new Grid { Margin = new Thickness(0, 8, 0, 12) };
+            detailsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            detailsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+            var priceText = new TextBlock
+            {
+                Text = "$0.00", // Default price for customer display
+                FontSize = 14,
+                FontWeight = FontWeights.Medium,
+                Foreground = new SolidColorBrush(Color.FromRgb(34, 197, 94)) // Green color like admin
+            };
+            Grid.SetColumn(priceText, 0);
+
+            // Use actual file size from template data if available
+            var fileSize = template.FileSize > 0 ? template.FileSize : 100; // Fallback to 100 bytes if no file size
+            var sizeText = new TextBlock
+            {
+                Text = FormatFileSize(fileSize), // Use existing FormatFileSize method
+                FontSize = 14,
+                Foreground = new SolidColorBrush(Color.FromRgb(100, 116, 139)), // #64748B
+                HorizontalAlignment = HorizontalAlignment.Right
+            };
+            Grid.SetColumn(sizeText, 1);
+
+            detailsGrid.Children.Add(priceText);
+            detailsGrid.Children.Add(sizeText);
+
+            infoPanel.Children.Add(headerGrid);
+            infoPanel.Children.Add(detailsGrid);
+
+            Grid.SetRow(infoPanel, 1);
+
+            grid.Children.Add(previewBorder);
+            grid.Children.Add(infoPanel);
+
+            card.Child = grid;
+
+            // Make the entire card clickable
+            card.MouseLeftButtonDown += (s, e) =>
+        {
+            try
+            {
+                    LoggingService.Application.Information("Template card clicked", ("TemplateName", template.TemplateName));
+                    TemplateSelected?.Invoke(this, new TemplateSelectedEventArgs(template));
+            }
+            catch (Exception ex)
+            {
+                    LoggingService.Application.Error("Error handling template card click", ex);
+            }
             };
 
-            imageButton.Click += TemplateCard_Click;
-            LoggingService.Application.Information("Created template card for",
-                ("TemplateName", template.TemplateName ?? "Unknown"));
-            LoggingService.Application.Information("Button Tag set to",
-                ("TagType", imageButton.Tag?.GetType().Name ?? "null"));
+            LoggingService.Application.Information("Created modern template card",
+                ("TemplateName", template.TemplateName ?? "Unknown"),
+                ("Category", template.Category ?? "Unknown"),
+                ("IsStrip", isStrip));
 
-            container.Children.Add(imageButton);
-            container.Children.Add(nameLabel);
-
-            return container;
+            return card;
         }
 
+        /// <summary>
+        /// Formats file size in human-readable format (matching admin method)
+        /// </summary>
+        private string FormatFileSize(long bytes)
+        {
+            string[] sizes = { "B", "KB", "MB", "GB" };
+            double len = bytes;
+            int order = 0;
+            while (len >= 1024 && order < sizes.Length - 1)
+            {
+                order++;
+                len = len / 1024;
+            }
+            return $"{len:0.##} {sizes[order]}";
+        }
 
 
         #endregion
@@ -680,61 +822,50 @@ namespace Photobooth
             }
         }
 
-
-
-
-
         /// <summary>
-        /// Handles template card selection
+        /// Handles responsive column adjustment based on available width
+        /// Currently disabled to maintain fixed 4-column kiosk layout
         /// </summary>
-        private void TemplateCard_Click(object sender, RoutedEventArgs e)
+        private void TemplatesUniformGrid_SizeChanged(object sender, SizeChangedEventArgs e)
         {
             try
             {
-                LoggingService.Application.Information("Template card clicked");
-                LoggingService.Application.Information("Sender type",
-                    ("SenderType", sender?.GetType().Name ?? "null"));
-                
-                if (sender is Button button)
+                if (sender is UniformGrid grid)
                 {
-                    LoggingService.Application.Information("Button found",
-                        ("ButtonType", button.Tag?.GetType().Name ?? "null"));
-                    LoggingService.Application.Information("Button Tag value",
-                        ("TagValue", button.Tag?.ToString() ?? "null"));
+                    // Fixed 4-column layout for kiosk application
+                    // Responsive behavior disabled to maintain consistent admin layout match
+                    if (grid.Columns != 4)
+                    {
+                        grid.Columns = 4;
+                        LoggingService.Application.Information($"Template grid columns reset to 4 (kiosk mode) for width {e.NewSize.Width:F0}px");
+                    }
+
+                    /* RESPONSIVE LOGIC - Available if needed for different hardware configurations
+                    var width = e.NewSize.Width;
                     
-                    if (button.Tag is TemplateInfo template)
+                    // Calculate optimal columns based on available width
+                    // Each template card is roughly 300px wide with margins
+                    var optimalColumns = width switch
                     {
-                        LoggingService.Application.Information("TemplateInfo found",
-                            ("TemplateName", template.TemplateName ?? "Unknown"),
-                            ("TemplateCategory", template.Category ?? "Unknown"),
-                            ("TemplatePath", template.PreviewImagePath ?? "Unknown"));
-                        LoggingService.Application.Information("TemplateSelected event subscribers",
-                            ("SubscriberCount", TemplateSelected?.GetInvocationList()?.Length ?? 0));
-                        
-                        LoggingService.Application.Information("Invoking TemplateSelected event...");
-                        TemplateSelected?.Invoke(this, new TemplateSelectedEventArgs(template));
-                        LoggingService.Application.Information("TemplateSelected event invoked successfully");
-                    }
-                    else
+                        >= 1400 => 4, // Full kiosk resolution (1920x1080) - primary target  
+                        >= 1000 => 3, // Medium screens/smaller kiosks
+                        >= 700 => 2,  // Small screens/tablets
+                        _ => 1        // Very small screens (failsafe)
+                    };
+
+                    // Only update if columns actually changed to avoid unnecessary re-layout
+                    if (grid.Columns != optimalColumns)
                     {
-                        LoggingService.Application.Error("ERROR: Button.Tag is not TemplateInfo!");
-                        LoggingService.Application.Information("Actual Tag type",
-                            ("ActualTagType", button.Tag?.GetType().FullName ?? "null"));
+                        grid.Columns = optimalColumns;
+                        LoggingService.Application.Information($"Template grid columns adjusted to {optimalColumns} for width {width:F0}px");
                     }
-                }
-                else
-                {
-                    LoggingService.Application.Error("ERROR: Sender is not a Button!");
-                    LoggingService.Application.Information("Actual sender type",
-                        ("ActualSenderType", sender?.GetType().FullName ?? "null"));
+                    */
                 }
             }
             catch (Exception ex)
             {
-                LoggingService.Application.Error("EXCEPTION in TemplateCard_Click", ex);
-                LoggingService.Application.Information("Stack trace",
-                    ("StackTrace", ex.StackTrace ?? "No stack trace available"));
-                System.Diagnostics.Debug.WriteLine($"Template selection error: {ex.Message}");
+                LoggingService.Application.Error("Error in template grid size changed handler", ex);
+                System.Diagnostics.Debug.WriteLine($"Template grid size changed error: {ex.Message}");
             }
         }
 
@@ -791,7 +922,35 @@ namespace Photobooth
             }
         }
 
+        /// <summary>
+        /// Determines if a template is a strip template using multiple detection methods
+        /// </summary>
+        private bool IsStripTemplate(TemplateInfo template)
+        {
+            // Method 1: Check template name for "strip" keyword
+            if (template.TemplateName?.ToLowerInvariant().Contains("strip") == true)
+                return true;
 
+            // Method 2: Check folder path for "strip" keyword
+            if (template.FolderPath?.ToLowerInvariant().Contains("strip") == true)
+                return true;
+
+            // Method 3: Check template size property
+            if (template.TemplateSize?.ToLowerInvariant().Contains("strip") == true)
+                return true;
+
+            // Method 4: Check aspect ratio - strips are typically tall (height > width)
+            if (template.Config?.Dimensions != null)
+            {
+                var aspectRatio = (double)template.Config.Dimensions.Width / template.Config.Dimensions.Height;
+                // If height is significantly greater than width, it's likely a strip
+                if (aspectRatio < 0.8) // Width is less than 80% of height
+                    return true;
+            }
+
+            // Default to 4x6 if none of the above conditions match
+            return false;
+        }
 
         #endregion
 
@@ -923,6 +1082,9 @@ namespace Photobooth
         public double AspectRatio { get; set; }
         public string AspectRatioText { get; set; } = "";
         public string TemplateSize { get; set; } = "";
+        
+        // Actual file size information
+        public long FileSize { get; set; }
     }
 
     /// <summary>
