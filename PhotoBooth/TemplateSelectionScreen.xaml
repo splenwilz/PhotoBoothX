@@ -14,7 +14,33 @@
             <!-- indigo-900 -->
         </LinearGradientBrush>
 
+        <!-- Modern Card Style -->
+        <Style x:Key="ModernCardStyle" TargetType="Border">
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="BorderBrush" Value="#E2E8F0"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="12"/>
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <DropShadowEffect Color="Black" Direction="270" ShadowDepth="2" BlurRadius="8" Opacity="0.1"/>
+                </Setter.Value>
+            </Setter>
+        </Style>
 
+        <!-- Template Card Style -->
+        <Style x:Key="TemplateCardStyle" TargetType="Border">
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="BorderBrush" Value="#E2E8F0"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#F8FAFC"/>
+                    <Setter Property="BorderBrush" Value="#CBD5E1"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
 
         <!-- Category Button Style -->
         <Style x:Key="CategoryButtonStyle" TargetType="Button">
@@ -50,82 +76,6 @@
                                 <Setter Property="Background" Value="White"/>
                                 <Setter Property="Foreground" Value="#581C87"/>
                                 <Setter Property="FontWeight" Value="SemiBold"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <!-- Template Card Style -->
-        <Style x:Key="TemplateCardStyle" TargetType="Button">
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border Background="{TemplateBinding Background}"
-                                CornerRadius="16"
-                                Effect="{TemplateBinding Effect}">
-                            <ContentPresenter/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Effect">
-                                    <Setter.Value>
-                                        <DropShadowEffect BlurRadius="20" Opacity="0.3" ShadowDepth="5"/>
-                                    </Setter.Value>
-                                </Setter>
-                                <Setter Property="RenderTransform">
-                                    <Setter.Value>
-                                        <ScaleTransform ScaleX="1.05" ScaleY="1.05"/>
-                                    </Setter.Value>
-                                </Setter>
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter Property="RenderTransform">
-                                    <Setter.Value>
-                                        <ScaleTransform ScaleX="0.95" ScaleY="0.95"/>
-                                    </Setter.Value>
-                                </Setter>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <!-- Navigation Arrow Style -->
-        <Style x:Key="NavArrowStyle" TargetType="Button">
-            <Setter Property="Background">
-                <Setter.Value>
-                    <SolidColorBrush Color="White" Opacity="0.1"/>
-                </Setter.Value>
-            </Setter>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="FontSize" Value="24"/>
-            <Setter Property="Width" Value="60"/>
-            <Setter Property="Height" Value="60"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border Background="{TemplateBinding Background}"
-                                CornerRadius="30">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Background">
-                                    <Setter.Value>
-                                        <SolidColorBrush Color="White" Opacity="0.2"/>
-                                    </Setter.Value>
-                                </Setter>
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter Property="Opacity" Value="0.3"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -179,14 +129,10 @@
             <RowDefinition Height="*"/>
             <!-- Templates (takes most space) -->
             <RowDefinition Height="Auto"/>
-            <!-- Pagination -->
+            <!-- Template count info -->
             <RowDefinition Height="40"/>
             <!-- Bottom Spacing -->
         </Grid.RowDefinitions>
-
-
-
-
 
         <!-- Header Row - Styled -->
         <Grid Grid.Row="0" Margin="30,30,30,20">
@@ -218,24 +164,45 @@
                                       Color="Black"/>
                 </TextBlock.Effect>
             </TextBlock>
-
         </Grid>
 
-        <!-- Template Display Area - Scrollable with Category Headers -->
+        <!-- Templates Content - Direct on Background (No White Container) -->
         <ScrollViewer Grid.Row="1" 
                       HorizontalScrollBarVisibility="Disabled"
                       VerticalScrollBarVisibility="Hidden"
-                      Margin="30,20,30,20">
+                      Background="Transparent"
+                      Margin="50,40,50,40">
             
-            <StackPanel Name="CategorizedTemplatesContainer" 
-                        HorizontalAlignment="Center"
-                        MaxWidth="1400">
-                <!-- Category sections will be added here dynamically -->
-            </StackPanel>
+            <Grid>
+                <!-- Responsive Templates Grid -->
+                <UniformGrid Name="TemplatesUniformGrid" 
+                             Columns="4" 
+                             HorizontalAlignment="Stretch" 
+                             VerticalAlignment="Top"
+                             Margin="0">
+                    <!-- Templates will be added here dynamically -->
+                </UniformGrid>
+
+                <!-- Empty State -->
+                <StackPanel Name="EmptyStatePanel" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed">
+                    <TextBlock Text="📁" FontSize="64" Foreground="#CBD5E1" HorizontalAlignment="Center" Margin="0,0,0,16"/>
+                    <TextBlock Text="No templates found" FontSize="20" FontWeight="Medium" 
+                               Foreground="White" HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                    <TextBlock Text="Please check back later for available templates" FontSize="14" 
+                               Foreground="#DDD6FE" HorizontalAlignment="Center"/>
+                </StackPanel>
+
+                <!-- Loading Indicator -->
+                <StackPanel Name="LoadingPanel" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed">
+                    <ProgressBar IsIndeterminate="True" Width="200" Height="4" Margin="0,0,0,16"/>
+                    <TextBlock Text="Loading templates..." FontSize="16" Foreground="White" HorizontalAlignment="Center"/>
+                </StackPanel>
+            </Grid>
             
         </ScrollViewer>
 
-        <!-- Template Count Info -->
+        <!-- Remove Template Count Info - commented out -->
+        <!--
         <TextBlock Grid.Row="2"
                    Name="TemplateCountInfo"
                    Text="Loading templates..."
@@ -244,6 +211,7 @@
                    HorizontalAlignment="Center"
                    VerticalAlignment="Center"
                    Margin="0,10,0,10"/>
+        -->
 
     </Grid>
 

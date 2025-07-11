@@ -1119,6 +1119,7 @@ namespace Photobooth.Services
                     SortOrder = original.SortOrder + 1,
                     Description = original.Description,
                     FileSize = original.FileSize,
+                    TemplateType = original.TemplateType, // Copy the template type from original
                     UploadedAt = DateTime.Now,
                     UploadedBy = original.UploadedBy
                 };
