@@ -1,11 +1,15 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Shapes;
 using System.Windows.Threading;
+using Photobooth.Services;
+using Photobooth.Models;
 
 namespace Photobooth
 {
@@ -50,7 +54,11 @@ namespace Photobooth
         private readonly Random random = new Random();
         private readonly List<Ellipse> particles = new List<Ellipse>();
         private readonly List<Storyboard> activeStoryboards = new List<Storyboard>();
+        private readonly IDatabaseService _databaseService;
         private bool disposed = false;
+        
+        // Database-loaded products
+        private List<Product> _products = new List<Product>();
 
         #endregion
 
@@ -59,11 +67,19 @@ namespace Photobooth
         /// <summary>
         /// Constructor - initializes the product selection screen
         /// </summary>
-        public ProductSelectionScreen()
+        public ProductSelectionScreen(IDatabaseService databaseService)
         {
+            _databaseService = databaseService ?? throw new ArgumentNullException(nameof(databaseService));
             InitializeComponent();
             this.Loaded += OnLoaded;
-            UpdateCreditsDisplay();
+            RefreshCreditsFromDatabase();
+        }
+
+        /// <summary>
+        /// Default constructor for design-time support
+        /// </summary>
+        public ProductSelectionScreen() : this(new DatabaseService())
+        {
         }
 
         /// <summary>
@@ -74,11 +90,97 @@ namespace Photobooth
             try
             {
                 InitializeAnimations();
+                RefreshCreditsFromDatabase();
+                _ = LoadProductsFromDatabase(); // Load prices from database
             }
             catch (Exception ex)
             {
                 // Log error but don't crash the application
                 System.Diagnostics.Debug.WriteLine($"Animation initialization failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Load product pricing from database and update UI
+        /// </summary>
+        private async Task LoadProductsFromDatabase()
+        {
+            try
+            {
+                var result = await _databaseService.GetProductsAsync();
+                if (result.Success && result.Data != null)
+                {
+                    _products = result.Data;
+                    UpdateProductPricesInUI();
+                    UpdateProductConfiguration();
+                }
+                else
+                {
+                    LoggingService.Application.Warning("Failed to load products from database, using default prices",
+                        ("Error", result.ErrorMessage ?? "Unknown error"));
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Error loading products from database, using default prices", ex);
+            }
+        }
+
+        /// <summary>
+        /// Update the UI price displays with database values
+        /// </summary>
+        private void UpdateProductPricesInUI()
+        {
+            try
+            {
+                var photoStrips = _products.FirstOrDefault(p => p.ProductType == ProductType.PhotoStrips);
+                var photo4x6 = _products.FirstOrDefault(p => p.ProductType == ProductType.Photo4x6);
+
+                if (photoStrips != null && PhotoStripsPriceText != null)
+                {
+                    PhotoStripsPriceText.Text = $"${photoStrips.Price:F0}";
+                }
+
+                if (photo4x6 != null && Photo4x6PriceText != null)
+                {
+                    Photo4x6PriceText.Text = $"${photo4x6.Price:F0}";
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Error updating product prices in UI", ex);
+            }
+        }
+
+        /// <summary>
+        /// Update the ProductConfiguration with database values
+        /// </summary>
+        private void UpdateProductConfiguration()
+        {
+            try
+            {
+                var photoStrips = _products.FirstOrDefault(p => p.ProductType == ProductType.PhotoStrips);
+                var photo4x6 = _products.FirstOrDefault(p => p.ProductType == ProductType.Photo4x6);
+                var smartphonePrint = _products.FirstOrDefault(p => p.ProductType == ProductType.SmartphonePrint);
+
+                if (photoStrips != null && ProductConfiguration.Products.ContainsKey("strips"))
+                {
+                    ProductConfiguration.Products["strips"].Price = photoStrips.Price;
+                }
+
+                if (photo4x6 != null && ProductConfiguration.Products.ContainsKey("4x6"))
+                {
+                    ProductConfiguration.Products["4x6"].Price = photo4x6.Price;
+                }
+
+                if (smartphonePrint != null && ProductConfiguration.Products.ContainsKey("phone"))
+                {
+                    ProductConfiguration.Products["phone"].Price = smartphonePrint.Price;
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Error updating product configuration", ex);
             }
         }
 
@@ -243,11 +345,41 @@ namespace Photobooth
         #region Public Methods
 
         /// <summary>
+        /// Refresh credits directly from database
+        /// </summary>
+        private async void RefreshCreditsFromDatabase()
+        {
+            try
+            {
+                var creditsResult = await _databaseService.GetSettingValueAsync<decimal>("System", "CurrentCredits");
+                if (creditsResult.Success)
+                {
+                    currentCredits = creditsResult.Data;
+                }
+                else
+                {
+                    currentCredits = 0;
+                }
+                UpdateCreditsDisplay();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error refreshing credits from database: {ex.Message}");
+                currentCredits = 0;
+                UpdateCreditsDisplay();
+            }
+        }
+
+        /// <summary>
         /// Updates the credits display with validation
         /// </summary>
         /// <param name="credits">Current credit amount</param>
         public void UpdateCredits(decimal credits)
         {
+            Console.WriteLine($"=== ProductSelectionScreen.UpdateCredits DEBUG ===");
+            Console.WriteLine($"Received credits value: ${credits}");
+            Console.WriteLine($"Current cached credits: ${currentCredits}");
+            
             if (credits < 0)
             {
                 System.Diagnostics.Debug.WriteLine($"Warning: Negative credits value provided: {credits}");
@@ -255,7 +387,10 @@ namespace Photobooth
             }
 
             currentCredits = credits;
+            Console.WriteLine($"Set currentCredits to: ${currentCredits}");
+            Console.WriteLine("Calling UpdateCreditsDisplay...");
             UpdateCreditsDisplay();
+            Console.WriteLine("=== ProductSelectionScreen.UpdateCredits END ===");
         }
 
         #endregion
@@ -269,13 +404,25 @@ namespace Photobooth
         {
             try
             {
+                Console.WriteLine($"=== ProductSelectionScreen.UpdateCreditsDisplay DEBUG ===");
+                Console.WriteLine($"CreditsDisplay is null: {CreditsDisplay == null}");
+                Console.WriteLine($"currentCredits value: ${currentCredits}");
+                
                 if (CreditsDisplay != null)
                 {
-                    CreditsDisplay.Text = $"Credits: ${currentCredits:F0}";
+                    var displayText = $"Credits: ${currentCredits:F0}";
+                    CreditsDisplay.Text = displayText;
+                    Console.WriteLine($"Set CreditsDisplay.Text to: '{displayText}'");
                 }
+                else
+                {
+                    Console.WriteLine("CreditsDisplay is null - cannot update display");
+                }
+                Console.WriteLine($"=== ProductSelectionScreen.UpdateCreditsDisplay END ===");
             }
             catch (Exception ex)
             {
+                Console.WriteLine($"Exception in UpdateCreditsDisplay: {ex.Message}");
                 System.Diagnostics.Debug.WriteLine($"Failed to update credits display: {ex.Message}");
             }
         }
@@ -308,19 +455,27 @@ namespace Photobooth
             {
                 if (sender is Button button && button.Tag is string productType)
                 {
+                    Console.WriteLine($"=== PRODUCT SELECTION DEBUG ===");
+                    Console.WriteLine($"Product selected: {productType}");
+                    
                     var productInfo = GetProductInfo(productType);
                     if (productInfo != null)
                     {
+                        Console.WriteLine($"Product info - Name: {productInfo.Name}, Type: {productInfo.Type}, Price: ${productInfo.Price:F2}");
+                        Console.WriteLine($"Invoking ProductSelected event...");
                         ProductSelected?.Invoke(this, new ProductSelectedEventArgs(productInfo));
+                        Console.WriteLine($"=== PRODUCT SELECTION COMPLETE ===");
                     }
                     else
                     {
+                        Console.WriteLine($"ERROR: Unknown product type selected: {productType}");
                         System.Diagnostics.Debug.WriteLine($"Unknown product type selected: {productType}");
                     }
                 }
             }
             catch (Exception ex)
             {
+                Console.WriteLine($"ERROR: Product selection error: {ex.Message}");
                 System.Diagnostics.Debug.WriteLine($"Product selection error: {ex.Message}");
             }
         }

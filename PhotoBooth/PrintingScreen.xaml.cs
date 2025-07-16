@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -26,11 +27,14 @@ namespace Photobooth
         #endregion
 
         #region Private Fields
+        private readonly IDatabaseService _databaseService;
+        private AdminDashboardScreen? _adminDashboardScreen; // For credit management
         private DispatcherTimer? _progressTimer;
         private DispatcherTimer? _countdownTimer;
         private double _currentProgress = 0;
         private int _countdownSeconds = DEFAULT_COUNTDOWN_SECONDS;
         private bool _disposed = false;
+        private decimal _currentCredits = 0;
 
         // Print job details
         private Template? _template;
@@ -39,13 +43,23 @@ namespace Photobooth
         private int _totalCopies = 1;
         private int _extraCopies = 0;
         private ProductInfo? _crossSellProduct;
+        private decimal _totalOrderCost = 0; // Total cost for the entire order
         #endregion
 
         #region Constructor
-        public PrintingScreen()
+        public PrintingScreen(IDatabaseService databaseService, AdminDashboardScreen? adminDashboardScreen = null)
         {
+            _databaseService = databaseService ?? throw new ArgumentNullException(nameof(databaseService));
+            _adminDashboardScreen = adminDashboardScreen;
             InitializeComponent();
             Loaded += PrintingScreen_Loaded;
+            
+            // Initialize credits display
+            RefreshCreditsFromDatabase();
+        }
+
+        public PrintingScreen() : this(new DatabaseService())
+        {
         }
         #endregion
 
@@ -58,6 +72,12 @@ namespace Photobooth
         {
             try
             {
+                Console.WriteLine("=== INITIALIZING PRINT JOB ===");
+                Console.WriteLine($"Template: {template?.Name ?? "NULL"}");
+                Console.WriteLine($"Product Type: {product?.Type ?? "NULL"}");
+                Console.WriteLine($"Extra Copies: {extraCopies}");
+                Console.WriteLine($"Cross-sell Product: {crossSellProduct?.Name ?? "None"}");
+                
                 // Reset UI state from any previous print jobs
                 ResetPrintingState();
 
@@ -68,6 +88,10 @@ namespace Photobooth
                 _crossSellProduct = crossSellProduct;
                 _totalCopies = 1 + extraCopies + (crossSellProduct != null ? 1 : 0);
 
+                // Calculate total order cost
+                _totalOrderCost = CalculateTotalOrderCost();
+                Console.WriteLine($"CALCULATED TOTAL ORDER COST: ${_totalOrderCost}");
+
                 // Update UI with order details
                 UpdateOrderDisplay();
 
@@ -76,9 +100,40 @@ namespace Photobooth
             }
             catch (Exception ex)
             {
+                Console.WriteLine($"!!! PRINT JOB INITIALIZATION ERROR: {ex.Message} !!!");
                 LoggingService.Application.Error("Failed to initialize print job", ex);
                 ShowError("Failed to start printing process. Please try again.");
             }
+        }
+
+        /// <summary>
+        /// Calculate the total cost for the entire order
+        /// </summary>
+        private decimal CalculateTotalOrderCost()
+        {
+            decimal totalCost = 0;
+
+            // Base template cost - use actual product price
+            if (_product?.Price != null)
+            {
+                totalCost += _product.Price;
+            }
+
+            // Extra copies cost - use same price as base product
+            if (_extraCopies > 0 && _product?.Price != null)
+            {
+                // For now, use base product price per extra copy (simplified pricing)
+                // This matches the UpsellScreen logic when custom pricing is disabled
+                totalCost += _extraCopies * _product.Price;
+            }
+
+            // Cross-sell product cost
+            if (_crossSellProduct != null)
+            {
+                totalCost += _crossSellProduct.Price;
+            }
+
+            return totalCost;
         }
 
         /// <summary>
@@ -325,13 +380,21 @@ namespace Photobooth
         {
             try
             {
+                Console.WriteLine("=== PRINTING COMPLETION STARTED ===");
+                Console.WriteLine($"Template: {_template?.Name ?? "NULL"}");
+                Console.WriteLine($"Total Copies: {_totalCopies}");
+                Console.WriteLine($"Total Order Cost: ${_totalOrderCost}");
+                Console.WriteLine($"Admin Dashboard Available: {_adminDashboardScreen != null}");
+                
                 StopProgressTimer();
 
-                LoggingService.Application.Information("Print job completed successfully",
-                    ("TemplateName", _template?.Name ?? "Unknown"),
-                    ("TotalCopies", _totalCopies));
+                // CRITICAL: Deduct credits and record sale transaction
+                Console.WriteLine("=== CALLING PAYMENT PROCESSING ===");
+                bool creditDeductionSuccess = await ProcessPaymentAndSalesTransaction();
 
-                // Update header
+                // Update header based on credit deduction result
+                if (creditDeductionSuccess)
+                {
                 HeaderText.Text = "Printing Complete!";
                 SubHeaderText.Text = "Your photos are ready";
                 StatusText.Text = "Complete";
@@ -339,16 +402,346 @@ namespace Photobooth
                 // Show completion card
                 CompletionCard.Visibility = Visibility.Visible;
 
+                    // Immediately refresh credits display to show updated balance
+                    RefreshCreditsFromDatabase();
+                    
+                    // Show updated credit balance notification
+                    var newBalance = _adminDashboardScreen?.GetCurrentCredits() ?? 0;
+                    NotificationService.Instance.ShowSuccess("Payment Processed", 
+                        $"${_totalOrderCost:F2} deducted successfully.\nRemaining credits: ${newBalance:F2}", 5);
+
                 // Start countdown timer
                 StartCountdownTimer();
+                }
+                else
+                {
+                    // Credit deduction failed - show error state
+                    HeaderText.Text = "Payment Required";
+                    SubHeaderText.Text = "Please contact staff to add credits";
+                    StatusText.Text = "Payment Failed";
+                    
+                    // Show error card instead of completion
+                    ErrorMessageText.Text = "Your photos were printed but payment could not be processed. Please contact staff to resolve the payment issue.";
+                    ErrorCard.Visibility = Visibility.Visible;
+                    
+                    // Start countdown timer to return to welcome screen
+                    StartCountdownTimer();
+                }
 
                 // Update consumables (simulation)
                 await UpdateConsumables();
+
+                // Update credits display
+                RefreshCreditsFromDatabase();
+                
+                Console.WriteLine("=== PRINTING COMPLETION FINISHED ===");
             }
             catch (Exception ex)
             {
+                Console.WriteLine($"=== PRINTING COMPLETION ERROR: {ex.Message} ===");
                 LoggingService.Application.Error("Print completion failed", ex);
                 ShowError("Print completion encountered an error.");
+            }
+        }
+
+        /// <summary>
+        /// Process payment (credit deduction) and record sales transaction
+        /// </summary>
+        private async Task<bool> ProcessPaymentAndSalesTransaction()
+        {
+            try
+            {
+                Console.WriteLine("--- PAYMENT PROCESSING START ---");
+                Console.WriteLine($"Admin Dashboard: {(_adminDashboardScreen != null ? "AVAILABLE" : "NULL")}");
+                Console.WriteLine($"Total Order Cost: ${_totalOrderCost}");
+                Console.WriteLine($"Should Process Credits: {_adminDashboardScreen != null && _totalOrderCost > 0}");
+                
+                // 1. First create sales transaction record
+                Console.WriteLine("--- CREATING SALES TRANSACTION ---");
+                var transactionId = await CreateSalesTransaction(false); // Initially pending
+                Console.WriteLine($"Transaction ID Created: {transactionId}");
+                
+                // 2. Deduct credits if admin dashboard is available and link to transaction
+                bool creditDeductionSuccess = false;
+                if (_adminDashboardScreen != null && _totalOrderCost > 0)
+                {
+                    Console.WriteLine("--- ATTEMPTING CREDIT DEDUCTION ---");
+                    var orderDescription = BuildOrderDescription();
+                    Console.WriteLine($"Order Description: {orderDescription}");
+                    Console.WriteLine($"Deducting ${_totalOrderCost} from credits...");
+                    
+                    creditDeductionSuccess = await _adminDashboardScreen.DeductCreditsAsync(_totalOrderCost, orderDescription, transactionId);
+                    
+                    Console.WriteLine($"Credit Deduction Result: {(creditDeductionSuccess ? "SUCCESS" : "FAILED")}");
+                    
+                    if (!creditDeductionSuccess)
+                    {
+                        Console.WriteLine("!!! CREDIT DEDUCTION FAILED !!!");
+                        
+                        // Show error message to user
+                        var currentCredits = _adminDashboardScreen?.GetCurrentCredits() ?? 0;
+                        var shortfall = _totalOrderCost - currentCredits;
+                        
+                        var errorMessage = $"Insufficient credits to complete this order.\n\n" +
+                                          $"Order total: ${_totalOrderCost:F2}\n" +
+                                          $"Current credits: ${currentCredits:F2}\n" +
+                                          $"Additional credits needed: ${shortfall:F2}\n\n" +
+                                          $"Please contact staff to add more credits.";
+                        
+                        NotificationService.Instance.ShowError("Payment Failed", errorMessage, 10);
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("--- CREDIT DEDUCTION SKIPPED ---");
+                    if (_adminDashboardScreen == null)
+                        Console.WriteLine("Reason: Admin Dashboard is NULL");
+                    if (_totalOrderCost <= 0)
+                        Console.WriteLine($"Reason: Total Order Cost is ${_totalOrderCost}");
+                }
+
+                // 3. Update transaction status based on credit deduction result
+                if (transactionId > 0)
+                {
+                    Console.WriteLine($"--- UPDATING TRANSACTION STATUS: {(creditDeductionSuccess ? "COMPLETED" : "FAILED")} ---");
+                    await UpdateTransactionStatus(transactionId, creditDeductionSuccess);
+                }
+
+                Console.WriteLine("--- PAYMENT PROCESSING COMPLETE ---");
+                Console.WriteLine($"Final Result - Credit Deduction: {creditDeductionSuccess}, Transaction: {transactionId}");
+                
+                return creditDeductionSuccess;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"!!! PAYMENT PROCESSING ERROR: {ex.Message} !!!");
+                LoggingService.Application.Error("Failed to process payment and sales transaction", ex);
+                // Continue with printing completion even if payment processing fails
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Build description for the order
+        /// </summary>
+        private string BuildOrderDescription()
+        {
+            var description = $"{_template?.Name ?? "Unknown Template"}";
+            
+            if (_extraCopies > 0)
+            {
+                description += $" + {_extraCopies} extra copies";
+            }
+            
+            if (_crossSellProduct != null)
+            {
+                description += $" + {_crossSellProduct.Name}";
+            }
+            
+            return description;
+        }
+
+        /// <summary>
+        /// Create sales transaction record in database
+        /// </summary>
+        private async Task<int> CreateSalesTransaction(bool creditDeductionSuccess)
+        {
+            try
+            {
+                // Find the correct Product ID from database
+                var productId = await GetProductIdFromDatabase();
+                Console.WriteLine($"--- TRANSACTION DEBUG: ProductId = {productId} ---");
+                
+                if (productId == 0)
+                {
+                    LoggingService.Application.Warning("Could not find product ID, using default value");
+                    productId = 1; // Default fallback
+                }
+
+                // Create transaction record
+                var transaction = new Transaction
+                {
+                    TransactionCode = GenerateTransactionCode(),
+                    ProductId = productId,
+                    TemplateId = _template?.Id,
+                    Quantity = _totalCopies,
+                    BasePrice = GetBasePrice(),
+                    TotalPrice = _totalOrderCost,
+                    PaymentMethod = PaymentMethod.Credit, // Since we're using credits
+                    PaymentStatus = creditDeductionSuccess ? PaymentStatus.Completed : PaymentStatus.Pending,
+                    CreatedAt = DateTime.Now,
+                    CompletedAt = creditDeductionSuccess ? DateTime.Now : null,
+                    Notes = BuildOrderDescription()
+                };
+
+                Console.WriteLine($"--- TRANSACTION DEBUG: Creating transaction ${transaction.TotalPrice} ---");
+
+                var insertResult = await _databaseService.InsertAsync(transaction);
+                
+                Console.WriteLine($"--- TRANSACTION DEBUG: Insert result ---");
+                Console.WriteLine($"Success: {insertResult.Success}");
+                Console.WriteLine($"Data: {insertResult.Data}");
+                Console.WriteLine($"ErrorMessage: {insertResult.ErrorMessage}");
+                
+                if (insertResult.Success)
+                {
+                    LoggingService.Application.Information("Sales transaction recorded",
+                        ("TransactionId", insertResult.Data),
+                        ("TransactionCode", transaction.TransactionCode),
+                        ("PaymentStatus", transaction.PaymentStatus));
+
+                    // Create print job record
+                    await CreatePrintJobRecord(insertResult.Data);
+                    
+                    return insertResult.Data;
+                }
+                else
+                {
+                    LoggingService.Application.Error("Failed to record sales transaction", null,
+                        ("Error", insertResult.ErrorMessage ?? "Unknown error"));
+                    return 0;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"--- TRANSACTION DEBUG: Exception: {ex.Message} ---");
+                LoggingService.Application.Error("Failed to create sales transaction", ex);
+                return 0;
+            }
+        }
+
+        /// <summary>
+        /// Update transaction status after credit deduction attempt
+        /// </summary>
+        private async Task UpdateTransactionStatus(int transactionId, bool creditDeductionSuccess)
+        {
+            try
+            {
+                Console.WriteLine($"--- UPDATE STATUS DEBUG: Updating transaction {transactionId} to {(creditDeductionSuccess ? "Completed" : "Failed")} ---");
+                
+                // Get the transaction first
+                var transactionResult = await _databaseService.GetByIdAsync<Transaction>(transactionId);
+                if (transactionResult.Success && transactionResult.Data != null)
+                {
+                    var transaction = transactionResult.Data;
+                    Console.WriteLine($"--- UPDATE STATUS DEBUG: Current status = {transaction.PaymentStatus}, Setting to = {(creditDeductionSuccess ? PaymentStatus.Completed : PaymentStatus.Failed)} ---");
+                    
+                    transaction.PaymentStatus = creditDeductionSuccess ? PaymentStatus.Completed : PaymentStatus.Failed;
+                    transaction.CompletedAt = creditDeductionSuccess ? DateTime.Now : null;
+
+                    var updateResult = await _databaseService.UpdateAsync(transaction);
+                    
+                    Console.WriteLine($"--- UPDATE STATUS DEBUG: Update result = Success: {updateResult.Success}, Error: {updateResult.ErrorMessage} ---");
+                    
+                    if (updateResult.Success)
+                    {
+                        LoggingService.Application.Information("Transaction status updated",
+                            ("TransactionId", transactionId),
+                            ("PaymentStatus", transaction.PaymentStatus));
+                    }
+                    else
+                    {
+                        LoggingService.Application.Error("Failed to update transaction status", null,
+                            ("TransactionId", transactionId),
+                            ("Error", updateResult.ErrorMessage ?? "Unknown error"));
+                    }
+                }
+                else
+                {
+                    Console.WriteLine($"--- UPDATE STATUS DEBUG: Failed to get transaction {transactionId}: Success={transactionResult.Success}, Error={transactionResult.ErrorMessage} ---");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"--- UPDATE STATUS DEBUG: Exception: {ex.Message} ---");
+                LoggingService.Application.Error("Failed to update transaction status", ex,
+                    ("TransactionId", transactionId));
+            }
+        }
+
+        /// <summary>
+        /// Get Product ID from database based on current product type
+        /// </summary>
+        private async Task<int> GetProductIdFromDatabase()
+        {
+            try
+            {
+                Console.WriteLine($"--- PRODUCT DEBUG: Looking for product type '{_product?.Type}' ---");
+                
+                var productsResult = await _databaseService.GetAllAsync<Product>();
+                
+                if (productsResult.Success && productsResult.Data != null)
+                {
+                    var productType = _product?.Type?.ToLowerInvariant();
+                    var matchingProduct = productsResult.Data.FirstOrDefault(p => 
+                        p.ProductType.ToString().ToLowerInvariant().Contains(productType ?? ""));
+                    
+                    Console.WriteLine($"--- PRODUCT DEBUG: Found product ID {matchingProduct?.Id ?? 0} ({matchingProduct?.Name}) ---");
+                    
+                    return matchingProduct?.Id ?? 1;
+                }
+                else
+                {
+                    Console.WriteLine($"--- PRODUCT DEBUG: Database query failed: {productsResult.ErrorMessage} ---");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"--- PRODUCT DEBUG: Exception: {ex.Message} ---");
+                LoggingService.Application.Error("Failed to get product ID from database", ex);
+            }
+            
+            return 1; // Default fallback
+        }
+
+        /// <summary>
+        /// Get base price for the main product (excluding extras)
+        /// </summary>
+        private decimal GetBasePrice()
+        {
+            // Use actual product price instead of hardcoded values
+            return _product?.Price ?? 3.00m; // Default fallback price if product price is null
+        }
+
+        /// <summary>
+        /// Generate unique transaction code
+        /// </summary>
+        private string GenerateTransactionCode()
+        {
+            return $"TRX-{DateTime.Now:yyyyMMdd}-{DateTime.Now:HHmmss}-{Random.Shared.Next(1000, 9999)}";
+        }
+
+        /// <summary>
+        /// Create print job record for supply tracking
+        /// </summary>
+        private async Task CreatePrintJobRecord(int transactionId)
+        {
+            try
+            {
+                var printJob = new PrintJob
+                {
+                    TransactionId = transactionId,
+                    Copies = _totalCopies,
+                    PrintStatus = PrintStatus.Completed,
+                    StartedAt = DateTime.Now.AddSeconds(-30), // Approximate start time
+                    CompletedAt = DateTime.Now,
+                    PrintsUsed = _totalCopies,
+                    PrinterName = "DNP DS620A" // Default printer name
+                };
+
+                var printJobResult = await _databaseService.InsertAsync(printJob);
+                
+                if (printJobResult.Success)
+                {
+                    LoggingService.Application.Information("Print job record created",
+                        ("PrintJobId", printJobResult.Data),
+                        ("Copies", printJob.Copies),
+                        ("PrintsUsed", printJob.PrintsUsed));
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to create print job record", ex);
             }
         }
 
@@ -501,6 +894,69 @@ namespace Photobooth
                 CountdownText.Text = $"Returning to welcome screen in {_countdownSeconds} seconds...";
             }
         }
+        #endregion
+
+        #region Credits Management
+
+        /// <summary>
+        /// Refresh credits from database
+        /// </summary>
+        private async void RefreshCreditsFromDatabase()
+        {
+            try
+            {
+                var creditsResult = await _databaseService.GetSettingValueAsync<decimal>("System", "CurrentCredits");
+                if (creditsResult.Success)
+                {
+                    _currentCredits = creditsResult.Data;
+                }
+                else
+                {
+                    _currentCredits = 0;
+                }
+                UpdateCreditsDisplay();
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Error refreshing credits from database", ex);
+                _currentCredits = 0;
+                UpdateCreditsDisplay();
+            }
+        }
+
+        /// <summary>
+        /// Updates the credits display with validation
+        /// </summary>
+        /// <param name="credits">Current credit amount</param>
+        public void UpdateCredits(decimal credits)
+        {
+            if (credits < 0)
+            {
+                credits = 0;
+            }
+
+            _currentCredits = credits;
+            UpdateCreditsDisplay();
+        }
+
+        /// <summary>
+        /// Update credits display
+        /// </summary>
+        private void UpdateCreditsDisplay()
+        {
+            try
+            {
+                if (CreditsDisplay != null)
+                {
+                    CreditsDisplay.Text = $"Credits: ${_currentCredits:F0}";
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to update credits display", ex);
+            }
+        }
+
         #endregion
 
         #region IDisposable Implementation

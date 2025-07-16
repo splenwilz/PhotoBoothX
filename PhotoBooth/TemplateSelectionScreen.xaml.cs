@@ -64,7 +64,9 @@ namespace Photobooth
         private readonly IDatabaseService _databaseService;
         private readonly ITemplateConversionService _templateConversionService;
 
-
+        // Credit system integration
+        private AdminDashboardScreen? _adminDashboard;
+        private decimal _currentCredits = 0;
 
         // File system watcher for automatic template refresh
         private FileSystemWatcher? templateWatcher;
@@ -81,11 +83,14 @@ namespace Photobooth
         /// </summary>
         public TemplateSelectionScreen(IDatabaseService databaseService, ITemplateConversionService templateConversionService)
         {
+            Console.WriteLine("=== TemplateSelectionScreen Constructor ===");
             _databaseService = databaseService ?? throw new ArgumentNullException(nameof(databaseService));
             _templateConversionService = templateConversionService ?? throw new ArgumentNullException(nameof(templateConversionService));
+            Console.WriteLine("Database and template services initialized");
             InitializeComponent();
             this.Loaded += OnLoaded;
             InitializeTemplateWatcher();
+            Console.WriteLine("=== Constructor END ===");
         }
 
         /// <summary>
@@ -102,12 +107,22 @@ namespace Photobooth
         {
             try
             {
+                Console.WriteLine("=== TemplateSelectionScreen OnLoaded ===");
+                Console.WriteLine($"selectedProduct?.Type: {selectedProduct?.Type ?? "NULL"}");
+                
                 LoggingService.Application.Information("Template selection screen loaded",
                     ("SelectedProductType", selectedProduct?.Type ?? "NULL"));
+                
+                Console.WriteLine("Calling RefreshCurrentCredits...");
+                RefreshCurrentCredits(); // This now includes UpdateCreditsDisplay()
+                
+                Console.WriteLine("Calling LoadTemplates...");
                 LoadTemplates();
+                Console.WriteLine("=== OnLoaded END ===");
             }
             catch (Exception ex)
             {
+                Console.WriteLine($"Exception in OnLoaded: {ex.Message}");
                 LoggingService.Application.Error("Template screen initialization failed", ex);
                 System.Diagnostics.Debug.WriteLine($"Template screen initialization failed: {ex.Message}");
                 ShowErrorMessage("Failed to load templates. Please restart the application.");
@@ -730,12 +745,17 @@ namespace Photobooth
             detailsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             detailsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
+            var templatePrice = GetTemplatePrice(template);
+            var hasSufficientCredits = HasSufficientCredits(templatePrice);
+
             var priceText = new TextBlock
             {
-                Text = "$0.00", // Default price for customer display
+                Text = $"${templatePrice:F2}",
                 FontSize = 14,
                 FontWeight = FontWeights.Medium,
-                Foreground = new SolidColorBrush(Color.FromRgb(34, 197, 94)) // Green color like admin
+                Foreground = hasSufficientCredits ? 
+                    new SolidColorBrush(Color.FromRgb(34, 197, 94)) : // Green if affordable
+                    new SolidColorBrush(Color.FromRgb(239, 68, 68))   // Red if not affordable
             };
             Grid.SetColumn(priceText, 0);
 
@@ -763,13 +783,43 @@ namespace Photobooth
 
             card.Child = grid;
 
-            // Make the entire card clickable
+            // Make the entire card clickable with credit validation
             card.MouseLeftButtonDown += (s, e) =>
         {
             try
             {
                     LoggingService.Application.Information("Template card clicked", ("TemplateName", template.TemplateName));
+                    
+                    var templatePrice = GetTemplatePrice(template);
+                    var hasSufficientCredits = HasSufficientCredits(templatePrice);
+                    
+                    if (!hasSufficientCredits)
+                    {
+                        // Show insufficient credits notification using custom notification system
+                        var shortfall = templatePrice - _currentCredits;
+                        var message = $"Template price: ${templatePrice:F2}\n" +
+                                     $"Current credits: ${_currentCredits:F2}\n" +
+                                     $"Additional credits needed: ${shortfall:F2}\n\n" +
+                                     $"Please add more credits to continue.";
+                        
+                        NotificationService.Instance.ShowWarning("Insufficient Credits", message, 8);
+                        
+                        LoggingService.Application.Warning("Template selection blocked - insufficient credits",
+                            ("TemplateName", template.TemplateName),
+                            ("RequiredPrice", templatePrice),
+                            ("CurrentCredits", _currentCredits),
+                            ("Shortfall", shortfall));
+                        
+                        return; // Don't proceed with template selection
+                    }
+                    
+                    // Proceed with template selection
                     TemplateSelected?.Invoke(this, new TemplateSelectedEventArgs(template));
+                    
+                    LoggingService.Application.Information("Template selection approved",
+                        ("TemplateName", template.TemplateName),
+                        ("Price", templatePrice),
+                        ("CreditsAfterPurchase", _currentCredits - templatePrice));
             }
             catch (Exception ex)
             {
@@ -957,12 +1007,155 @@ namespace Photobooth
         #region Public Methods
 
         /// <summary>
+        /// Set the admin dashboard reference for credit checking
+        /// </summary>
+        public void SetAdminDashboard(AdminDashboardScreen adminDashboard)
+        {
+            Console.WriteLine("=== SetAdminDashboard called ===");
+            Console.WriteLine($"adminDashboard is null: {adminDashboard == null}");
+            _adminDashboard = adminDashboard;
+            if (_adminDashboard != null)
+            {
+                Console.WriteLine("Admin dashboard set successfully, refreshing credits...");
+            }
+            RefreshCurrentCredits();
+        }
+
+        /// <summary>
+        /// Refresh current credits from admin dashboard or database
+        /// </summary>
+        private void RefreshCurrentCredits()
+        {
+            try
+            {
+                Console.WriteLine("=== RefreshCurrentCredits DEBUG ===");
+                Console.WriteLine($"_adminDashboard is null: {_adminDashboard == null}");
+                
+                // Try to get credits from admin dashboard first (if available)
+                if (_adminDashboard != null)
+                {
+                    _currentCredits = _adminDashboard.GetCurrentCredits();
+                    Console.WriteLine($"Got credits from admin dashboard: ${_currentCredits}");
+                    UpdateCreditsDisplay();
+                    return;
+                }
+
+                Console.WriteLine("Admin dashboard not available, querying database...");
+                
+                // Fallback: Get credits directly from database synchronously
+                var task = _databaseService.GetSettingValueAsync<decimal>("System", "CurrentCredits");
+                task.Wait(); // Wait for async operation to complete
+                var creditsResult = task.Result;
+                
+                Console.WriteLine($"Database query completed. Success: {creditsResult.Success}");
+                Console.WriteLine($"Database Data Value: {creditsResult.Data}");
+                
+                if (creditsResult.Success)
+                {
+                    _currentCredits = creditsResult.Data;
+                    Console.WriteLine($"Set _currentCredits to: ${_currentCredits}");
+                }
+                else
+                {
+                    _currentCredits = 0;
+                    Console.WriteLine("Setting _currentCredits to 0 (fallback)");
+                    Console.WriteLine($"Database query failed. Error: {creditsResult.ErrorMessage}");
+                }
+                UpdateCreditsDisplay();
+                Console.WriteLine("=== RefreshCurrentCredits END ===");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Exception in RefreshCurrentCredits: {ex.Message}");
+                LoggingService.Application.Error("Error refreshing credits", ex);
+                _currentCredits = 0;
+                UpdateCreditsDisplay();
+            }
+        }
+
+        /// <summary>
+        /// Check if user has sufficient credits for a template
+        /// </summary>
+        private bool HasSufficientCredits(decimal templatePrice)
+        {
+            return _currentCredits >= templatePrice;
+        }
+
+
+
+        /// <summary>
+        /// Get the price for a template based on product type
+        /// </summary>
+        private decimal GetTemplatePrice(TemplateInfo template)
+        {
+            // Check database for template-specific pricing first, fall back to product pricing
+            try
+            {
+                // For now, use standard product pricing
+                // In the future, this could check template.Config for custom pricing
+                return selectedProduct?.Type?.ToLowerInvariant() switch
+                {
+                    "strips" or "photostrips" => 5.00m,
+                    "4x6" or "photo4x6" => 3.00m,
+                    "phone" or "smartphoneprint" => 2.00m,
+                    _ => 3.00m
+                };
+            }
+            catch
+            {
+                return 3.00m; // Default fallback price
+            }
+        }
+
+        /// <summary>
         /// Updates the credits display with validation
         /// </summary>
         /// <param name="credits">Current credit amount</param>
         public void UpdateCredits(decimal credits)
         {
-            // Credits display logic if needed for this screen
+            _currentCredits = credits;
+            try
+            {
+                System.Diagnostics.Debug.WriteLine($"Credits updated to: ${credits:F2}");
+                UpdateCreditsDisplay();
+                // Refresh template display to update affordability indicators
+                UpdateTemplateDisplay();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error updating credits display: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Updates the credits display text safely
+        /// </summary>
+        private void UpdateCreditsDisplay()
+        {
+            try
+            {
+                Console.WriteLine($"=== UpdateCreditsDisplay DEBUG ===");
+                Console.WriteLine($"CreditsDisplay is null: {CreditsDisplay == null}");
+                Console.WriteLine($"_currentCredits value: ${_currentCredits}");
+                
+                if (CreditsDisplay != null)
+                {
+                    var displayText = $"Credits: ${_currentCredits:F0}";
+                    CreditsDisplay.Text = displayText;
+                    Console.WriteLine($"Set CreditsDisplay.Text to: '{displayText}'");
+                }
+                else
+                {
+                    Console.WriteLine("CreditsDisplay is null - cannot update display");
+                }
+                Console.WriteLine($"=== UpdateCreditsDisplay END ===");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Exception in UpdateCreditsDisplay: {ex.Message}");
+                LoggingService.Application.Error("Failed to update credits display", ex);
+                System.Diagnostics.Debug.WriteLine($"Failed to update credits display: {ex.Message}");
+            }
         }
 
         #endregion

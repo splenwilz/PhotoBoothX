@@ -52,6 +52,7 @@ namespace Photobooth
         private bool _isCapturing = false;
         private bool _disposed = false;
         private Random _random = new Random();
+        private decimal _currentCredits = 0;
 
         #endregion
 
@@ -78,6 +79,9 @@ namespace Photobooth
             // Initialize animations
             InitializeAnimations();
             CreateFloatingParticles();
+            
+            // Initialize credits display
+            RefreshCreditsFromDatabase();
         }
 
         #endregion
@@ -893,6 +897,69 @@ namespace Photobooth
         private void BackButton_Click(object sender, RoutedEventArgs e)
         {
             BackButtonClicked?.Invoke(this, EventArgs.Empty);
+        }
+
+        #endregion
+
+        #region Credits Management
+
+        /// <summary>
+        /// Refresh credits from database
+        /// </summary>
+        private async void RefreshCreditsFromDatabase()
+        {
+            try
+            {
+                var creditsResult = await _databaseService.GetSettingValueAsync<decimal>("System", "CurrentCredits");
+                if (creditsResult.Success)
+                {
+                    _currentCredits = creditsResult.Data;
+                }
+                else
+                {
+                    _currentCredits = 0;
+                }
+                UpdateCreditsDisplay();
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Error refreshing credits from database", ex);
+                _currentCredits = 0;
+                UpdateCreditsDisplay();
+            }
+        }
+
+        /// <summary>
+        /// Updates the credits display with validation
+        /// </summary>
+        /// <param name="credits">Current credit amount</param>
+        public void UpdateCredits(decimal credits)
+        {
+            if (credits < 0)
+            {
+                credits = 0;
+            }
+
+            _currentCredits = credits;
+            UpdateCreditsDisplay();
+        }
+
+        /// <summary>
+        /// Update credits display
+        /// </summary>
+        private void UpdateCreditsDisplay()
+        {
+            try
+            {
+                if (CreditsDisplay != null)
+                {
+                    CreditsDisplay.Text = $"Credits: ${_currentCredits:F0}";
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to update credits display", ex);
+            }
         }
 
         #endregion

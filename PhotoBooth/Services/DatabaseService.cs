@@ -63,12 +63,22 @@ namespace Photobooth.Services
         Task<DatabaseResult<List<ProductCategory>>> GetProductCategoriesAsync();
         Task<DatabaseResult> UpdateProductStatusAsync(int productId, bool isActive);
         Task<DatabaseResult> UpdateProductPriceAsync(int productId, decimal price);
-        Task<DatabaseResult> UpdateProductAsync(int productId, bool? isActive = null, decimal? price = null);
+        Task<DatabaseResult> UpdateProductAsync(int productId, bool? isActive = null, decimal? price = null, 
+            bool? useCustomExtraCopyPricing = null, decimal? extraCopy1Price = null, decimal? extraCopy2Price = null, 
+            decimal? extraCopy4BasePrice = null, decimal? extraCopyAdditionalPrice = null);
         Task<DatabaseResult<List<Setting>>> GetSettingsByCategoryAsync(string category);
         Task<DatabaseResult<T?>> GetSettingValueAsync<T>(string category, string key);
         Task<DatabaseResult> SetSettingValueAsync<T>(string category, string key, T value, string? updatedBy = null);
         Task<DatabaseResult> CleanupProductSettingsAsync();
         Task<DatabaseResult<SystemDateStatus>> GetSystemDateStatusAsync();
+        
+        // Credit transaction management methods
+        Task<DatabaseResult<int>> InsertCreditTransactionAsync(CreditTransaction transaction);
+        Task<DatabaseResult<List<CreditTransaction>>> GetCreditTransactionsAsync(int limit = 50);
+        Task<DatabaseResult> DeleteOldCreditTransactionsAsync(int keepCount = 100);
+        
+        // Template pricing methods
+        Task<DatabaseResult> UpdateTemplatePricingAsync();
     }
 
     public class DatabaseService : IDatabaseService
@@ -98,13 +108,7 @@ namespace Photobooth.Services
 
                 if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
                 {
-
                     Directory.CreateDirectory(directory);
-
-                }
-                else if (!string.IsNullOrEmpty(directory))
-                {
-
                 }
 
                 using var connection = new SqliteConnection(_connectionString);
@@ -118,8 +122,10 @@ namespace Photobooth.Services
                 if (tableExists != null)
                 {
                     // Database already initialized - check for and apply migrations
-
                     await ApplyMigrations(connection);
+
+                    // Update template pricing for any templates with $0 price
+                    await UpdateTemplatePricingAsync();
 
                     return DatabaseResult.SuccessResult();
                 }
@@ -130,7 +136,6 @@ namespace Photobooth.Services
                 if (!File.Exists(schemaPath))
                 {
                     var errorMsg = $"Database schema file not found at: {schemaPath}";
-
                     return DatabaseResult.ErrorResult(errorMsg);
                 }
 
@@ -211,7 +216,6 @@ namespace Photobooth.Services
                     LoggingService.Application.Information("Default settings created");
 
                     LoggingService.Application.Information("Database initialization completed successfully!");
-                    return DatabaseResult.SuccessResult();
                 }
                 catch (Exception ex)
                 {
@@ -223,12 +227,17 @@ namespace Photobooth.Services
                     LoggingService.Application.Error("Transaction rolled back");
                     throw;
                 }
+                
+                // Update template pricing for any templates with $0 price (runs for new databases)
+                await UpdateTemplatePricingAsync();
+                
+                return DatabaseResult.SuccessResult();
             }
             catch (Exception ex)
             {
                 var errorMsg = $"Database initialization failed: {ex.Message}";
-
-
+                LoggingService.Application.Error("Database initialization failed", ex,
+                    ("ErrorMessage", ex.Message));
                 return DatabaseResult.ErrorResult(errorMsg, ex);
             }
         }
@@ -441,6 +450,9 @@ namespace Photobooth.Services
                 foreach (var prop in properties)
                 {
                     if (prop.Name == "Id") continue; // Skip auto-increment ID
+                    
+                    // Skip navigation properties (complex objects that are not primitives, strings, enums, or DateTime)
+                    if (IsNavigationProperty(prop.PropertyType)) continue;
 
                     columns.Add(prop.Name);
                     parameters.Add($"@{prop.Name}");
@@ -462,6 +474,12 @@ namespace Photobooth.Services
 
                 var query = $"INSERT INTO {tableName} ({string.Join(", ", columns)}) VALUES ({string.Join(", ", parameters)}); SELECT last_insert_rowid();";
 
+                // Debug logging for Transaction insertions (minimal)
+                if (typeof(T) == typeof(Transaction))
+                {
+                    Console.WriteLine($"--- DATABASE DEBUG: Inserting Transaction with {parameters.Count} parameters ---");
+                }
+
                 using var connection = new SqliteConnection(_connectionString);
                 await connection.OpenAsync();
                 using var command = new SqliteCommand(query, connection);
@@ -472,10 +490,20 @@ namespace Photobooth.Services
                 }
 
                 var newId = Convert.ToInt32(await command.ExecuteScalarAsync());
+                
+                if (typeof(T) == typeof(Transaction))
+                {
+                    Console.WriteLine($"--- DATABASE DEBUG: Transaction inserted with ID: {newId} ---");
+                }
+                
                 return DatabaseResult<int>.SuccessResult(newId);
             }
             catch (Exception ex)
             {
+                if (typeof(T) == typeof(Transaction))
+                {
+                    Console.WriteLine($"--- DATABASE DEBUG: Transaction insertion failed: {ex.Message} ---");
+                }
                 return DatabaseResult<int>.ErrorResult($"Failed to insert {typeof(T).Name}: {ex.Message}", ex);
             }
         }
@@ -500,6 +528,9 @@ namespace Photobooth.Services
                         continue;
                     }
 
+                    // Skip navigation properties (complex objects that are not primitives, strings, enums, or DateTime)
+                    if (IsNavigationProperty(prop.PropertyType)) continue;
+
                     setParts.Add($"{prop.Name} = @{prop.Name}");
                     
                     if (value is Enum enumValue)
@@ -518,6 +549,13 @@ namespace Photobooth.Services
 
                 var query = $"UPDATE {tableName} SET {string.Join(", ", setParts)} WHERE Id = @Id";
 
+                // Debug logging for Transaction updates
+                if (typeof(T) == typeof(Transaction))
+                {
+                    Console.WriteLine($"--- DATABASE DEBUG: Updating Transaction with {setParts.Count} fields ---");
+                    Console.WriteLine($"Query: {query}");
+                }
+
                 using var connection = new SqliteConnection(_connectionString);
                 await connection.OpenAsync();
                 using var command = new SqliteCommand(query, connection);
@@ -530,10 +568,20 @@ namespace Photobooth.Services
                 }
 
                 await command.ExecuteNonQueryAsync();
+                
+                if (typeof(T) == typeof(Transaction))
+                {
+                    Console.WriteLine($"--- DATABASE DEBUG: Transaction update completed successfully ---");
+                }
+                
                 return DatabaseResult.SuccessResult();
             }
             catch (Exception ex)
             {
+                if (typeof(T) == typeof(Transaction))
+                {
+                    Console.WriteLine($"--- DATABASE DEBUG: Transaction update failed: {ex.Message} ---");
+                }
                 return DatabaseResult.ErrorResult($"Failed to update {typeof(T).Name}: {ex.Message}", ex);
             }
         }
@@ -825,17 +873,70 @@ namespace Photobooth.Services
             try
             {
                 var dateString = date.ToString("yyyy-MM-dd");
-                var query = "SELECT * FROM DailySalesSummary WHERE Date = @date";
+                Console.WriteLine($"--- SALES DEBUG: Getting daily sales for {dateString} ---");
+                
+                var query = @"
+                    SELECT 
+                        @date as Date,
+                        COALESCE(SUM(t.TotalPrice), 0) as TotalRevenue,
+                        COALESCE(COUNT(t.Id), 0) as TotalTransactions,
+                        COALESCE(SUM(CASE WHEN pc.Name = 'Strips' THEN 1 ELSE 0 END), 0) as StripSales,
+                        COALESCE(SUM(CASE WHEN pc.Name = '4x6' THEN 1 ELSE 0 END), 0) as Photo4x6Sales,
+                        COALESCE(SUM(CASE WHEN pc.Name = 'Smartphone' THEN 1 ELSE 0 END), 0) as SmartphonePrintSales,
+                        COALESCE(SUM(CASE WHEN t.PaymentMethod = 'Cash' THEN t.TotalPrice ELSE 0 END), 0) as CashPayments,
+                        COALESCE(SUM(CASE WHEN t.PaymentMethod = 'Credit' THEN t.TotalPrice ELSE 0 END), 0) as CreditPayments,
+                        COALESCE(SUM(CASE WHEN t.PaymentMethod = 'Free' THEN 1 ELSE 0 END), 0) as FreeTransactions,
+                        COALESCE(SUM(pj.PrintsUsed), 0) as PrintsUsed,
+                        datetime('now') as CreatedAt,
+                        datetime('now') as UpdatedAt
+                    FROM (SELECT @date as QueryDate) dates
+                    LEFT JOIN Transactions t ON DATE(t.CreatedAt) = @date AND t.PaymentStatus = 'Completed'
+                    LEFT JOIN Products p ON t.ProductId = p.Id
+                    LEFT JOIN ProductCategories pc ON p.CategoryId = pc.Id
+                    LEFT JOIN PrintJobs pj ON t.Id = pj.TransactionId
+                    GROUP BY dates.QueryDate";
 
+                // First, let's debug what transactions exist
+                var debugQuery = "SELECT Id, TransactionCode, CreatedAt, PaymentStatus, TotalPrice FROM Transactions ORDER BY CreatedAt DESC LIMIT 5";
                 using var connection = new SqliteConnection(_connectionString);
                 await connection.OpenAsync();
+                
+                using var debugCommand = new SqliteCommand(debugQuery, connection);
+                using var debugReader = await debugCommand.ExecuteReaderAsync();
+                Console.WriteLine($"--- SALES DEBUG: Recent transactions ---");
+                while (await debugReader.ReadAsync())
+                {
+                    Console.WriteLine($"ID: {debugReader["Id"]}, Code: {debugReader["TransactionCode"]}, CreatedAt: {debugReader["CreatedAt"]}, Status: {debugReader["PaymentStatus"]}, Amount: ${debugReader["TotalPrice"]}");
+                }
+                debugReader.Close();
+                
                 using var command = new SqliteCommand(query, connection);
                 command.Parameters.AddWithValue("@date", dateString);
+                Console.WriteLine($"--- SALES DEBUG: Executing query with date parameter: {dateString} ---");
                 using var reader = await command.ExecuteReaderAsync();
 
                 if (await reader.ReadAsync())
                 {
-                    var summary = MapReaderToEntity<DailySalesSummary>(reader);
+                    var totalRevenue = Convert.ToDecimal(reader["TotalRevenue"]);
+                    var totalTransactions = Convert.ToInt32(reader["TotalTransactions"]);
+                    
+                    Console.WriteLine($"--- SALES DEBUG: Query result - Revenue: ${totalRevenue}, Transactions: {totalTransactions} ---");
+                    
+                    var summary = new DailySalesSummary
+                    {
+                        Date = reader["Date"].ToString() ?? dateString,
+                        TotalRevenue = totalRevenue,
+                        TotalTransactions = totalTransactions,
+                        StripSales = Convert.ToInt32(reader["StripSales"]),
+                        Photo4x6Sales = Convert.ToInt32(reader["Photo4x6Sales"]),
+                        SmartphonePrintSales = Convert.ToInt32(reader["SmartphonePrintSales"]),
+                        CashPayments = Convert.ToDecimal(reader["CashPayments"]),
+                        CreditPayments = Convert.ToDecimal(reader["CreditPayments"]),
+                        FreeTransactions = Convert.ToInt32(reader["FreeTransactions"]),
+                        PrintsUsed = Convert.ToInt32(reader["PrintsUsed"]),
+                        CreatedAt = DateTime.Parse(reader["CreatedAt"].ToString() ?? DateTime.Now.ToString()),
+                        UpdatedAt = DateTime.Parse(reader["UpdatedAt"].ToString() ?? DateTime.Now.ToString())
+                    };
                     return DatabaseResult<DailySalesSummary?>.SuccessResult(summary);
                 }
 
@@ -1218,6 +1319,12 @@ namespace Photobooth.Services
         {
             try
             {
+                // Set default price based on template type if no price is specified
+                if (template.Price == 0)
+                {
+                    template.Price = GetDefaultTemplatePrice(template.TemplateType);
+                }
+
                 var query = @"
                     INSERT INTO Templates (Name, CategoryId, LayoutId,
                                          FolderPath, TemplatePath, PreviewPath,
@@ -2392,12 +2499,15 @@ namespace Photobooth.Services
             }
         }
 
-        public async Task<DatabaseResult> UpdateProductAsync(int productId, bool? isActive = null, decimal? price = null)
+        public async Task<DatabaseResult> UpdateProductAsync(int productId, bool? isActive = null, decimal? price = null, 
+            bool? useCustomExtraCopyPricing = null, decimal? extraCopy1Price = null, decimal? extraCopy2Price = null, 
+            decimal? extraCopy4BasePrice = null, decimal? extraCopyAdditionalPrice = null)
         {
             // Validate that at least one parameter is provided
-            if (!isActive.HasValue && !price.HasValue)
+            if (!isActive.HasValue && !price.HasValue && !useCustomExtraCopyPricing.HasValue && !extraCopy1Price.HasValue && 
+                !extraCopy2Price.HasValue && !extraCopy4BasePrice.HasValue && !extraCopyAdditionalPrice.HasValue)
             {
-                return DatabaseResult.ErrorResult("At least one field (isActive or price) must be provided for update");
+                return DatabaseResult.ErrorResult("At least one field must be provided for update");
             }
 
             try
@@ -2426,6 +2536,41 @@ namespace Photobooth.Services
                         setParts.Add("Price = @price");
                         parameters.Add(("@price", price.Value));
                         logMessages.Add($"price = ${price.Value:F2}");
+                    }
+
+                    if (useCustomExtraCopyPricing.HasValue)
+                    {
+                        setParts.Add("UseCustomExtraCopyPricing = @useCustomExtraCopyPricing");
+                        parameters.Add(("@useCustomExtraCopyPricing", useCustomExtraCopyPricing.Value));
+                        logMessages.Add($"useCustomExtraCopyPricing = {useCustomExtraCopyPricing.Value}");
+                    }
+
+                    if (extraCopy1Price.HasValue)
+                    {
+                        setParts.Add("ExtraCopy1Price = @extraCopy1Price");
+                        parameters.Add(("@extraCopy1Price", extraCopy1Price.Value));
+                        logMessages.Add($"extraCopy1Price = ${extraCopy1Price.Value:F2}");
+                    }
+
+                    if (extraCopy2Price.HasValue)
+                    {
+                        setParts.Add("ExtraCopy2Price = @extraCopy2Price");
+                        parameters.Add(("@extraCopy2Price", extraCopy2Price.Value));
+                        logMessages.Add($"extraCopy2Price = ${extraCopy2Price.Value:F2}");
+                    }
+
+                    if (extraCopy4BasePrice.HasValue)
+                    {
+                        setParts.Add("ExtraCopy4BasePrice = @extraCopy4BasePrice");
+                        parameters.Add(("@extraCopy4BasePrice", extraCopy4BasePrice.Value));
+                        logMessages.Add($"extraCopy4BasePrice = ${extraCopy4BasePrice.Value:F2}");
+                    }
+
+                    if (extraCopyAdditionalPrice.HasValue)
+                    {
+                        setParts.Add("ExtraCopyAdditionalPrice = @extraCopyAdditionalPrice");
+                        parameters.Add(("@extraCopyAdditionalPrice", extraCopyAdditionalPrice.Value));
+                        logMessages.Add($"extraCopyAdditionalPrice = ${extraCopyAdditionalPrice.Value:F2}");
                     }
 
                     setParts.Add("UpdatedAt = @updatedAt");
@@ -2687,6 +2832,149 @@ namespace Photobooth.Services
             }
         }
 
+        /// <summary>
+        /// Insert a new credit transaction record
+        /// </summary>
+        public async Task<DatabaseResult<int>> InsertCreditTransactionAsync(CreditTransaction transaction)
+        {
+            try
+            {
+                var query = @"
+                    INSERT INTO CreditTransactions (Amount, TransactionType, Description, BalanceAfter, CreatedAt, CreatedBy, RelatedTransactionId)
+                    VALUES (@amount, @transactionType, @description, @balanceAfter, @createdAt, @createdBy, @relatedTransactionId);
+                    SELECT last_insert_rowid();";
+
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+                using var command = new SqliteCommand(query, connection);
+                
+                command.Parameters.AddWithValue("@amount", transaction.Amount);
+                command.Parameters.AddWithValue("@transactionType", transaction.TransactionType.ToString());
+                command.Parameters.AddWithValue("@description", transaction.Description);
+                command.Parameters.AddWithValue("@balanceAfter", transaction.BalanceAfter);
+                command.Parameters.AddWithValue("@createdAt", transaction.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss"));
+                command.Parameters.AddWithValue("@createdBy", (object?)transaction.CreatedBy ?? DBNull.Value);
+                command.Parameters.AddWithValue("@relatedTransactionId", (object?)transaction.RelatedTransactionId ?? DBNull.Value);
+
+                var newId = Convert.ToInt32(await command.ExecuteScalarAsync());
+                return DatabaseResult<int>.SuccessResult(newId);
+            }
+            catch (Exception ex)
+            {
+                return DatabaseResult<int>.ErrorResult($"Failed to insert credit transaction: {ex.Message}", ex);
+            }
+        }
+
+        /// <summary>
+        /// Get credit transactions ordered by most recent first
+        /// </summary>
+        public async Task<DatabaseResult<List<CreditTransaction>>> GetCreditTransactionsAsync(int limit = 50)
+        {
+            try
+            {
+                var query = @"
+                    SELECT * FROM CreditTransactions 
+                    ORDER BY CreatedAt DESC 
+                    LIMIT @limit";
+
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+                using var command = new SqliteCommand(query, connection);
+                command.Parameters.AddWithValue("@limit", limit);
+                using var reader = await command.ExecuteReaderAsync();
+
+                var transactions = new List<CreditTransaction>();
+                while (await reader.ReadAsync())
+                {
+                    var transaction = new CreditTransaction
+                    {
+                        Id = reader.GetInt32("Id"),
+                        Amount = reader.GetDecimal("Amount"),
+                        TransactionType = Enum.Parse<CreditTransactionType>(reader.GetString("TransactionType")),
+                        Description = reader.GetString("Description"),
+                        BalanceAfter = reader.GetDecimal("BalanceAfter"),
+                        CreatedAt = DateTime.Parse(reader.GetString("CreatedAt")),
+                        CreatedBy = reader.IsDBNull("CreatedBy") ? null : reader.GetString("CreatedBy"),
+                        RelatedTransactionId = reader.IsDBNull("RelatedTransactionId") ? null : reader.GetInt32("RelatedTransactionId")
+                    };
+                    transactions.Add(transaction);
+                }
+
+                return DatabaseResult<List<CreditTransaction>>.SuccessResult(transactions);
+            }
+            catch (Exception ex)
+            {
+                return DatabaseResult<List<CreditTransaction>>.ErrorResult($"Failed to get credit transactions: {ex.Message}", ex);
+            }
+        }
+
+        /// <summary>
+        /// Delete old credit transactions, keeping only the most recent ones
+        /// </summary>
+        public async Task<DatabaseResult> DeleteOldCreditTransactionsAsync(int keepCount = 100)
+        {
+            try
+            {
+                var query = @"
+                    DELETE FROM CreditTransactions 
+                    WHERE Id NOT IN (
+                        SELECT Id FROM CreditTransactions 
+                        ORDER BY CreatedAt DESC 
+                        LIMIT @keepCount
+                    )";
+
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+                using var command = new SqliteCommand(query, connection);
+                command.Parameters.AddWithValue("@keepCount", keepCount);
+                
+                var deletedCount = await command.ExecuteNonQueryAsync();
+                
+                LoggingService.Application.Information("Old credit transactions cleaned up",
+                    ("DeletedCount", deletedCount),
+                    ("KeepCount", keepCount));
+
+                return DatabaseResult.SuccessResult();
+            }
+            catch (Exception ex)
+            {
+                return DatabaseResult.ErrorResult($"Failed to cleanup old credit transactions: {ex.Message}", ex);
+            }
+        }
+
+        /// <summary>
+        /// Update template pricing for existing templates that have $0 price
+        /// </summary>
+        public async Task<DatabaseResult> UpdateTemplatePricingAsync()
+        {
+            try
+            {
+                var query = @"
+                    UPDATE Templates 
+                    SET Price = CASE 
+                        WHEN TemplateType = 0 THEN 5.00  -- Strip = $5.00
+                        WHEN TemplateType = 1 THEN 3.00  -- Photo4x6 = $3.00
+                        ELSE 5.00  -- Default to strip price
+                    END
+                    WHERE Price = 0";
+
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+                using var command = new SqliteCommand(query, connection);
+                
+                var updatedCount = await command.ExecuteNonQueryAsync();
+                
+                LoggingService.Application.Information("Template pricing updated",
+                    ("UpdatedTemplates", updatedCount));
+
+                return DatabaseResult.SuccessResult();
+            }
+            catch (Exception ex)
+            {
+                return DatabaseResult.ErrorResult($"Failed to update template pricing: {ex.Message}", ex);
+            }
+        }
+
         public async Task<DatabaseResult> DeleteAdminUserAsync(string userId, string? deletedBy = null)
         {
             try
@@ -2784,6 +3072,29 @@ namespace Photobooth.Services
 
         // Helper Methods
 
+        /// <summary>
+        /// Determines if a property type is a navigation property that should be skipped during database insertion
+        /// </summary>
+        private bool IsNavigationProperty(Type propertyType)
+        {
+            // Handle nullable types
+            var underlyingType = Nullable.GetUnderlyingType(propertyType) ?? propertyType;
+            
+            // Skip these basic types that ARE database columns
+            if (underlyingType.IsPrimitive ||
+                underlyingType == typeof(string) ||
+                underlyingType == typeof(decimal) ||
+                underlyingType == typeof(DateTime) ||
+                underlyingType == typeof(Guid) ||
+                underlyingType.IsEnum)
+            {
+                return false;
+            }
+            
+            // Everything else is likely a navigation property (complex objects, lists, etc.)
+            return true;
+        }
+
         private string GetTableName<T>()
         {
             var typeName = typeof(T).Name;
@@ -2798,6 +3109,7 @@ namespace Photobooth.Services
                 nameof(Transaction) => "Transactions",
                 nameof(TransactionPhoto) => "TransactionPhotos",
                 nameof(PrintJob) => "PrintJobs",
+                nameof(CreditTransaction) => "CreditTransactions",
                 nameof(Setting) => "Settings",
                 nameof(BusinessInfo) => "BusinessInfo",
                 nameof(HardwareStatusModel) => "HardwareStatus",
@@ -2880,6 +3192,19 @@ namespace Photobooth.Services
             if (type == typeof(decimal) || type == typeof(decimal?))
                 return "Decimal";
             return "String";
+        }
+
+        /// <summary>
+        /// Get default price for template based on template type
+        /// </summary>
+        private decimal GetDefaultTemplatePrice(TemplateType templateType)
+        {
+            return templateType switch
+            {
+                TemplateType.Strip => 5.00m,        // Strip templates = $5.00
+                TemplateType.Photo4x6 => 3.00m,     // 4x6 templates = $3.00
+                _ => 5.00m  // Default to strip price for unknown types
+            };
         }
 
         private string HashPassword(string password)
@@ -3183,6 +3508,7 @@ It contains no important application files.
                 {
                     new { Id = Guid.NewGuid().ToString(), Category = "System", Key = "Volume", Value = "75", DataType = "Integer", Description = "Audio volume level (0-100)" },
                     new { Id = Guid.NewGuid().ToString(), Category = "System", Key = "LightsEnabled", Value = "true", DataType = "Boolean", Description = "Enable camera flash lights" },
+                    new { Id = Guid.NewGuid().ToString(), Category = "System", Key = "CurrentCredits", Value = "0", DataType = "Decimal", Description = "Current credit balance in dollars" },
                     new { Id = Guid.NewGuid().ToString(), Category = "Payment", Key = "PulsesPerCredit", Value = "1", DataType = "Integer", Description = "Arduino pulses required per $1 credit" },
                     new { Id = Guid.NewGuid().ToString(), Category = "System", Key = "Mode", Value = "Coin", DataType = "String", Description = "Operating mode: Coin or Free" },
                     new { Id = Guid.NewGuid().ToString(), Category = "RFID", Key = "Enabled", Value = "true", DataType = "Boolean", Description = "Enable RFID roll detection" },

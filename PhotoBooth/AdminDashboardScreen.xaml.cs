@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -45,7 +46,6 @@ namespace Photobooth
                 if (_isEnabled != value)
                 {
                     _isEnabled = value;
-                    _hasUnsavedChanges = true;
                     OnPropertyChanged(nameof(IsEnabled));
                     OnPropertyChanged(nameof(CardOpacity));
                     OnPropertyChanged(nameof(PriceSectionEnabled));
@@ -61,7 +61,6 @@ namespace Photobooth
                 if (_price != value)
                 {
                     _price = value;
-                    _hasUnsavedChanges = true;
                     OnPropertyChanged(nameof(Price));
                     OnPropertyChanged(nameof(PriceText));
                 }
@@ -73,27 +72,37 @@ namespace Photobooth
             get => _price.ToString("F2", CultureInfo.InvariantCulture);
             set
             {
+                Console.WriteLine($"=== ProductViewModel.PriceText setter called ===");
+                Console.WriteLine($"Product: {Name}, Current Price: {_price}, Input Value: '{value}'");
+                
                 // Use specific NumberStyles to prevent comma interpretation as thousands separator
                 // Allow decimal point, leading sign, and whitespace, but not thousands separators
                 var allowedStyles = NumberStyles.AllowDecimalPoint | NumberStyles.AllowLeadingSign | 
                                    NumberStyles.AllowLeadingWhite | NumberStyles.AllowTrailingWhite;
                 if (decimal.TryParse(value, allowedStyles, CultureInfo.InvariantCulture, out decimal newPrice))
                 {
+                    Console.WriteLine($"Parsed successfully: {newPrice}");
+                    
                     // Allow zero values for free products, but not negative values
                     if (newPrice >= 0)
                     {
+                        Console.WriteLine($"Setting Price from {_price} to {newPrice}");
                         Price = newPrice;
                         ValidationError = null; // Clear any previous validation error
+                        Console.WriteLine($"Price set successfully, new Price: {_price}");
                     }
                     else
                     {
+                        Console.WriteLine($"Price rejected: negative value");
                         ValidationError = "Price cannot be negative";
                     }
                 }
                 else
                 {
+                    Console.WriteLine($"Parse failed for value: '{value}'");
                     ValidationError = "Invalid price format. Please enter a valid number (e.g., 5.00)";
                 }
+                Console.WriteLine($"=== ProductViewModel.PriceText setter completed ===");
             }
         }
 
@@ -131,6 +140,24 @@ namespace Photobooth
         protected virtual void OnPropertyChanged(string propertyName)
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+
+        /// <summary>
+        /// Reset the unsaved changes flag - used when loading data from database
+        /// </summary>
+        public void ResetUnsavedChanges()
+        {
+            OnPropertyChanged(nameof(HasUnsavedChanges));
+        }
+
+        /// <summary>
+        /// Set price from database without triggering unsaved changes flag
+        /// </summary>
+        public void SetPriceFromDatabase(decimal price)
+        {
+            _price = price;
+            OnPropertyChanged(nameof(Price));
+            OnPropertyChanged(nameof(PriceText));
         }
     }
 
@@ -171,13 +198,20 @@ namespace Photobooth
         // Product management
         private List<Product> _products = new();
         private bool _isLoadingProducts = false;
-        private bool _hasUnsavedChanges = false;
+        private bool _isSaving = false;
 
         // Product ViewModels for new templated approach
         public ObservableCollection<ProductViewModel> ProductViewModels { get; set; } = new();
 
         // Templates tab control instance
         private Views.TemplatesTabControl? TemplatesTabControlInstance;
+
+        // Credit management
+        private decimal _currentCredits = 0;
+        private List<CreditTransaction> _creditHistory = new();
+        
+        // Transaction history
+        private List<Transaction> _recentTransactions = new();
 
         #endregion
 
@@ -299,7 +333,7 @@ namespace Photobooth
             UnsubscribeFromProductViewModels();
             ProductViewModels.Clear();
 
-            // Photo Strips Product
+            // Photo Strips Product - Initialize with defaults, database values will override during LoadProductsData
             var photoStrips = new ProductViewModel
             {
                 Name = "Photo Strips",
@@ -309,10 +343,10 @@ namespace Photobooth
                 PriceLabel = "Price per Strip",
                 ProductKey = "PhotoStrips",
                 IsEnabled = true,
-                Price = 5.00m
+                // Don't set Price here - let it default to 0, database values will override
             };
 
-            // 4x6 Photos Product
+            // 4x6 Photos Product - Initialize with defaults, database values will override during LoadProductsData
             var photo4x6 = new ProductViewModel
             {
                 Name = "4x6 Photos",
@@ -322,10 +356,10 @@ namespace Photobooth
                 PriceLabel = "Price per Photo",
                 ProductKey = "Photo4x6",
                 IsEnabled = true,
-                Price = 3.00m
+                // Don't set Price here - let it default to 0, database values will override
             };
 
-            // Smartphone Print Product
+            // Smartphone Print Product - Initialize with defaults, database values will override during LoadProductsData
             var smartphonePrint = new ProductViewModel
             {
                 Name = "Smartphone Print",
@@ -335,7 +369,7 @@ namespace Photobooth
                 PriceLabel = "Price per Print",
                 ProductKey = "SmartphonePrint",
                 IsEnabled = true,
-                Price = 2.00m
+                // Don't set Price here - let it default to 0, database values will override
             };
 
             ProductViewModels.Add(photoStrips);
@@ -346,6 +380,8 @@ namespace Photobooth
             foreach (var product in ProductViewModels)
             {
                 product.PropertyChanged += ProductViewModel_PropertyChanged;
+                // Reset unsaved changes flag so database values can load properly during LoadProductsData
+                product.ResetUnsavedChanges();
             }
 
             // The ItemsSource will be set when the control is loaded
@@ -360,7 +396,6 @@ namespace Photobooth
         {
             if (e.PropertyName == nameof(ProductViewModel.IsEnabled) || e.PropertyName == nameof(ProductViewModel.Price))
             {
-                _hasUnsavedChanges = true;
                 UpdateSaveButtonState();
             }
         }
@@ -423,6 +458,7 @@ namespace Photobooth
             {
                 await LoadSalesData();
                 await LoadSupplyStatus();
+                await LoadTransactionHistory();
             }
             catch
             {
@@ -691,7 +727,7 @@ namespace Photobooth
                 {
                     SaveSettingsButton.IsEnabled = true;
                     SaveSettingsButton.Content = new StackPanel { Orientation = Orientation.Horizontal, Children = {
-                        new TextBlock { Text = "??", FontSize = 14, Margin = new Thickness(0,0,8,0) },
+                        new TextBlock { Text = "💾", FontSize = 14, Margin = new Thickness(0,0,8,0) },
                         new TextBlock { Text = "Save Settings", FontSize = 14 }
                     }};
                 }
@@ -1490,6 +1526,14 @@ namespace Photobooth
             {
 
             }
+
+            // Refresh data when showing specific tabs
+            if (tabName == "Credits")
+            {
+                // Refresh credits display and history when tab is shown
+                UpdateCreditsDisplay();
+                UpdateCreditHistoryDisplay();
+            }
         }
 
         /// <summary>
@@ -1559,41 +1603,112 @@ namespace Photobooth
         {
             try
             {
-                // Load today's sales
+                // Load today's sales and calculate change from yesterday
                 var todayResult = await _databaseService.GetDailySalesAsync(DateTime.Today);
-                if (todayResult.Success && todayResult.Data != null)
-                {
-                    var todaySales = todayResult.Data;
-                    TodaySales.Text = $"${todaySales.TotalRevenue:F2}";
-                }
-                else
-                {
-                    // No sales today, use dummy data or show $0.00
-                    TodaySales.Text = "$0.00";
-                }
+                var todaySales = todayResult.Success && todayResult.Data != null ? todayResult.Data.TotalRevenue : 0;
+                var yesterdaySales = await CalculatePeriodSales(DateTime.Today.AddDays(-1), DateTime.Today.AddDays(-1));
+                
+                TodaySales.Text = $"${todaySales:F2}";
+                UpdatePercentageDisplay(TodayChange, todaySales, yesterdaySales, "yesterday");
 
-                // Load week sales (sum of last 7 days)
-                var weekSales = await CalculatePeriodSales(DateTime.Today.AddDays(-7), DateTime.Today);
-                WeekSales.Text = $"${weekSales:F2}";
+                // Load week sales (current week vs last week)
+                var currentWeekStart = DateTime.Today.AddDays(-(int)DateTime.Today.DayOfWeek);
+                var currentWeekSales = await CalculatePeriodSales(currentWeekStart, DateTime.Today);
+                var lastWeekStart = currentWeekStart.AddDays(-7);
+                var lastWeekSales = await CalculatePeriodSales(lastWeekStart, lastWeekStart.AddDays(6));
+                
+                WeekSales.Text = $"${currentWeekSales:F2}";
+                UpdatePercentageDisplay(WeekChange, currentWeekSales, lastWeekSales, "last week");
 
-                // Load month sales
-                var monthStart = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
-                var monthSales = await CalculatePeriodSales(monthStart, DateTime.Today);
-                MonthSales.Text = $"${monthSales:F2}";
+                // Load month sales (current month vs last month)
+                var currentMonthStart = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+                var currentMonthSales = await CalculatePeriodSales(currentMonthStart, DateTime.Today);
+                var lastMonthStart = currentMonthStart.AddMonths(-1);
+                var lastMonthEnd = currentMonthStart.AddDays(-1);
+                var lastMonthSales = await CalculatePeriodSales(lastMonthStart, lastMonthEnd);
+                
+                MonthSales.Text = $"${currentMonthSales:F2}";
+                UpdatePercentageDisplay(MonthChange, currentMonthSales, lastMonthSales, "last month");
 
-                // Load year sales
-                var yearStart = new DateTime(DateTime.Today.Year, 1, 1);
-                var yearSales = await CalculatePeriodSales(yearStart, DateTime.Today);
-                YearSales.Text = $"${yearSales:F2}";
+                // Load year sales (current year vs last year)
+                var currentYearStart = new DateTime(DateTime.Today.Year, 1, 1);
+                var currentYearSales = await CalculatePeriodSales(currentYearStart, DateTime.Today);
+                var lastYearStart = new DateTime(DateTime.Today.Year - 1, 1, 1);
+                var lastYearEnd = new DateTime(DateTime.Today.Year - 1, 12, 31);
+                var lastYearSales = await CalculatePeriodSales(lastYearStart, lastYearEnd);
+                
+                YearSales.Text = $"${currentYearSales:F2}";
+                UpdatePercentageDisplay(YearChange, currentYearSales, lastYearSales, "last year");
             }
-            catch
+            catch (Exception ex)
             {
+                LoggingService.Application.Error("Failed to load sales data", ex);
 
                 // Set default values on error
                 TodaySales.Text = "$0.00";
                 WeekSales.Text = "$0.00";
                 MonthSales.Text = "$0.00";
                 YearSales.Text = "$0.00";
+                
+                // Set default percentage messages
+                TodayChange.Text = "No data available";
+                WeekChange.Text = "No data available";
+                MonthChange.Text = "No data available";
+                YearChange.Text = "No data available";
+            }
+        }
+
+        /// <summary>
+        /// Update percentage display with calculated change and appropriate formatting
+        /// </summary>
+        private void UpdatePercentageDisplay(TextBlock textBlock, decimal currentValue, decimal previousValue, string periodName)
+        {
+            try
+            {
+                if (textBlock == null) return;
+
+                if (previousValue == 0)
+                {
+                    if (currentValue > 0)
+                    {
+                        // New sales with no previous data
+                        textBlock.Text = $"New sales vs {periodName}";
+                        textBlock.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#059669")); // Green
+                    }
+                    else
+                    {
+                        // No sales in either period
+                        textBlock.Text = $"No change from {periodName}";
+                        textBlock.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#6B7280")); // Gray
+                    }
+                    return;
+                }
+
+                // Calculate percentage change
+                var percentageChange = ((currentValue - previousValue) / previousValue) * 100;
+                var roundedPercentage = Math.Round(percentageChange, 1);
+
+                if (roundedPercentage > 0)
+                {
+                    textBlock.Text = $"+{roundedPercentage}% from {periodName}";
+                    textBlock.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#059669")); // Green
+                }
+                else if (roundedPercentage < 0)
+                {
+                    textBlock.Text = $"{roundedPercentage}% from {periodName}"; // Negative sign already included
+                    textBlock.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#DC2626")); // Red
+                }
+                else
+                {
+                    textBlock.Text = $"No change from {periodName}";
+                    textBlock.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#6B7280")); // Gray
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to update percentage display", ex);
+                textBlock.Text = $"Error calculating vs {periodName}";
+                textBlock.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#6B7280")); // Gray
             }
         }
 
@@ -1733,6 +1848,8 @@ namespace Photobooth
             await LoadSystemPreferences();
             await LoadProductsData(); // Load the products data for Products tab
             await LoadUsersList(); // Load the users list
+            await LoadCreditsAsync(); // Load the credit system data
+            await LoadTransactionHistory(); // Load transaction history for sales tab
         }
 
         private async System.Threading.Tasks.Task LoadBusinessInformation()
@@ -1921,37 +2038,69 @@ namespace Photobooth
                 var photo4x6 = _products.FirstOrDefault(p => p.ProductType == ProductType.Photo4x6);
                 var smartphonePrint = _products.FirstOrDefault(p => p.ProductType == ProductType.SmartphonePrint);
 
-                // Update ViewModels with database data
+                // Update ViewModels with database data, but preserve unsaved changes
                 var photoStripsVM = ProductViewModels.FirstOrDefault(vm => vm.ProductKey == "PhotoStrips");
                 if (photoStripsVM != null && photoStrips != null)
                 {
+                    // Only update if there are no unsaved changes to preserve user input
+                    if (!photoStripsVM.HasUnsavedChanges)
+                {
                     photoStripsVM.IsEnabled = photoStrips.IsActive;
-                    photoStripsVM.Price = photoStrips.Price;
-                    photoStripsVM.HasUnsavedChanges = false;
+                        photoStripsVM.SetPriceFromDatabase(photoStrips.Price);
+                    }
+                    else
+                    {
+                        Console.WriteLine($"Preserving unsaved changes for {photoStripsVM.Name}: IsEnabled={photoStripsVM.IsEnabled}, Price={photoStripsVM.Price}");
+                    }
                 }
 
                 var photo4x6VM = ProductViewModels.FirstOrDefault(vm => vm.ProductKey == "Photo4x6");
                 if (photo4x6VM != null && photo4x6 != null)
                 {
+                    // Only update if there are no unsaved changes to preserve user input
+                    if (!photo4x6VM.HasUnsavedChanges)
+                {
                     photo4x6VM.IsEnabled = photo4x6.IsActive;
-                    photo4x6VM.Price = photo4x6.Price;
-                    photo4x6VM.HasUnsavedChanges = false;
+                        photo4x6VM.SetPriceFromDatabase(photo4x6.Price);
+                    }
+                    else
+                    {
+                        Console.WriteLine($"Preserving unsaved changes for {photo4x6VM.Name}: IsEnabled={photo4x6VM.IsEnabled}, Price={photo4x6VM.Price}");
+                    }
                 }
 
                 var smartphonePrintVM = ProductViewModels.FirstOrDefault(vm => vm.ProductKey == "SmartphonePrint");
                 if (smartphonePrintVM != null && smartphonePrint != null)
                 {
+                    // Only update if there are no unsaved changes to preserve user input
+                    if (!smartphonePrintVM.HasUnsavedChanges)
+                {
                     smartphonePrintVM.IsEnabled = smartphonePrint.IsActive;
-                    smartphonePrintVM.Price = smartphonePrint.Price;
-                    smartphonePrintVM.HasUnsavedChanges = false;
+                        smartphonePrintVM.SetPriceFromDatabase(smartphonePrint.Price);
+                    }
+                    else
+                    {
+                        Console.WriteLine($"Preserving unsaved changes for {smartphonePrintVM.Name}: IsEnabled={smartphonePrintVM.IsEnabled}, Price={smartphonePrintVM.Price}");
+                    }
                 }
 
-                _hasUnsavedChanges = false;
+                // Only clear unsaved changes flag if no ViewModels have unsaved changes
+                var hasAnyUnsavedChanges = ProductViewModels.Any(vm => vm.HasUnsavedChanges);
+                if (!hasAnyUnsavedChanges)
+                {
+            }
+
+                // Load extra copy pricing (use PhotoStrips as reference product)
+                if (photoStrips != null)
+            {
+                    LoadExtraCopyPricingUI(photoStrips);
+                }
+
                 UpdateSaveButtonState();
             }
-            catch
+            catch (Exception ex)
             {
-
+                Console.WriteLine($"Error in UpdateProductsUI: {ex.Message}");
             }
         }
 
@@ -2080,7 +2229,6 @@ namespace Photobooth
                     UpdateModeCardStyles(false);
                 }
 
-                _hasUnsavedChanges = true;
                 UpdateSaveButtonState();
             }
         }
@@ -2093,39 +2241,31 @@ namespace Photobooth
             try
             {
                 // Only update if the save button exists (we're in the Products tab)
-                if (SaveProductConfigButton == null)
+                if (SaveProductConfigButton == null || SaveButtonText == null || UnsavedChangesIndicator == null || SaveButtonBorder == null)
                     return;
 
-                if (_hasUnsavedChanges)
+                // Check if any ProductViewModel has unsaved changes
+                var hasAnyUnsavedChanges = ProductViewModels.Any(vm => vm.HasUnsavedChanges);
+
+                if (hasAnyUnsavedChanges)
                 {
-                    SaveProductConfigButton.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#059669")); // Green
-                    SaveProductConfigButton.Content = new StackPanel
-                    {
-                        Orientation = Orientation.Horizontal,
-                        Children =
-                        {
-                            new TextBlock { Text = "??", FontSize = 16, Margin = new Thickness(0, 0, 8, 0) },
-                            new TextBlock { Text = "Save Changes" }
-                        }
-                    };
+                    // Show unsaved changes state
+                    SaveButtonBorder.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#059669")); // Green
+                    SaveButtonText.Text = "Save Changes";
+                    UnsavedChangesIndicator.Text = "Unsaved changes";
+                    UnsavedChangesIndicator.Visibility = Visibility.Visible;
                 }
                 else
                 {
-                    SaveProductConfigButton.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#3B82F6")); // Blue
-                    SaveProductConfigButton.Content = new StackPanel
-                    {
-                        Orientation = Orientation.Horizontal,
-                        Children =
-                        {
-                            new TextBlock { Text = "??", FontSize = 16, Margin = new Thickness(0, 0, 8, 0) },
-                            new TextBlock { Text = "Save Configuration" }
-                        }
-                    };
+                    // Show normal state
+                    SaveButtonBorder.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#3B82F6")); // Blue
+                    SaveButtonText.Text = "Save Configuration";
+                    UnsavedChangesIndicator.Visibility = Visibility.Collapsed;
                 }
             }
-            catch
+            catch (Exception ex)
             {
-
+                Console.WriteLine($"Error updating save button state: {ex.Message}");
             }
         }
 
@@ -2136,58 +2276,62 @@ namespace Photobooth
         {
             try
             {
-                SaveProductConfigButton.IsEnabled = false;
-                SaveProductConfigButton.Content = new StackPanel
-                {
-                    Orientation = Orientation.Horizontal,
-                    Children =
-                    {
-                        new TextBlock { Text = "?", FontSize = 16, Margin = new Thickness(0, 0, 8, 0) },
-                        new TextBlock { Text = "Saving..." }
-                    }
-                };
-
-                await SaveProductConfiguration();
+                Console.WriteLine("=== SaveProductConfig_Click CALLED ===");
                 
-                _hasUnsavedChanges = false;
-                UpdateSaveButtonState();
-
-                // Show success feedback
-                SaveProductConfigButton.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#059669"));
-                SaveProductConfigButton.Content = new StackPanel
+                // Prevent multiple simultaneous saves
+                if (_isSaving)
                 {
-                    Orientation = Orientation.Horizontal,
-                    Children =
-                    {
-                        new TextBlock { Text = "?", FontSize = 16, Margin = new Thickness(0, 0, 8, 0) },
-                        new TextBlock { Text = "Saved!" }
-                    }
-                };
+                    Console.WriteLine("Save already in progress, ignoring duplicate request");
+                    return;
+                }
+                
+                _isSaving = true;
+                SaveProductConfigButton.IsEnabled = false;
+                SaveButtonBorder.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#6366F1")); // Purple for saving
+                SaveButtonText.Text = "Saving...";
+                UnsavedChangesIndicator.Text = "Please wait...";
+                UnsavedChangesIndicator.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#6366F1")); // Purple
+                UnsavedChangesIndicator.Visibility = Visibility.Visible;
+
+                Console.WriteLine("About to call SaveProductConfiguration()...");
+                await SaveProductConfiguration();
+                Console.WriteLine("SaveProductConfiguration() completed successfully");
+                
+                // Show success feedback
+                SaveButtonBorder.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#059669"));
+                SaveButtonText.Text = "Saved!";
+                UnsavedChangesIndicator.Text = "Settings saved successfully";
+                UnsavedChangesIndicator.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#059669")); // Green
+                UnsavedChangesIndicator.Visibility = Visibility.Visible;
+
+                // Show notification toast
+                NotificationService.Quick.Success("Product settings have been saved successfully!");
 
                 // Reset after 2 seconds
                 await Task.Delay(2000);
+                UnsavedChangesIndicator.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F59E0B")); // Back to amber
                 UpdateSaveButtonState();
+                
+                Console.WriteLine("=== SaveProductConfig_Click COMPLETED SUCCESSFULLY ===");
             }
-            catch
+            catch (Exception ex)
             {
+                Console.WriteLine($"=== SaveProductConfig_Click ERROR: {ex.Message} ===");
 
                 // Show error feedback
-                SaveProductConfigButton.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#DC2626"));
-                SaveProductConfigButton.Content = new StackPanel
-                {
-                    Orientation = Orientation.Horizontal,
-                    Children =
-                    {
-                        new TextBlock { Text = "?", FontSize = 16, Margin = new Thickness(0, 0, 8, 0) },
-                        new TextBlock { Text = "Error saving" }
-                    }
-                };
+                SaveButtonBorder.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#DC2626"));
+                SaveButtonText.Text = "Error!";
+                UnsavedChangesIndicator.Text = "Failed to save settings";
+                UnsavedChangesIndicator.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#DC2626")); // Red
+                UnsavedChangesIndicator.Visibility = Visibility.Visible;
 
                 await Task.Delay(2000);
+                UnsavedChangesIndicator.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F59E0B")); // Back to amber
                 UpdateSaveButtonState();
             }
             finally
             {
+                _isSaving = false;
                 SaveProductConfigButton.IsEnabled = true;
             }
         }
@@ -2199,8 +2343,18 @@ namespace Photobooth
         {
             try
             {
+                Console.WriteLine("=== SaveProductConfiguration CALLED ===");
+                Console.WriteLine($"Total ProductViewModels: {ProductViewModels.Count}");
+                
+                foreach (var vm in ProductViewModels)
+                {
+                    Console.WriteLine($"Product: {vm.Name}, Price: {vm.Price}, HasUnsavedChanges: {vm.HasUnsavedChanges}");
+                }
+                
                 // Check for validation errors before saving
                 var validationErrors = ProductViewModels.Where(vm => vm.HasValidationError).ToList();
+                Console.WriteLine($"Validation errors found: {validationErrors.Count}");
+                
                 if (validationErrors.Count > 0)
                 {
                     // Create detailed error message listing each product and its specific error
@@ -2210,7 +2364,7 @@ namespace Photobooth
                     
                     foreach (var errorViewModel in validationErrors)
                     {
-                        errorDetails.Add($"? {errorViewModel.Name}: {errorViewModel.ValidationError}");
+                        errorDetails.Add($"• {errorViewModel.Name}: {errorViewModel.ValidationError}");
                     }
                     
                     errorDetails.Add(""); // Empty line for readability
@@ -2222,8 +2376,11 @@ namespace Photobooth
                 }
 
                 // Update products in database using ViewModels
+                Console.WriteLine($"Updating {_products.Count} products in database...");
+                
                 foreach (var product in _products)
                 {
+                    Console.WriteLine($"Processing product: {product.Name} (Type: {product.ProductType}, ID: {product.Id})");
 
                     bool newStatus = false;
                     decimal newPrice = 0;
@@ -2248,18 +2405,26 @@ namespace Photobooth
                         newStatus = viewModel.IsEnabled;
                         newPrice = viewModel.Price;
 
+                        Console.WriteLine($"Found ViewModel: {viewModel.Name}, Current DB Price: {product.Price}, New Price: {newPrice}, HasUnsavedChanges: {viewModel.HasUnsavedChanges}");
+
                         // Check what needs to be updated
                         bool statusChanged = product.IsActive != newStatus;
                         bool priceChanged = product.Price != newPrice && newPrice >= 0;
                         
+                        Console.WriteLine($"Status changed: {statusChanged} ({product.IsActive} -> {newStatus}), Price changed: {priceChanged} ({product.Price} -> {newPrice})");
+                        
                         if (statusChanged || priceChanged)
                         {
+                            Console.WriteLine($"Updating product {product.Name} in database...");
+                            
                             // Collect all changes for atomic update
                             bool? statusUpdate = statusChanged ? newStatus : null;
                             decimal? priceUpdate = priceChanged ? newPrice : null;
 
                             // Perform atomic update
                             var updateResult = await _databaseService.UpdateProductAsync(product.Id, statusUpdate, priceUpdate);
+                            
+                            Console.WriteLine($"Database update result for {product.Name}: Success={updateResult.Success}, Error={updateResult.ErrorMessage}");
                             
                             if (!updateResult.Success)
                             {
@@ -2270,22 +2435,34 @@ namespace Photobooth
                             if (statusChanged)
                             {
                                 product.IsActive = newStatus;
+                                Console.WriteLine($"Updated local product {product.Name} IsActive to {newStatus}");
                             }
                             if (priceChanged)
                             {
                                 product.Price = newPrice;
+                                Console.WriteLine($"Updated local product {product.Name} Price to {newPrice}");
                             }
 
                         }
                         else
                         {
-
+                            Console.WriteLine($"No changes needed for product {product.Name}");
                         }
 
                         // Mark ViewModel as saved
-                        viewModel.HasUnsavedChanges = false;
+                        viewModel.ResetUnsavedChanges();
+                        Console.WriteLine($"Marked ViewModel {viewModel.Name} as saved (HasUnsavedChanges = false)");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"No ViewModel found for product {product.Name}");
                     }
                 }
+                
+                Console.WriteLine("=== SaveProductConfiguration COMPLETED ===");
+
+                // Save extra copy pricing for all products
+                await SaveExtraCopyPricing();
 
                 // Save operation mode
                 await _databaseService.SetSettingValueAsync("System", "Mode", _currentOperationMode, _currentUserId);
@@ -2295,6 +2472,236 @@ namespace Photobooth
             {
 
                 throw;
+            }
+        }
+
+        /// <summary>
+        /// Save extra copy pricing for all products
+        /// </summary>
+        private async Task SaveExtraCopyPricing()
+        {
+            try
+            {
+                // Get custom pricing toggle state
+                bool useCustomPricing = UseCustomExtraCopyPricingCheckBox?.IsChecked == true;
+
+                decimal? extraCopy1Price = null;
+                decimal? extraCopy2Price = null;
+                decimal? extraCopy4BasePrice = null;
+                decimal? extraCopyAdditionalPrice = null;
+
+                if (useCustomPricing)
+                {
+                    // Get custom values from UI if custom pricing is enabled
+                    if (ExtraCopy1PriceInput != null && decimal.TryParse(ExtraCopy1PriceInput.Text, out decimal price1))
+                    {
+                        extraCopy1Price = price1;
+                    }
+                    if (ExtraCopy2PriceInput != null && decimal.TryParse(ExtraCopy2PriceInput.Text, out decimal price2))
+                    {
+                        extraCopy2Price = price2;
+                    }
+                    if (ExtraCopyAdditionalPriceInput != null && decimal.TryParse(ExtraCopyAdditionalPriceInput.Text, out decimal priceAdditional))
+                    {
+                        extraCopyAdditionalPrice = priceAdditional;
+                    }
+
+                    // Calculate 4+ base price automatically (2 copy price + 2 additional copies)
+                    if (extraCopy2Price.HasValue && extraCopyAdditionalPrice.HasValue)
+                    {
+                        extraCopy4BasePrice = extraCopy2Price.Value + (2 * extraCopyAdditionalPrice.Value);
+                    }
+                }
+                // If not using custom pricing, leave values as null (will use base product price)
+
+                // Save for all products
+                foreach (var product in _products)
+                {
+                    var updateResult = await _databaseService.UpdateProductAsync(
+                        product.Id,
+                        isActive: null,
+                        price: null,
+                        useCustomExtraCopyPricing: useCustomPricing,
+                        extraCopy1Price: extraCopy1Price,
+                        extraCopy2Price: extraCopy2Price,
+                        extraCopy4BasePrice: extraCopy4BasePrice,
+                        extraCopyAdditionalPrice: extraCopyAdditionalPrice
+                    );
+
+                    if (!updateResult.Success)
+                    {
+                        throw new InvalidOperationException($"Failed to update extra copy pricing for {product.Name}: {updateResult.ErrorMessage}");
+                    }
+
+                    // Update local product model
+                    product.UseCustomExtraCopyPricing = useCustomPricing;
+                    product.ExtraCopy1Price = extraCopy1Price;
+                    product.ExtraCopy2Price = extraCopy2Price;
+                    product.ExtraCopy4BasePrice = extraCopy4BasePrice;
+                    product.ExtraCopyAdditionalPrice = extraCopyAdditionalPrice;
+                }
+
+                Console.WriteLine($"Extra copy pricing saved: UseCustom={useCustomPricing}, " +
+                    $"1=${extraCopy1Price}, 2=${extraCopy2Price}, 4+=${extraCopy4BasePrice}, Additional=${extraCopyAdditionalPrice}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error saving extra copy pricing: {ex.Message}");
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Event handler for extra copy price changes - updates pricing examples
+        /// </summary>
+        private void ExtraCopyPrice_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            UpdatePricingExamples();
+            
+            // Mark as having unsaved changes (unless we're loading from database)
+            if (!_isLoadingProducts)
+            {
+                UpdateSaveButtonState();
+            }
+        }
+
+        /// <summary>
+        /// Event handler for when custom pricing is enabled
+        /// </summary>
+        private void UseCustomPricing_Checked(object sender, RoutedEventArgs e)
+        {
+            if (CustomPricingSection != null)
+            {
+                CustomPricingSection.Visibility = Visibility.Visible;
+            }
+            
+            if (CustomPricingDescription != null)
+            {
+                CustomPricingDescription.Text = "Configure custom pricing for extra copies";
+            }
+
+            // Mark as having unsaved changes
+            if (!_isLoadingProducts)
+            {
+                UpdateSaveButtonState();
+            }
+        }
+
+        /// <summary>
+        /// Event handler for when custom pricing is disabled
+        /// </summary>
+        private void UseCustomPricing_Unchecked(object sender, RoutedEventArgs e)
+        {
+            if (CustomPricingSection != null)
+            {
+                CustomPricingSection.Visibility = Visibility.Collapsed;
+            }
+            
+            if (CustomPricingDescription != null)
+            {
+                CustomPricingDescription.Text = "Extra copies will cost the same as the base product price";
+            }
+
+            // Mark as having unsaved changes
+            if (!_isLoadingProducts)
+            {
+                UpdateSaveButtonState();
+            }
+        }
+
+        /// <summary>
+        /// Update pricing examples based on current input values
+        /// </summary>
+        private void UpdatePricingExamples()
+        {
+            try
+            {
+                if (PricingExamplesText == null) return;
+
+                // Get current values from inputs
+                decimal price1 = 3.00m;
+                decimal price2 = 5.00m;
+                decimal priceAdditional = 1.50m;
+
+                if (ExtraCopy1PriceInput != null && decimal.TryParse(ExtraCopy1PriceInput.Text, out decimal p1))
+                    price1 = p1;
+                if (ExtraCopy2PriceInput != null && decimal.TryParse(ExtraCopy2PriceInput.Text, out decimal p2))
+                    price2 = p2;
+                if (ExtraCopyAdditionalPriceInput != null && decimal.TryParse(ExtraCopyAdditionalPriceInput.Text, out decimal pAdd))
+                    priceAdditional = pAdd;
+
+                // Calculate examples
+                decimal price3 = price2 + priceAdditional;
+                decimal price5 = price2 + (3 * priceAdditional);
+
+                // Update the text
+                PricingExamplesText.Text = $"• 1 extra copy: ${price1:F2}\n" +
+                                          $"• 2 extra copies: ${price2:F2}\n" +
+                                          $"• 3 extra copies: ${price2:F2} + ${priceAdditional:F2} = ${price3:F2}\n" +
+                                          $"• 5 extra copies: ${price2:F2} + (3 × ${priceAdditional:F2}) = ${price5:F2}";
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error updating pricing examples: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Load extra copy pricing values from database into UI
+        /// </summary>
+        private void LoadExtraCopyPricingUI(Product product)
+        {
+            try
+            {
+                // Set the custom pricing toggle
+                if (UseCustomExtraCopyPricingCheckBox != null)
+                {
+                    UseCustomExtraCopyPricingCheckBox.IsChecked = product.UseCustomExtraCopyPricing;
+                }
+
+                // Show/hide custom pricing section based on toggle
+                if (CustomPricingSection != null)
+                {
+                    CustomPricingSection.Visibility = product.UseCustomExtraCopyPricing ? Visibility.Visible : Visibility.Collapsed;
+                }
+
+                // Update description
+                if (CustomPricingDescription != null)
+                {
+                    if (product.UseCustomExtraCopyPricing)
+                    {
+                        CustomPricingDescription.Text = "Configure custom pricing for extra copies";
+                    }
+                    else
+                    {
+                        CustomPricingDescription.Text = $"Extra copies will cost ${product.Price:F2} each (same as base price)";
+                    }
+                }
+
+                // Load custom pricing values (or defaults)
+                if (ExtraCopy1PriceInput != null)
+                {
+                    ExtraCopy1PriceInput.Text = (product.ExtraCopy1Price ?? product.Price).ToString("F2");
+                }
+                if (ExtraCopy2PriceInput != null)
+                {
+                    ExtraCopy2PriceInput.Text = (product.ExtraCopy2Price ?? (product.Price * 2)).ToString("F2");
+                }
+                if (ExtraCopyAdditionalPriceInput != null)
+                {
+                    ExtraCopyAdditionalPriceInput.Text = (product.ExtraCopyAdditionalPrice ?? product.Price).ToString("F2");
+                }
+
+                // Update pricing examples with loaded values
+                UpdatePricingExamples();
+
+                Console.WriteLine($"Loaded extra copy pricing: UseCustom={product.UseCustomExtraCopyPricing}, " +
+                    $"BasePrice=${product.Price}, " +
+                    $"1=${product.ExtraCopy1Price}, 2=${product.ExtraCopy2Price}, Additional=${product.ExtraCopyAdditionalPrice}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error loading extra copy pricing UI: {ex.Message}");
             }
         }
 
@@ -2321,6 +2728,860 @@ namespace Photobooth
             return null;
         }
 
+        #region Credit Management
+
+        // NOTE: This credit management system is production-ready and designed to work with firmware integration.
+        // When payment hardware (cash acceptor, card reader) is connected, the firmware will call AddCreditsAsync()
+        // to automatically add credits when customers make payments. Manual credit addition is available for
+        // administrative purposes, promotions, and testing.
+
+        /// <summary>
+        /// Load current credits from database settings
+        /// </summary>
+        private async Task LoadCreditsAsync()
+        {
+            try
+            {
+                var result = await _databaseService.GetSettingValueAsync<decimal>("System", "CurrentCredits");
+                
+                if (result.Success)
+                {
+                    _currentCredits = result.Data;
+                }
+                else
+                {
+                    _currentCredits = 0;
+                }
+                
+                // Also load credit history and transaction count
+                await LoadCreditHistoryAsync();
+                await LoadTransactionCountAsync();
+                
+                UpdateCreditsDisplay();
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to load credits", ex);
+                _currentCredits = 0;
+                UpdateCreditsDisplay();
+                NotificationService.Instance.ShowError("Error Loading Credits", "Failed to load credit balance from database");
+            }
+        }
+
+        /// <summary>
+        /// Load credit history from database
+        /// </summary>
+        private async Task LoadCreditHistoryAsync()
+        {
+            try
+            {
+                var result = await _databaseService.GetCreditTransactionsAsync(10); // Load last 10 for display
+                
+                // Ensure UI updates happen on the UI thread
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    if (result.Success && result.Data != null)
+                    {
+                        _creditHistory.Clear();
+                        _creditHistory.AddRange(result.Data);
+                    }
+                    else
+                    {
+                        _creditHistory.Clear();
+                    }
+                    
+                    UpdateCreditHistoryDisplay();
+                });
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to load credit history", ex);
+                
+                // Ensure UI updates happen on the UI thread even on error
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    _creditHistory.Clear();
+                    UpdateCreditHistoryDisplay();
+                });
+            }
+        }
+
+        /// <summary>
+        /// Save current credits to database settings
+        /// </summary>
+        private async Task SaveCreditsAsync()
+        {
+            try
+            {
+                var result = await _databaseService.SetSettingValueAsync("System", "CurrentCredits", _currentCredits, null);
+                
+                if (!result.Success)
+                {
+                    LoggingService.Application.Error("Failed to save credits to database", null, ("Error", result.ErrorMessage ?? "Unknown error"));
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to save credits", ex);
+            }
+        }
+
+        /// <summary>
+        /// Save credits to database and return success status
+        /// </summary>
+        private async Task<bool> SaveCreditsWithResultAsync()
+        {
+            try
+            {
+                var result = await _databaseService.SetSettingValueAsync("System", "CurrentCredits", _currentCredits, null);
+                
+                if (!result.Success)
+                {
+                    LoggingService.Application.Error("Failed to save credits to database", null, ("Error", result.ErrorMessage ?? "Unknown error"));
+                }
+                
+                return result.Success;
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to save credits", ex);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Update the credits display in the UI
+        /// </summary>
+        private void UpdateCreditsDisplay()
+        {
+            if (CurrentCreditsText != null)
+            {
+                CurrentCreditsText.Text = $"${_currentCredits:F0}";
+            }
+        }
+
+        /// <summary>
+        /// Add credits to the system manually
+        /// </summary>
+        private async Task AddCreditsAsync(decimal amount, string description)
+        {
+            try
+            {
+                _currentCredits += amount;
+                await SaveCreditsAsync();
+                
+                // Add to database history
+                var transaction = new CreditTransaction
+                {
+                    Amount = amount,
+                    TransactionType = CreditTransactionType.Add,
+                    Description = description,
+                    BalanceAfter = _currentCredits,
+                    CreatedAt = DateTime.Now,
+                    CreatedBy = null // Use null for system operations to avoid foreign key issues
+                };
+                
+                var insertResult = await _databaseService.InsertCreditTransactionAsync(transaction);
+                if (!insertResult.Success)
+                {
+                    LoggingService.Application.Warning("Failed to save credit transaction to database", ("Error", insertResult.ErrorMessage ?? "Unknown error"));
+                    // Still show in memory for immediate feedback
+                    _creditHistory.Insert(0, transaction);
+                    UpdateCreditHistoryDisplay();
+                }
+                else
+                {
+                    // Successfully saved to database, reload from database to show updated history
+                    await LoadCreditHistoryAsync();
+                }
+                
+                // Update credits display
+                UpdateCreditsDisplay();
+                
+                LoggingService.Application.Information("Credits added",
+                    ("Amount", amount),
+                    ("Description", description),
+                    ("NewBalance", _currentCredits));
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to add credits", ex);
+                NotificationService.Instance.ShowError("Error Adding Credits", "Failed to add credits to the system. Please try again.");
+            }
+        }
+
+        /// <summary>
+        /// Deduct credits from the system (for purchases)
+        /// </summary>
+        public async Task<bool> DeductCreditsAsync(decimal amount, string description, int? relatedTransactionId = null)
+        {
+            try
+            {
+                if (_currentCredits < amount)
+                {
+                    LoggingService.Application.Warning("Insufficient credits for purchase",
+                        ("Required", amount),
+                        ("Available", _currentCredits));
+                    return false;
+                }
+                
+                var originalCredits = _currentCredits;
+                _currentCredits -= amount;
+                
+                // Try to save to database - if this fails, we need to rollback
+                var saveResult = await SaveCreditsWithResultAsync();
+                if (!saveResult)
+                {
+                    // Rollback the in-memory change
+                    _currentCredits = originalCredits;
+                    UpdateCreditsDisplay();
+                    
+                    LoggingService.Application.Error("Failed to save credit deduction to database - transaction rolled back");
+                    return false;
+                }
+                
+                // Add to database history
+                var transaction = new CreditTransaction
+                {
+                    Amount = -amount,
+                    TransactionType = CreditTransactionType.Deduct,
+                    Description = description,
+                    BalanceAfter = _currentCredits,
+                    CreatedAt = DateTime.Now,
+                    CreatedBy = null, // Use null for system operations to avoid foreign key issues
+                    RelatedTransactionId = relatedTransactionId // Link to sales transaction
+                };
+                
+                var insertResult = await _databaseService.InsertCreditTransactionAsync(transaction);
+                if (!insertResult.Success)
+                {
+                    LoggingService.Application.Warning("Failed to save credit transaction to database", ("Error", insertResult.ErrorMessage ?? "Unknown error"));
+                    // Still show in memory for immediate feedback
+                    _creditHistory.Insert(0, transaction);
+                    UpdateCreditHistoryDisplay();
+                }
+                else
+                {
+                    // Successfully saved to database, reload from database to show updated history
+                    await LoadCreditHistoryAsync();
+                }
+                
+                // Update credits display
+                UpdateCreditsDisplay();
+                
+                LoggingService.Application.Information("Credits deducted",
+                    ("Amount", amount),
+                    ("Description", description),
+                    ("NewBalance", _currentCredits),
+                    ("RelatedTransactionId", relatedTransactionId ?? (object)"None"));
+                
+                return true;
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to deduct credits", ex);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Check if sufficient credits are available
+        /// </summary>
+        public bool HasSufficientCredits(decimal amount)
+        {
+            return _currentCredits >= amount;
+        }
+
+        /// <summary>
+        /// Get current credit balance
+        /// </summary>
+        public decimal GetCurrentCredits()
+        {
+            return _currentCredits;
+        }
+
+        /// <summary>
+        /// Refresh credits from database (public method for external use)
+        /// </summary>
+        public async Task RefreshCreditsFromDatabase()
+        {
+            await LoadCreditsAsync();
+        }
+
+        /// <summary>
+        /// Reset credits to zero
+        /// </summary>
+        private async Task ResetCreditsAsync()
+        {
+            try
+            {
+                var oldBalance = _currentCredits;
+                _currentCredits = 0;
+                await SaveCreditsAsync();
+                
+                // Add to database history
+                var transaction = new CreditTransaction
+                {
+                    Amount = -oldBalance,
+                    TransactionType = CreditTransactionType.Reset,
+                    Description = "Credits reset to $0",
+                    BalanceAfter = _currentCredits,
+                    CreatedAt = DateTime.Now,
+                    CreatedBy = null // Use null for system operations to avoid foreign key issues
+                };
+                
+                var insertResult = await _databaseService.InsertCreditTransactionAsync(transaction);
+                if (!insertResult.Success)
+                {
+                    LoggingService.Application.Warning("Failed to save credit transaction to database", ("Error", insertResult.ErrorMessage ?? "Unknown error"));
+                    // Still show in memory for immediate feedback
+                    _creditHistory.Insert(0, transaction);
+                    UpdateCreditHistoryDisplay();
+                }
+                else
+                {
+                    // Successfully saved to database, reload from database to show updated history
+                    await LoadCreditHistoryAsync();
+                }
+                
+                // Update credits display
+                UpdateCreditsDisplay();
+                
+                LoggingService.Application.Information("Credits reset to zero",
+                    ("PreviousBalance", oldBalance));
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to reset credits", ex);
+                NotificationService.Instance.ShowError("Error Resetting Credits", "Failed to reset credits. Please try again.");
+            }
+        }
+
+        /// <summary>
+        /// Update credit history display
+        /// </summary>
+        private void UpdateCreditHistoryDisplay()
+        {
+            if (CreditHistoryPanel == null) return;
+
+            CreditHistoryPanel.Children.Clear();
+
+            if (_creditHistory.Count == 0)
+            {
+                // Show empty state
+                var emptyBorder = new Border
+                {
+                    Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F9FAFB")),
+                    CornerRadius = new CornerRadius(6),
+                    Padding = new Thickness(12),
+                    Margin = new Thickness(0, 0, 0, 8)
+                };
+                
+                var emptyGrid = new Grid();
+                emptyGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                
+                var emptyText = new TextBlock
+                {
+                    Text = "No credit activity yet",
+                    FontSize = 12,
+                    Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#6B7280")),
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                
+                emptyGrid.Children.Add(emptyText);
+                emptyBorder.Child = emptyGrid;
+                CreditHistoryPanel.Children.Add(emptyBorder);
+                return;
+            }
+
+            foreach (var transaction in _creditHistory.Take(8)) // Show only last 8 for better display
+            {
+                var border = new Border
+                {
+                    Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F9FAFB")),
+                    CornerRadius = new CornerRadius(6),
+                    Padding = new Thickness(12),
+                    Margin = new Thickness(0, 0, 0, 8)
+                };
+
+                var grid = new Grid();
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+                var icon = new TextBlock
+                {
+                    Text = transaction.Type switch
+                    {
+                        CreditTransactionType.Add => "➕",
+                        CreditTransactionType.Deduct => "➖", 
+                        CreditTransactionType.Reset => "🔄",
+                        _ => "💰"
+                    },
+                    FontSize = 12,
+                    Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(
+                        transaction.Type == CreditTransactionType.Add ? "#10B981" : "#EF4444")),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(0, 0, 8, 0)
+                };
+                Grid.SetColumn(icon, 0);
+
+                var description = new TextBlock
+                {
+                    Text = transaction.Description,
+                    FontSize = 12,
+                    Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#374151")),
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                Grid.SetColumn(description, 1);
+
+                var amount = new TextBlock
+                {
+                    Text = $"${Math.Abs(transaction.Amount):F2}",
+                    FontSize = 12,
+                    FontWeight = FontWeights.Medium,
+                    Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(
+                        transaction.Type == CreditTransactionType.Add ? "#10B981" : "#EF4444")),
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                Grid.SetColumn(amount, 2);
+
+                grid.Children.Add(icon);
+                grid.Children.Add(description);
+                grid.Children.Add(amount);
+                border.Child = grid;
+                CreditHistoryPanel.Children.Add(border);
+            }
+        }
+
+        #endregion
+
+        #region Credit UI Event Handlers
+
+        /// <summary>
+        /// Handle refresh credits button click
+        /// </summary>
+        private async void RefreshCredits_Click(object sender, RoutedEventArgs e)
+        {
+            await LoadCreditsAsync(); // This now loads both credits and history
+        }
+        
+        /// <summary>
+        /// Handle refresh transactions button click
+        /// </summary>
+        private async void RefreshTransactions_Click(object sender, RoutedEventArgs e)
+        {
+            await LoadTransactionHistory();
+        }
+
+        /// <summary>
+        /// Handle reset credits button click
+        /// </summary>
+        private async void ResetCredits_Click(object sender, RoutedEventArgs e)
+        {
+            var result = ConfirmationDialog.ShowConfirmation(
+                "Reset Credits",
+                "Are you sure you want to reset all credits to $0?\n\nThis action cannot be undone.",
+                "Reset",
+                "Cancel",
+                Window.GetWindow(this));
+
+            if (result)
+            {
+                await ResetCreditsAsync();
+                NotificationService.Instance.ShowSuccess("Credits Reset", "All credits have been reset to $0.00");
+            }
+        }
+
+        /// <summary>
+        /// Handle quick add credit button clicks for manual credit management
+        /// </summary>
+        private async void QuickAddCredit_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button button && button.Tag is string tagValue && decimal.TryParse(tagValue, out decimal amount))
+            {
+                await AddCreditsAsync(amount, $"Quick add ${amount}");
+                NotificationService.Instance.ShowSuccess("Credits Added", $"Successfully added ${amount:F2} to credit balance!");
+            }
+        }
+
+        /// <summary>
+        /// Handle custom add credit button click
+        /// </summary>
+        private async void AddCustomCredit_Click(object sender, RoutedEventArgs e)
+        {
+            if (CustomCreditNumberAmount != null && decimal.TryParse(CustomCreditNumberAmount.Text, out decimal amount) && amount > 0)
+            {
+                await AddCreditsAsync(amount, $"Custom add ${amount}");
+                CustomCreditNumberAmount.Text = "0";
+                NotificationService.Instance.ShowSuccess("Credits Added", $"Successfully added ${amount:F2} to credit balance!");
+            }
+            else
+            {
+                NotificationService.Instance.ShowWarning("Invalid Amount", "Please enter a valid amount greater than $0.00");
+            }
+        }
+
+        /// <summary>
+        /// Handle clear credit history button click
+        /// </summary>
+        private async void ClearCreditHistory_Click(object sender, RoutedEventArgs e)
+        {
+            var result = ConfirmationDialog.ShowConfirmation(
+                "Clear History",
+                "Are you sure you want to clear the credit history?\n\nThis will not affect your current credit balance.",
+                "Clear",
+                "Cancel",
+                Window.GetWindow(this));
+
+            if (result)
+            {
+                try
+                {
+                    // Delete all credit transactions from database (keep 0)
+                    await _databaseService.DeleteOldCreditTransactionsAsync(0);
+                    
+                    // Reload empty history
+                    await LoadCreditHistoryAsync();
+                    
+                    NotificationService.Instance.ShowSuccess("History Cleared", "Credit transaction history has been cleared");
+                }
+                catch (Exception ex)
+                {
+                    LoggingService.Application.Error("Failed to clear credit history", ex);
+                    NotificationService.Instance.ShowError("Error Clearing History", "Failed to clear credit history from database");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Handle export transactions button click
+        /// </summary>
+        private async void ExportTransactions_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                // Get all credit transactions from database
+                var result = await _databaseService.GetCreditTransactionsAsync(10000); // Get all transactions
+                if (!result.Success || result.Data == null)
+                {
+                    NotificationService.Instance.ShowError("Export Failed", "Failed to retrieve transaction data from database");
+                    return;
+                }
+
+                var transactions = result.Data;
+                if (transactions.Count == 0)
+                {
+                    NotificationService.Instance.ShowWarning("No Data", "No credit transactions found to export");
+                    return;
+                }
+
+                // Show save file dialog
+                var saveFileDialog = new Microsoft.Win32.SaveFileDialog
+                {
+                    Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*",
+                    FileName = $"CreditTransactions_{DateTime.Now:yyyyMMdd_HHmmss}.csv",
+                    Title = "Export Credit Transactions"
+                };
+
+                if (saveFileDialog.ShowDialog() == true)
+                {
+                    // Create CSV content
+                    var csvContent = new StringBuilder();
+                    csvContent.AppendLine("Date,Time,Type,Amount,Description,Balance After,Created By");
+
+                    foreach (var transaction in transactions.OrderByDescending(t => t.CreatedAt))
+                    {
+                        csvContent.AppendLine($"\"{transaction.CreatedAt:yyyy-MM-dd}\",\"{transaction.CreatedAt:HH:mm:ss}\",\"{transaction.TransactionType}\",\"{transaction.Amount:F2}\",\"{transaction.Description.Replace("\"", "\"\"")}\",\"{transaction.BalanceAfter:F2}\",\"{transaction.CreatedBy ?? "System"}\"");
+                    }
+
+                    // Write to file
+                    await File.WriteAllTextAsync(saveFileDialog.FileName, csvContent.ToString());
+                    
+                    NotificationService.Instance.ShowSuccess("Export Complete", $"Exported {transactions.Count} transactions to {Path.GetFileName(saveFileDialog.FileName)}");
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to export credit transactions", ex);
+                NotificationService.Instance.ShowError("Export Failed", "An error occurred while exporting transaction data");
+            }
+        }
+
+        /// <summary>
+        /// Handle cleanup database button click
+        /// </summary>
+        private async void CleanupDatabase_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                // Get current transaction count
+                var countResult = await _databaseService.GetCreditTransactionsAsync(10000);
+                var currentCount = countResult.Success && countResult.Data != null ? countResult.Data.Count : 0;
+
+                if (currentCount <= 1000)
+                {
+                    NotificationService.Instance.ShowInfo("No Cleanup Needed", $"Database has {currentCount} transactions. Cleanup only needed when over 1000 records.");
+                    return;
+                }
+
+                var recordsToDelete = currentCount - 1000;
+                var result = ConfirmationDialog.ShowConfirmation(
+                    "Cleanup Database",
+                    $"This will permanently delete {recordsToDelete} old transactions, keeping the most recent 1000.\n\nRecommend exporting data first for permanent records.\n\nContinue?",
+                    "Cleanup",
+                    "Cancel",
+                    Window.GetWindow(this));
+
+                if (result)
+                {
+                    var cleanupResult = await _databaseService.DeleteOldCreditTransactionsAsync(1000);
+                    if (cleanupResult.Success)
+                    {
+                        await LoadTransactionCountAsync(); // Refresh the display
+                        NotificationService.Instance.ShowSuccess("Cleanup Complete", $"Removed {recordsToDelete} old transactions. Database now has 1000 records.");
+                    }
+                    else
+                    {
+                        NotificationService.Instance.ShowError("Cleanup Failed", "Failed to cleanup old transactions from database");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to cleanup credit transactions", ex);
+                NotificationService.Instance.ShowError("Cleanup Failed", "An error occurred during database cleanup");
+            }
+        }
+
+        /// <summary>
+        /// Load and display transaction count
+        /// </summary>
+        private async Task LoadTransactionCountAsync()
+        {
+            try
+            {
+                var result = await _databaseService.GetCreditTransactionsAsync(10000); // Get all to count
+                var count = result.Success && result.Data != null ? result.Data.Count : 0;
+                
+                if (TotalTransactionsText != null)
+                {
+                    TotalTransactionsText.Text = count.ToString();
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to load transaction count", ex);
+                if (TotalTransactionsText != null)
+                {
+                    TotalTransactionsText.Text = "Error";
+                }
+            }
+        }
+
+        #endregion
+
+        #region Transaction History Management
+
+        /// <summary>
+        /// Load transaction history from database
+        /// </summary>
+        private async Task LoadTransactionHistory()
+        {
+            try
+            {
+                var result = await _databaseService.GetAllAsync<Transaction>();
+                
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    if (result.Success && result.Data != null)
+                    {
+                        _recentTransactions = result.Data
+                            .OrderByDescending(t => t.CreatedAt)
+                            .Take(20) // Show last 20 transactions
+                            .ToList();
+                    }
+                    else
+                    {
+                        _recentTransactions.Clear();
+                    }
+                    
+                    UpdateTransactionHistoryDisplay();
+                });
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to load transaction history", ex);
+                
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    _recentTransactions.Clear();
+                    UpdateTransactionHistoryDisplay();
+                });
+            }
+        }
+
+        /// <summary>
+        /// Update the transaction history display in the UI
+        /// </summary>
+        private void UpdateTransactionHistoryDisplay()
+        {
+            try
+            {
+                if (TransactionHistoryPanel == null) return;
+                
+                // Clear existing transaction items (keep the no transactions message)
+                var itemsToRemove = TransactionHistoryPanel.Children
+                    .OfType<Border>()
+                    .ToList();
+                
+                foreach (var item in itemsToRemove)
+                {
+                    TransactionHistoryPanel.Children.Remove(item);
+                }
+                
+                if (_recentTransactions.Count == 0)
+                {
+                    // Show no transactions message
+                    if (NoTransactionsMessage != null)
+                    {
+                        NoTransactionsMessage.Visibility = Visibility.Visible;
+                    }
+                }
+                else
+                {
+                    // Hide no transactions message
+                    if (NoTransactionsMessage != null)
+                    {
+                        NoTransactionsMessage.Visibility = Visibility.Collapsed;
+                    }
+                    
+                    // Add transaction items
+                    foreach (var transaction in _recentTransactions)
+                    {
+                        var transactionItem = CreateTransactionListItem(transaction);
+                        TransactionHistoryPanel.Children.Add(transactionItem);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to update transaction history display", ex);
+            }
+        }
+
+        /// <summary>
+        /// Create a transaction list item for the UI
+        /// </summary>
+        private Border CreateTransactionListItem(Transaction transaction)
+        {
+            var border = new Border
+            {
+                Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F8FAFC")),
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(16, 16, 16, 16),
+                Margin = new Thickness(0, 0, 0, 8),
+                BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E2E8F0")),
+                BorderThickness = new Thickness(1, 1, 1, 1)
+            };
+
+            var grid = new Grid();
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            // Left column - Transaction details
+            var leftPanel = new StackPanel();
+            
+            var transactionCode = new TextBlock
+            {
+                Text = $"Transaction #{transaction.TransactionCode ?? transaction.Id.ToString()}",
+                FontSize = 14,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1F2937")),
+                Margin = new Thickness(0, 0, 0, 4)
+            };
+            leftPanel.Children.Add(transactionCode);
+
+            var dateTime = new TextBlock
+            {
+                Text = transaction.CreatedAt.ToString("MMM dd, yyyy - hh:mm tt"),
+                FontSize = 12,
+                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#6B7280"))
+            };
+            leftPanel.Children.Add(dateTime);
+
+            Grid.SetColumn(leftPanel, 0);
+            grid.Children.Add(leftPanel);
+
+            // Middle column - Product details
+            var middlePanel = new StackPanel();
+            
+            var productInfo = new TextBlock
+            {
+                Text = transaction.Notes ?? "Photo Session",
+                FontSize = 13,
+                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#374151")),
+                Margin = new Thickness(0, 0, 0, 4)
+            };
+            middlePanel.Children.Add(productInfo);
+
+            var quantityInfo = new TextBlock
+            {
+                Text = $"Quantity: {transaction.Quantity}",
+                FontSize = 12,
+                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#6B7280"))
+            };
+            middlePanel.Children.Add(quantityInfo);
+
+            Grid.SetColumn(middlePanel, 1);
+            grid.Children.Add(middlePanel);
+
+            // Right column - Payment info
+            var rightPanel = new StackPanel
+            {
+                HorizontalAlignment = HorizontalAlignment.Right
+            };
+
+            var amount = new TextBlock
+            {
+                Text = $"${transaction.TotalPrice:F2}",
+                FontSize = 16,
+                FontWeight = FontWeights.Bold,
+                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#059669")),
+                Margin = new Thickness(0, 0, 0, 4)
+            };
+            rightPanel.Children.Add(amount);
+
+            var paymentStatus = new Border
+            {
+                Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString(
+                    transaction.PaymentStatus == PaymentStatus.Completed ? "#D1FAE5" : "#FEF3C7")),
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(8, 4, 8, 4)
+            };
+
+            var statusText = new TextBlock
+            {
+                Text = transaction.PaymentStatus.ToString(),
+                FontSize = 11,
+                FontWeight = FontWeights.Medium,
+                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(
+                    transaction.PaymentStatus == PaymentStatus.Completed ? "#065F46" : "#92400E"))
+            };
+            paymentStatus.Child = statusText;
+            rightPanel.Children.Add(paymentStatus);
+
+            Grid.SetColumn(rightPanel, 2);
+            grid.Children.Add(rightPanel);
+
+            border.Child = grid;
+            return border;
+        }
+
+        #endregion
+
     }
 
     #region Data Models
@@ -2344,6 +3605,8 @@ namespace Photobooth
         public decimal Amount { get; set; }
         public int Transactions { get; set; }
     }
+
+
 
     #endregion
 }

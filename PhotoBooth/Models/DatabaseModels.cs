@@ -75,6 +75,14 @@ namespace Photobooth.Models
         public int PhotoCount { get; set; } = 1;
         public int MaxCopies { get; set; } = 10;
         public ProductType ProductType { get; set; } = ProductType.PhotoStrips;
+        
+        // Extra copy pricing configuration for upselling
+        public bool UseCustomExtraCopyPricing { get; set; } = false; // If false, extra copies cost same as base price
+        public decimal? ExtraCopy1Price { get; set; } // Price for 1 extra copy (nullable, uses base price if null)
+        public decimal? ExtraCopy2Price { get; set; } // Price for 2 extra copies (nullable, uses base price if null)
+        public decimal? ExtraCopy4BasePrice { get; set; } // Base price for 4+ extra copies (nullable, uses base price if null)
+        public decimal? ExtraCopyAdditionalPrice { get; set; } // Price per additional copy beyond 4 (nullable, uses base price if null)
+        
         public DateTime CreatedAt { get; set; } = DateTime.Now;
         public DateTime UpdatedAt { get; set; } = DateTime.Now;
 
@@ -600,6 +608,35 @@ namespace Photobooth.Models
         public bool ShowLogoOnPrints { get; set; } = true;
         public DateTime UpdatedAt { get; set; } = DateTime.Now;
         public string? UpdatedBy { get; set; }
+    }
+
+    /// <summary>
+    /// Represents a credit transaction for tracking credit history
+    /// </summary>
+    public class CreditTransaction
+    {
+        public int Id { get; set; }
+        public decimal Amount { get; set; }
+        public CreditTransactionType TransactionType { get; set; }
+        public string Description { get; set; } = string.Empty;
+        public decimal BalanceAfter { get; set; }
+        public DateTime CreatedAt { get; set; } = DateTime.Now;
+        public string? CreatedBy { get; set; }
+        public int? RelatedTransactionId { get; set; }
+        
+        // Backward compatibility properties
+        public CreditTransactionType Type => TransactionType;
+        public DateTime Timestamp => CreatedAt;
+    }
+
+    /// <summary>
+    /// Types of credit transactions
+    /// </summary>
+    public enum CreditTransactionType
+    {
+        Add,
+        Deduct,
+        Reset
     }
 
     // =============================================

@@ -232,8 +232,8 @@
             <Setter Property="CornerRadius" Value="16"/>
             <Setter Property="Padding" Value="24"/>
             <Setter Property="Margin" Value="12"/>
-            <Setter Property="MinWidth" Value="280"/>
-            <Setter Property="MinHeight" Value="320"/>
+            <Setter Property="MinWidth" Value="260"/>
+            <Setter Property="MinHeight" Value="280"/>
             <Setter Property="Effect">
                 <Setter.Value>
                     <DropShadowEffect BlurRadius="12" Opacity="0.2" ShadowDepth="4"/>
@@ -389,6 +389,17 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <!-- Credits Display Style -->
+        <Style x:Key="CreditsStyle" TargetType="Border">
+            <Setter Property="Background">
+                <Setter.Value>
+                    <SolidColorBrush Color="White" Opacity="0.15"/>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="CornerRadius" Value="20"/>
+            <Setter Property="Padding" Value="16,8"/>
+        </Style>
     </UserControl.Resources>
 
     <Grid Background="{StaticResource MainBackgroundGradient}" ClipToBounds="True">
@@ -437,8 +448,9 @@
         </Canvas>
 
         <!-- Main Content -->
-        <Grid Margin="60">
+        <Grid Margin="30,20,30,20">
             <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
@@ -446,20 +458,39 @@
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
+            <!-- Credits Header Row -->
+            <Grid Grid.Row="0" Margin="0,0,0,20">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Credits Display -->
+                <Border Grid.Column="2" 
+                        Style="{StaticResource CreditsStyle}"
+                        VerticalAlignment="Center">
+                    <TextBlock Text="Credits: $0" 
+                               Foreground="White" 
+                               FontSize="16"
+                               Name="CreditsDisplay"/>
+                </Border>
+            </Grid>
+
             <!-- Timeout Progress Bar -->
-            <ProgressBar Grid.Row="0" Name="TimeoutProgress" 
+            <ProgressBar Grid.Row="1" Name="TimeoutProgress" 
                          Style="{StaticResource TimeoutProgressStyle}"
                          Margin="0,0,0,30"/>
 
             <!-- Title Section -->
-            <StackPanel Grid.Row="1" HorizontalAlignment="Center" Margin="0,0,0,40">
+            <StackPanel Grid.Row="2" HorizontalAlignment="Center" Margin="0,0,0,20">
                 <TextBlock Name="TitleText" 
                            Text="You look great!" 
-                           FontSize="56" 
+                           FontSize="48" 
                            FontWeight="Bold" 
                            Foreground="{StaticResource TitleGradient}" 
                            HorizontalAlignment="Center"
-                           Margin="0,0,0,16">
+                           Margin="0,0,0,12">
                     <!-- Glow Effect -->
                     <TextBlock.Effect>
                         <DropShadowEffect Color="White" Opacity="0.1" BlurRadius="20" ShadowDepth="0"/>
@@ -473,9 +504,9 @@
             </StackPanel>
 
             <!-- Extra Copies Section -->
-            <StackPanel Grid.Row="2" Name="ExtraCopiesSection" HorizontalAlignment="Center" VerticalAlignment="Center">
+            <StackPanel Grid.Row="3" Name="ExtraCopiesSection" HorizontalAlignment="Center" VerticalAlignment="Center">
                 <!-- Card-based Quantity Options -->
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,40">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,20">
                     
                     <!-- 1 Extra Copy Card -->
                     <Button Name="OneCopyButton" Style="{StaticResource CardButtonStyle}" Click="CopyButton_Click" Tag="1">
@@ -524,9 +555,7 @@
                                     <TextBlock Text="Share with family &amp; friends" FontSize="16" 
                                                Foreground="#DDD6FE" HorizontalAlignment="Center" Margin="0,0,0,8"/>
                                     
-                                    <!-- Per Copy Price -->
-                                    <TextBlock Text="($4 per copy)" FontSize="14" 
-                                               Foreground="#A5A5A5" HorizontalAlignment="Center" Margin="0,0,0,12"/>
+
                                     
                                     <!-- Price -->
                                     <TextBlock Name="TwoCopyPrice" Text="$8" FontSize="32" FontWeight="Bold" 
@@ -540,13 +569,13 @@
                             <!-- Save Tag - Positioned absolutely on top border -->
                             <Border Background="#F97316" CornerRadius="12" Padding="12,4" 
                                     HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,4,0,0">
-                                <TextBlock Text="Save 20%" FontSize="12" FontWeight="Bold" Foreground="White"/>
+                                <TextBlock Text="Popular Choice" FontSize="12" FontWeight="Bold" Foreground="White"/>
                             </Border>
                         </Grid>
                     </Button>
 
-                    <!-- 4+ Extra Copies Card -->
-                    <Button Name="FourCopyButton" Style="{StaticResource CardButtonStyle}" Click="CopyButton_Click" Tag="4">
+                    <!-- 3+ Extra Copies Card -->
+                    <Button Name="ThreeCopyButton" Style="{StaticResource CardButtonStyle}" Click="CopyButton_Click" Tag="3">
                         <Grid>
                             <Border Style="{StaticResource ExtraCopyCardStyle}">
                                 <StackPanel HorizontalAlignment="Center">
@@ -557,38 +586,36 @@
                                     </StackPanel>
                                     
                                     <!-- Title -->
-                                    <TextBlock Text="4+ Extra Copies" FontSize="24" FontWeight="Bold" 
+                                    <TextBlock Text="3+ Extra Copies" FontSize="24" FontWeight="Bold" 
                                                Foreground="White" HorizontalAlignment="Center" Margin="0,0,0,8"/>
                                     
                                     <!-- Description -->
                                     <TextBlock Text="For the whole group!" FontSize="16" 
                                                Foreground="#DDD6FE" HorizontalAlignment="Center" Margin="0,0,0,8"/>
                                     
-                                    <!-- Per Copy Price -->
-                                    <TextBlock Text="($3.00 per copy)" FontSize="14" 
-                                               Foreground="#A5A5A5" HorizontalAlignment="Center" Margin="0,0,0,16"/>
+
                                     
                                     <!-- Quantity Selector -->
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,16">
                                         <Button Name="CardMinusButton" Content="−" Style="{StaticResource QuantitySelectorButtonStyle}" Click="MinusButton_Click"/>
-                                        <TextBlock Name="CardQuantityDisplay" Text="4" FontSize="24" FontWeight="Bold" 
+                                        <TextBlock Name="CardQuantityDisplay" Text="3" FontSize="24" FontWeight="Bold" 
                                                    Foreground="White" VerticalAlignment="Center" Margin="16,0"/>
                                         <Button Name="CardPlusButton" Content="+" Style="{StaticResource QuantitySelectorButtonStyle}" Click="PlusButton_Click"/>
                                     </StackPanel>
                                     
                                     <!-- Price -->
-                                    <TextBlock Name="FourCopyPrice" Text="$12" FontSize="32" FontWeight="Bold" 
+                                    <TextBlock Name="ThreeCopyPrice" Text="$15" FontSize="32" FontWeight="Bold" 
                                                Foreground="White" HorizontalAlignment="Center"/>
                                     
                                     <!-- Select Button -->
-                                    <Button Name="ConfirmQuantityButton" Content="Select 4 Copies" Style="{StaticResource SelectButtonStyle}" Click="ConfirmQuantity_Click"/>
+                                    <Button Name="ConfirmQuantityButton" Content="Select 3 Copies" Style="{StaticResource SelectButtonStyle}" Click="ConfirmQuantity_Click"/>
                                 </StackPanel>
                             </Border>
                             
                             <!-- Best Value Tag - Positioned absolutely on top border -->
                             <Border Background="#10B981" CornerRadius="12" Padding="12,4" 
                                     HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,4,0,0">
-                                <TextBlock Text="Best Value" FontSize="12" FontWeight="Bold" Foreground="White"/>
+                                <TextBlock Text="Most Popular" FontSize="12" FontWeight="Bold" Foreground="White"/>
                             </Border>
                         </Grid>
                     </Button>
@@ -598,7 +625,7 @@
             </StackPanel>
 
             <!-- Cross-Sell Section -->
-            <StackPanel Grid.Row="2" Name="CrossSellSection" HorizontalAlignment="Center" VerticalAlignment="Center" 
+            <StackPanel Grid.Row="3" Name="CrossSellSection" HorizontalAlignment="Center" VerticalAlignment="Center" 
                         Visibility="Collapsed">
                 <TextBlock Name="CrossSellTitle" 
                            Text="Try a different style?" 
@@ -661,7 +688,7 @@
             </StackPanel>
 
             <!-- Action Buttons -->
-            <StackPanel Grid.Row="4" HorizontalAlignment="Center" Margin="0,30,0,20">
+            <StackPanel Grid.Row="5" HorizontalAlignment="Center" Margin="0,15,0,10">
                 <!-- Single Clear Decline Option -->
                 <Button Name="NoThanksButton" Click="NoThanks_Click" 
                         Background="Transparent" BorderThickness="0" Cursor="Hand">
