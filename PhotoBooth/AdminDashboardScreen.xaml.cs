@@ -46,6 +46,7 @@ namespace Photobooth
                 if (_isEnabled != value)
                 {
                     _isEnabled = value;
+                    HasUnsavedChanges = true;
                     OnPropertyChanged(nameof(IsEnabled));
                     OnPropertyChanged(nameof(CardOpacity));
                     OnPropertyChanged(nameof(PriceSectionEnabled));
@@ -61,6 +62,7 @@ namespace Photobooth
                 if (_price != value)
                 {
                     _price = value;
+                    HasUnsavedChanges = true;
                     OnPropertyChanged(nameof(Price));
                     OnPropertyChanged(nameof(PriceText));
                 }
@@ -72,8 +74,10 @@ namespace Photobooth
             get => _price.ToString("F2", CultureInfo.InvariantCulture);
             set
             {
+#if DEBUG
                 Console.WriteLine($"=== ProductViewModel.PriceText setter called ===");
                 Console.WriteLine($"Product: {Name}, Current Price: {_price}, Input Value: '{value}'");
+#endif
                 
                 // Use specific NumberStyles to prevent comma interpretation as thousands separator
                 // Allow decimal point, leading sign, and whitespace, but not thousands separators
@@ -81,28 +85,40 @@ namespace Photobooth
                                    NumberStyles.AllowLeadingWhite | NumberStyles.AllowTrailingWhite;
                 if (decimal.TryParse(value, allowedStyles, CultureInfo.InvariantCulture, out decimal newPrice))
                 {
+#if DEBUG
                     Console.WriteLine($"Parsed successfully: {newPrice}");
+#endif
                     
                     // Allow zero values for free products, but not negative values
                     if (newPrice >= 0)
                     {
+#if DEBUG
                         Console.WriteLine($"Setting Price from {_price} to {newPrice}");
+#endif
                         Price = newPrice;
                         ValidationError = null; // Clear any previous validation error
+#if DEBUG
                         Console.WriteLine($"Price set successfully, new Price: {_price}");
+#endif
                     }
                     else
                     {
+#if DEBUG
                         Console.WriteLine($"Price rejected: negative value");
+#endif
                         ValidationError = "Price cannot be negative";
                     }
                 }
                 else
                 {
+#if DEBUG
                     Console.WriteLine($"Parse failed for value: '{value}'");
+#endif
                     ValidationError = "Invalid price format. Please enter a valid number (e.g., 5.00)";
                 }
+#if DEBUG
                 Console.WriteLine($"=== ProductViewModel.PriceText setter completed ===");
+#endif
             }
         }
 
@@ -147,6 +163,7 @@ namespace Photobooth
         /// </summary>
         public void ResetUnsavedChanges()
         {
+            _hasUnsavedChanges = false;
             OnPropertyChanged(nameof(HasUnsavedChanges));
         }
 
@@ -156,8 +173,21 @@ namespace Photobooth
         public void SetPriceFromDatabase(decimal price)
         {
             _price = price;
+            // Don't trigger HasUnsavedChanges when loading from database
             OnPropertyChanged(nameof(Price));
             OnPropertyChanged(nameof(PriceText));
+        }
+
+        /// <summary>
+        /// Set enabled status from database without triggering unsaved changes flag
+        /// </summary>
+        public void SetIsEnabledFromDatabase(bool isEnabled)
+        {
+            _isEnabled = isEnabled;
+            // Don't trigger HasUnsavedChanges when loading from database
+            OnPropertyChanged(nameof(IsEnabled));
+            OnPropertyChanged(nameof(CardOpacity));
+            OnPropertyChanged(nameof(PriceSectionEnabled));
         }
     }
 
@@ -2044,8 +2074,8 @@ namespace Photobooth
                 {
                     // Only update if there are no unsaved changes to preserve user input
                     if (!photoStripsVM.HasUnsavedChanges)
-                {
-                    photoStripsVM.IsEnabled = photoStrips.IsActive;
+                    {
+                        photoStripsVM.SetIsEnabledFromDatabase(photoStrips.IsActive);
                         photoStripsVM.SetPriceFromDatabase(photoStrips.Price);
                     }
                     else
@@ -2059,8 +2089,8 @@ namespace Photobooth
                 {
                     // Only update if there are no unsaved changes to preserve user input
                     if (!photo4x6VM.HasUnsavedChanges)
-                {
-                    photo4x6VM.IsEnabled = photo4x6.IsActive;
+                    {
+                        photo4x6VM.SetIsEnabledFromDatabase(photo4x6.IsActive);
                         photo4x6VM.SetPriceFromDatabase(photo4x6.Price);
                     }
                     else
@@ -2074,8 +2104,8 @@ namespace Photobooth
                 {
                     // Only update if there are no unsaved changes to preserve user input
                     if (!smartphonePrintVM.HasUnsavedChanges)
-                {
-                    smartphonePrintVM.IsEnabled = smartphonePrint.IsActive;
+                    {
+                        smartphonePrintVM.SetIsEnabledFromDatabase(smartphonePrint.IsActive);
                         smartphonePrintVM.SetPriceFromDatabase(smartphonePrint.Price);
                     }
                     else
@@ -2265,7 +2295,9 @@ namespace Photobooth
             }
             catch (Exception ex)
             {
+#if DEBUG
                 Console.WriteLine($"Error updating save button state: {ex.Message}");
+#endif
             }
         }
 
@@ -2276,12 +2308,16 @@ namespace Photobooth
         {
             try
             {
+#if DEBUG
                 Console.WriteLine("=== SaveProductConfig_Click CALLED ===");
+#endif
                 
                 // Prevent multiple simultaneous saves
                 if (_isSaving)
                 {
+#if DEBUG
                     Console.WriteLine("Save already in progress, ignoring duplicate request");
+#endif
                     return;
                 }
                 
@@ -2293,9 +2329,13 @@ namespace Photobooth
                 UnsavedChangesIndicator.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#6366F1")); // Purple
                 UnsavedChangesIndicator.Visibility = Visibility.Visible;
 
+#if DEBUG
                 Console.WriteLine("About to call SaveProductConfiguration()...");
+#endif
                 await SaveProductConfiguration();
+#if DEBUG
                 Console.WriteLine("SaveProductConfiguration() completed successfully");
+#endif
                 
                 // Show success feedback
                 SaveButtonBorder.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#059669"));
@@ -2312,11 +2352,15 @@ namespace Photobooth
                 UnsavedChangesIndicator.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F59E0B")); // Back to amber
                 UpdateSaveButtonState();
                 
+#if DEBUG
                 Console.WriteLine("=== SaveProductConfig_Click COMPLETED SUCCESSFULLY ===");
+#endif
             }
             catch (Exception ex)
             {
+#if DEBUG
                 Console.WriteLine($"=== SaveProductConfig_Click ERROR: {ex.Message} ===");
+#endif
 
                 // Show error feedback
                 SaveButtonBorder.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#DC2626"));
@@ -2343,6 +2387,7 @@ namespace Photobooth
         {
             try
             {
+#if DEBUG
                 Console.WriteLine("=== SaveProductConfiguration CALLED ===");
                 Console.WriteLine($"Total ProductViewModels: {ProductViewModels.Count}");
                 
@@ -2350,10 +2395,13 @@ namespace Photobooth
                 {
                     Console.WriteLine($"Product: {vm.Name}, Price: {vm.Price}, HasUnsavedChanges: {vm.HasUnsavedChanges}");
                 }
+#endif
                 
                 // Check for validation errors before saving
                 var validationErrors = ProductViewModels.Where(vm => vm.HasValidationError).ToList();
+#if DEBUG
                 Console.WriteLine($"Validation errors found: {validationErrors.Count}");
+#endif
                 
                 if (validationErrors.Count > 0)
                 {
@@ -2376,11 +2424,15 @@ namespace Photobooth
                 }
 
                 // Update products in database using ViewModels
+#if DEBUG
                 Console.WriteLine($"Updating {_products.Count} products in database...");
+#endif
                 
                 foreach (var product in _products)
                 {
+#if DEBUG
                     Console.WriteLine($"Processing product: {product.Name} (Type: {product.ProductType}, ID: {product.Id})");
+#endif
 
                     bool newStatus = false;
                     decimal newPrice = 0;
@@ -2405,17 +2457,23 @@ namespace Photobooth
                         newStatus = viewModel.IsEnabled;
                         newPrice = viewModel.Price;
 
+#if DEBUG
                         Console.WriteLine($"Found ViewModel: {viewModel.Name}, Current DB Price: {product.Price}, New Price: {newPrice}, HasUnsavedChanges: {viewModel.HasUnsavedChanges}");
+#endif
 
                         // Check what needs to be updated
                         bool statusChanged = product.IsActive != newStatus;
                         bool priceChanged = product.Price != newPrice && newPrice >= 0;
                         
+#if DEBUG
                         Console.WriteLine($"Status changed: {statusChanged} ({product.IsActive} -> {newStatus}), Price changed: {priceChanged} ({product.Price} -> {newPrice})");
+#endif
                         
                         if (statusChanged || priceChanged)
                         {
+#if DEBUG
                             Console.WriteLine($"Updating product {product.Name} in database...");
+#endif
                             
                             // Collect all changes for atomic update
                             bool? statusUpdate = statusChanged ? newStatus : null;
@@ -2424,7 +2482,9 @@ namespace Photobooth
                             // Perform atomic update
                             var updateResult = await _databaseService.UpdateProductAsync(product.Id, statusUpdate, priceUpdate);
                             
+#if DEBUG
                             Console.WriteLine($"Database update result for {product.Name}: Success={updateResult.Success}, Error={updateResult.ErrorMessage}");
+#endif
                             
                             if (!updateResult.Success)
                             {
@@ -2435,34 +2495,60 @@ namespace Photobooth
                             if (statusChanged)
                             {
                                 product.IsActive = newStatus;
+#if DEBUG
                                 Console.WriteLine($"Updated local product {product.Name} IsActive to {newStatus}");
+#endif
                             }
                             if (priceChanged)
                             {
                                 product.Price = newPrice;
+#if DEBUG
                                 Console.WriteLine($"Updated local product {product.Name} Price to {newPrice}");
+#endif
                             }
 
                         }
                         else
                         {
+#if DEBUG
                             Console.WriteLine($"No changes needed for product {product.Name}");
+#endif
                         }
 
                         // Mark ViewModel as saved
                         viewModel.ResetUnsavedChanges();
+#if DEBUG
                         Console.WriteLine($"Marked ViewModel {viewModel.Name} as saved (HasUnsavedChanges = false)");
+#endif
                     }
                     else
                     {
+#if DEBUG
                         Console.WriteLine($"No ViewModel found for product {product.Name}");
+#endif
                     }
                 }
                 
+#if DEBUG
                 Console.WriteLine("=== SaveProductConfiguration COMPLETED ===");
+#endif
 
                 // Save extra copy pricing for all products
                 await SaveExtraCopyPricing();
+
+                // Refresh products from database to ensure local _products list is up to date
+                var refreshResult = await _databaseService.GetProductsAsync();
+                if (refreshResult.Success && refreshResult.Data != null)
+                {
+                    _products = refreshResult.Data;
+#if DEBUG
+                    Console.WriteLine("=== Refreshed _products list from database after save ===");
+                    foreach (var product in _products)
+                    {
+                        Console.WriteLine($"  {product.Name}: Price=${product.Price}, IsActive={product.IsActive}");
+                    }
+#endif
+                }
 
                 // Save operation mode
                 await _databaseService.SetSettingValueAsync("System", "Mode", _currentOperationMode, _currentUserId);
@@ -2485,34 +2571,49 @@ namespace Photobooth
                 // Get custom pricing toggle state
                 bool useCustomPricing = UseCustomExtraCopyPricingCheckBox?.IsChecked == true;
 
-                decimal? extraCopy1Price = null;
-                decimal? extraCopy2Price = null;
-                decimal? extraCopy4BasePrice = null;
-                decimal? extraCopyAdditionalPrice = null;
+                // Simplified product-specific extra copy pricing
+                decimal? stripsExtraCopyPrice = null;
+                decimal? stripsMultipleCopyDiscount = null;
+                decimal? photo4x6ExtraCopyPrice = null;
+                decimal? photo4x6MultipleCopyDiscount = null;
+                decimal? smartphoneExtraCopyPrice = null;
+                decimal? smartphoneMultipleCopyDiscount = null;
 
                 if (useCustomPricing)
                 {
-                    // Get custom values from UI if custom pricing is enabled
-                    if (ExtraCopy1PriceInput != null && decimal.TryParse(ExtraCopy1PriceInput.Text, out decimal price1))
+                    // Get Photo Strips pricing from UI
+                    if (StripsExtraCopyPriceInput != null && decimal.TryParse(StripsExtraCopyPriceInput.Text, out decimal stripsPrice))
                     {
-                        extraCopy1Price = price1;
+                        stripsExtraCopyPrice = stripsPrice;
                     }
-                    if (ExtraCopy2PriceInput != null && decimal.TryParse(ExtraCopy2PriceInput.Text, out decimal price2))
+                    if (StripsMultipleCopyDiscountInput != null && decimal.TryParse(StripsMultipleCopyDiscountInput.Text, out decimal stripsDiscount))
                     {
-                        extraCopy2Price = price2;
-                    }
-                    if (ExtraCopyAdditionalPriceInput != null && decimal.TryParse(ExtraCopyAdditionalPriceInput.Text, out decimal priceAdditional))
-                    {
-                        extraCopyAdditionalPrice = priceAdditional;
+                        stripsMultipleCopyDiscount = stripsDiscount;
                     }
 
-                    // Calculate 4+ base price automatically (2 copy price + 2 additional copies)
-                    if (extraCopy2Price.HasValue && extraCopyAdditionalPrice.HasValue)
+                    // Get 4x6 Photos pricing from UI
+                    if (Photo4x6ExtraCopyPriceInput != null && decimal.TryParse(Photo4x6ExtraCopyPriceInput.Text, out decimal photo4x6Price))
                     {
-                        extraCopy4BasePrice = extraCopy2Price.Value + (2 * extraCopyAdditionalPrice.Value);
+                        photo4x6ExtraCopyPrice = photo4x6Price;
+                    }
+                    if (Photo4x6MultipleCopyDiscountInput != null && decimal.TryParse(Photo4x6MultipleCopyDiscountInput.Text, out decimal photo4x6Discount))
+                    {
+                        photo4x6MultipleCopyDiscount = photo4x6Discount;
+                    }
+
+                    // Get Smartphone Print pricing from UI
+                    if (SmartphoneExtraCopyPriceInput != null && decimal.TryParse(SmartphoneExtraCopyPriceInput.Text, out decimal smartphonePrice))
+                    {
+                        smartphoneExtraCopyPrice = smartphonePrice;
+                    }
+                    if (SmartphoneMultipleCopyDiscountInput != null && decimal.TryParse(SmartphoneMultipleCopyDiscountInput.Text, out decimal smartphoneDiscount))
+                    {
+                        smartphoneMultipleCopyDiscount = smartphoneDiscount;
                     }
                 }
                 // If not using custom pricing, leave values as null (will use base product price)
+
+                // Use the product-specific pricing values from UI
 
                 // Save for all products
                 foreach (var product in _products)
@@ -2522,10 +2623,18 @@ namespace Photobooth
                         isActive: null,
                         price: null,
                         useCustomExtraCopyPricing: useCustomPricing,
-                        extraCopy1Price: extraCopy1Price,
-                        extraCopy2Price: extraCopy2Price,
-                        extraCopy4BasePrice: extraCopy4BasePrice,
-                        extraCopyAdditionalPrice: extraCopyAdditionalPrice
+                        // Legacy pricing (keep for backward compatibility)
+                        extraCopy1Price: null,
+                        extraCopy2Price: null,
+                        extraCopy4BasePrice: null,
+                        extraCopyAdditionalPrice: null,
+                        // Simplified product-specific extra copy pricing
+                        stripsExtraCopyPrice: stripsExtraCopyPrice,
+                        stripsMultipleCopyDiscount: stripsMultipleCopyDiscount,
+                        photo4x6ExtraCopyPrice: photo4x6ExtraCopyPrice,
+                        photo4x6MultipleCopyDiscount: photo4x6MultipleCopyDiscount,
+                        smartphoneExtraCopyPrice: smartphoneExtraCopyPrice,
+                        smartphoneMultipleCopyDiscount: smartphoneMultipleCopyDiscount
                     );
 
                     if (!updateResult.Success)
@@ -2535,14 +2644,20 @@ namespace Photobooth
 
                     // Update local product model
                     product.UseCustomExtraCopyPricing = useCustomPricing;
-                    product.ExtraCopy1Price = extraCopy1Price;
-                    product.ExtraCopy2Price = extraCopy2Price;
-                    product.ExtraCopy4BasePrice = extraCopy4BasePrice;
-                    product.ExtraCopyAdditionalPrice = extraCopyAdditionalPrice;
+                    
+                    // Update simplified product-specific pricing
+                    product.StripsExtraCopyPrice = stripsExtraCopyPrice;
+                    product.StripsMultipleCopyDiscount = stripsMultipleCopyDiscount;
+                    product.Photo4x6ExtraCopyPrice = photo4x6ExtraCopyPrice;
+                    product.Photo4x6MultipleCopyDiscount = photo4x6MultipleCopyDiscount;
+                    product.SmartphoneExtraCopyPrice = smartphoneExtraCopyPrice;
+                    product.SmartphoneMultipleCopyDiscount = smartphoneMultipleCopyDiscount;
                 }
 
-                Console.WriteLine($"Extra copy pricing saved: UseCustom={useCustomPricing}, " +
-                    $"1=${extraCopy1Price}, 2=${extraCopy2Price}, 4+=${extraCopy4BasePrice}, Additional=${extraCopyAdditionalPrice}");
+                Console.WriteLine($"Simplified product-specific extra copy pricing saved: UseCustom={useCustomPricing}");
+                Console.WriteLine($"  Photo Strips: Price=${stripsExtraCopyPrice}, Discount=${stripsMultipleCopyDiscount}%");
+                Console.WriteLine($"  4x6 Photos: Price=${photo4x6ExtraCopyPrice}, Discount=${photo4x6MultipleCopyDiscount}%");
+                Console.WriteLine($"  Smartphone Print: Price=${smartphoneExtraCopyPrice}, Discount=${smartphoneMultipleCopyDiscount}%");
             }
             catch (Exception ex)
             {
@@ -2614,36 +2729,8 @@ namespace Photobooth
         /// </summary>
         private void UpdatePricingExamples()
         {
-            try
-            {
-                if (PricingExamplesText == null) return;
-
-                // Get current values from inputs
-                decimal price1 = 3.00m;
-                decimal price2 = 5.00m;
-                decimal priceAdditional = 1.50m;
-
-                if (ExtraCopy1PriceInput != null && decimal.TryParse(ExtraCopy1PriceInput.Text, out decimal p1))
-                    price1 = p1;
-                if (ExtraCopy2PriceInput != null && decimal.TryParse(ExtraCopy2PriceInput.Text, out decimal p2))
-                    price2 = p2;
-                if (ExtraCopyAdditionalPriceInput != null && decimal.TryParse(ExtraCopyAdditionalPriceInput.Text, out decimal pAdd))
-                    priceAdditional = pAdd;
-
-                // Calculate examples
-                decimal price3 = price2 + priceAdditional;
-                decimal price5 = price2 + (3 * priceAdditional);
-
-                // Update the text
-                PricingExamplesText.Text = $"• 1 extra copy: ${price1:F2}\n" +
-                                          $"• 2 extra copies: ${price2:F2}\n" +
-                                          $"• 3 extra copies: ${price2:F2} + ${priceAdditional:F2} = ${price3:F2}\n" +
-                                          $"• 5 extra copies: ${price2:F2} + (3 × ${priceAdditional:F2}) = ${price5:F2}";
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error updating pricing examples: {ex.Message}");
-            }
+            // Pricing examples removed - they were causing confusion and didn't match frontend display
+            // The frontend now shows rounded prices (Math.Ceiling) to avoid decimal pricing issues
         }
 
         /// <summary>
@@ -2670,7 +2757,7 @@ namespace Photobooth
                 {
                     if (product.UseCustomExtraCopyPricing)
                     {
-                        CustomPricingDescription.Text = "Configure custom pricing for extra copies";
+                        CustomPricingDescription.Text = "Configure product-specific pricing for extra copies";
                     }
                     else
                     {
@@ -2678,26 +2765,45 @@ namespace Photobooth
                     }
                 }
 
-                // Load custom pricing values (or defaults)
-                if (ExtraCopy1PriceInput != null)
+                // Load simplified product-specific pricing values (or defaults)
+                // Photo Strips pricing
+                if (StripsExtraCopyPriceInput != null)
                 {
-                    ExtraCopy1PriceInput.Text = (product.ExtraCopy1Price ?? product.Price).ToString("F2");
+                    StripsExtraCopyPriceInput.Text = (product.StripsExtraCopyPrice ?? 6.00m).ToString("F2");
                 }
-                if (ExtraCopy2PriceInput != null)
+                if (StripsMultipleCopyDiscountInput != null)
                 {
-                    ExtraCopy2PriceInput.Text = (product.ExtraCopy2Price ?? (product.Price * 2)).ToString("F2");
+                    StripsMultipleCopyDiscountInput.Text = (product.StripsMultipleCopyDiscount ?? 0.00m).ToString("F0");
                 }
-                if (ExtraCopyAdditionalPriceInput != null)
+
+                // 4x6 Photos pricing
+                if (Photo4x6ExtraCopyPriceInput != null)
                 {
-                    ExtraCopyAdditionalPriceInput.Text = (product.ExtraCopyAdditionalPrice ?? product.Price).ToString("F2");
+                    Photo4x6ExtraCopyPriceInput.Text = (product.Photo4x6ExtraCopyPrice ?? 5.00m).ToString("F2");
+                }
+                if (Photo4x6MultipleCopyDiscountInput != null)
+                {
+                    Photo4x6MultipleCopyDiscountInput.Text = (product.Photo4x6MultipleCopyDiscount ?? 0.00m).ToString("F0");
+                }
+
+                // Smartphone Print pricing
+                if (SmartphoneExtraCopyPriceInput != null)
+                {
+                    SmartphoneExtraCopyPriceInput.Text = (product.SmartphoneExtraCopyPrice ?? 3.00m).ToString("F2");
+                }
+                if (SmartphoneMultipleCopyDiscountInput != null)
+                {
+                    SmartphoneMultipleCopyDiscountInput.Text = (product.SmartphoneMultipleCopyDiscount ?? 0.00m).ToString("F0");
                 }
 
                 // Update pricing examples with loaded values
                 UpdatePricingExamples();
 
-                Console.WriteLine($"Loaded extra copy pricing: UseCustom={product.UseCustomExtraCopyPricing}, " +
+                Console.WriteLine($"Loaded simplified extra copy pricing: UseCustom={product.UseCustomExtraCopyPricing}, " +
                     $"BasePrice=${product.Price}, " +
-                    $"1=${product.ExtraCopy1Price}, 2=${product.ExtraCopy2Price}, Additional=${product.ExtraCopyAdditionalPrice}");
+                    $"Strips: Price=${product.StripsExtraCopyPrice}, Discount=${product.StripsMultipleCopyDiscount}%, " +
+                    $"4x6: Price=${product.Photo4x6ExtraCopyPrice}, Discount=${product.Photo4x6MultipleCopyDiscount}%, " +
+                    $"Smartphone: Price=${product.SmartphoneExtraCopyPrice}, Discount=${product.SmartphoneMultipleCopyDiscount}%");
             }
             catch (Exception ex)
             {
@@ -3391,16 +3497,13 @@ namespace Photobooth
         {
             try
             {
-                var result = await _databaseService.GetAllAsync<Transaction>();
+                var result = await _databaseService.GetRecentTransactionsAsync(20);
                 
                 await Dispatcher.InvokeAsync(() =>
                 {
                     if (result.Success && result.Data != null)
                     {
-                        _recentTransactions = result.Data
-                            .OrderByDescending(t => t.CreatedAt)
-                            .Take(20) // Show last 20 transactions
-                            .ToList();
+                        _recentTransactions = result.Data;
                     }
                     else
                     {

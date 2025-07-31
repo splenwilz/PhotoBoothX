@@ -1490,92 +1490,165 @@
 
                                         <!-- Custom Pricing Section (shown when toggle is enabled) -->
                                         <StackPanel Name="CustomPricingSection" Visibility="Collapsed">
-                                            <!-- Pricing Grid -->
-                                            <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="16"/>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="16"/>
-                                                <ColumnDefinition Width="*"/>
-                                            </Grid.ColumnDefinitions>
-
-                                            <!-- 1 Extra Copy Price -->
-                                            <Border Grid.Column="0" Background="#F8FAFC" CornerRadius="8" BorderBrush="#E5E7EB" BorderThickness="1" Padding="16">
+                                            <!-- Product-Specific Pricing Sections -->
+                                            
+                                            <!-- Photo Strips Pricing -->
+                                            <Border Background="#F8FAFC" CornerRadius="8" BorderBrush="#E2E8F0" BorderThickness="1" Padding="16" Margin="0,0,0,16">
                                                 <StackPanel>
-                                                    <TextBlock Text="1 Extra Copy" FontSize="14" FontWeight="SemiBold" Foreground="#374151" Margin="0,0,0,8"/>
-                                                    <TextBlock Text="Price for 1 additional copy" FontSize="12" Foreground="#6B7280" Margin="0,0,0,12"/>
-                                                    <Border Background="White" CornerRadius="6" BorderBrush="#D1D5DB" BorderThickness="1" Padding="12,8">
-                                                        <Grid>
-                                                            <Grid.ColumnDefinitions>
-                                                                <ColumnDefinition Width="Auto"/>
-                                                                <ColumnDefinition Width="*"/>
-                                                            </Grid.ColumnDefinitions>
-                                                            <TextBlock Grid.Column="0" Text="$" FontSize="14" Foreground="#6B7280" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                                                            <TextBox Grid.Column="1" Name="ExtraCopy1PriceInput" Text="3.00" 
-                                                                     FontSize="14" BorderThickness="0" Background="Transparent" VerticalAlignment="Center"
-                                                                     behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True" TextChanged="ExtraCopyPrice_TextChanged"/>
-                                                        </Grid>
-                                                    </Border>
+                                                    <TextBlock Text="📸 Photo Strips Pricing" FontSize="16" FontWeight="SemiBold" Foreground="#1E293B" Margin="0,0,0,12"/>
+                                                    <TextBlock Text="Pricing for Photo Strips extra copies (Base: $8.00)" FontSize="12" Foreground="#64748B" Margin="0,0,0,16"/>
+                                                    
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="16"/>
+                                                            <ColumnDefinition Width="*"/>
+                                                        </Grid.ColumnDefinitions>
+
+                                                        <!-- Strips Extra Copy Price -->
+                                                        <Border Grid.Column="0" Background="White" CornerRadius="6" BorderBrush="#D1D5DB" BorderThickness="1" Padding="12">
+                                                            <StackPanel>
+                                                                <TextBlock Text="Extra Copy Price" FontSize="12" FontWeight="SemiBold" Foreground="#374151" Margin="0,0,0,4"/>
+                                                                <TextBlock Text="Price per additional copy" FontSize="10" Foreground="#6B7280" Margin="0,0,0,8"/>
+                                                                <Grid>
+                                                                    <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="Auto"/>
+                                                                        <ColumnDefinition Width="*"/>
+                                                                    </Grid.ColumnDefinitions>
+                                                                    <TextBlock Grid.Column="0" Text="$" FontSize="12" Foreground="#6B7280" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                                                    <TextBox Grid.Column="1" Name="StripsExtraCopyPriceInput" Text="6.00" 
+                                                                             FontSize="12" BorderThickness="0" Background="Transparent" VerticalAlignment="Center"
+                                                                             behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True" TextChanged="ExtraCopyPrice_TextChanged"/>
+                                                                </Grid>
+                                                            </StackPanel>
+                                                        </Border>
+
+                                                        <!-- Strips Multiple Copy Discount -->
+                                                        <Border Grid.Column="2" Background="White" CornerRadius="6" BorderBrush="#D1D5DB" BorderThickness="1" Padding="12">
+                                                            <StackPanel>
+                                                                <TextBlock Text="Multiple Copy Discount" FontSize="12" FontWeight="SemiBold" Foreground="#374151" Margin="0,0,0,4"/>
+                                                                <TextBlock Text="Discount % for 2+ copies" FontSize="10" Foreground="#6B7280" Margin="0,0,0,8"/>
+                                                                <Grid>
+                                                                    <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="*"/>
+                                                                        <ColumnDefinition Width="Auto"/>
+                                                                    </Grid.ColumnDefinitions>
+                                                                    <TextBox Grid.Column="0" Name="StripsMultipleCopyDiscountInput" Text="0" 
+                                                                             FontSize="12" BorderThickness="0" Background="Transparent" VerticalAlignment="Center"
+                                                                             behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True" TextChanged="ExtraCopyPrice_TextChanged"/>
+                                                                    <TextBlock Grid.Column="1" Text="%" FontSize="12" Foreground="#6B7280" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                                                                </Grid>
+                                                            </StackPanel>
+                                                        </Border>
+                                                    </Grid>
                                                 </StackPanel>
                                             </Border>
 
-                                            <!-- 2 Extra Copies Price -->
-                                            <Border Grid.Column="2" Background="#F8FAFC" CornerRadius="8" BorderBrush="#E5E7EB" BorderThickness="1" Padding="16">
+                                            <!-- 4x6 Photos Pricing -->
+                                            <Border Background="#F8FAFC" CornerRadius="8" BorderBrush="#E2E8F0" BorderThickness="1" Padding="16" Margin="0,0,0,16">
                                                 <StackPanel>
-                                                    <TextBlock Text="2 Extra Copies" FontSize="14" FontWeight="SemiBold" Foreground="#374151" Margin="0,0,0,8"/>
-                                                    <TextBlock Text="Price for 2 additional copies" FontSize="12" Foreground="#6B7280" Margin="0,0,0,12"/>
-                                                    <Border Background="White" CornerRadius="6" BorderBrush="#D1D5DB" BorderThickness="1" Padding="12,8">
-                                                        <Grid>
-                                                            <Grid.ColumnDefinitions>
-                                                                <ColumnDefinition Width="Auto"/>
-                                                                <ColumnDefinition Width="*"/>
-                                                            </Grid.ColumnDefinitions>
-                                                            <TextBlock Grid.Column="0" Text="$" FontSize="14" Foreground="#6B7280" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                                                            <TextBox Grid.Column="1" Name="ExtraCopy2PriceInput" Text="5.00" 
-                                                                     FontSize="14" BorderThickness="0" Background="Transparent" VerticalAlignment="Center"
-                                                                     behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True" TextChanged="ExtraCopyPrice_TextChanged"/>
-                                                        </Grid>
-                                                    </Border>
+                                                    <TextBlock Text="🖼️ 4x6 Photos Pricing" FontSize="16" FontWeight="SemiBold" Foreground="#1E293B" Margin="0,0,0,12"/>
+                                                    <TextBlock Text="Pricing for 4x6 Photos extra copies (Base: $7.00)" FontSize="12" Foreground="#64748B" Margin="0,0,0,16"/>
+                                                    
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="16"/>
+                                                            <ColumnDefinition Width="*"/>
+                                                        </Grid.ColumnDefinitions>
+
+                                                        <!-- 4x6 Extra Copy Price -->
+                                                        <Border Grid.Column="0" Background="White" CornerRadius="6" BorderBrush="#D1D5DB" BorderThickness="1" Padding="12">
+                                                            <StackPanel>
+                                                                <TextBlock Text="Extra Copy Price" FontSize="12" FontWeight="SemiBold" Foreground="#374151" Margin="0,0,0,4"/>
+                                                                <TextBlock Text="Price per additional copy" FontSize="10" Foreground="#6B7280" Margin="0,0,0,8"/>
+                                                                <Grid>
+                                                                    <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="Auto"/>
+                                                                        <ColumnDefinition Width="*"/>
+                                                                    </Grid.ColumnDefinitions>
+                                                                    <TextBlock Grid.Column="0" Text="$" FontSize="12" Foreground="#6B7280" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                                                    <TextBox Grid.Column="1" Name="Photo4x6ExtraCopyPriceInput" Text="5.00" 
+                                                                             FontSize="12" BorderThickness="0" Background="Transparent" VerticalAlignment="Center"
+                                                                             behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True" TextChanged="ExtraCopyPrice_TextChanged"/>
+                                                                </Grid>
+                                                            </StackPanel>
+                                                        </Border>
+
+                                                        <!-- 4x6 Multiple Copy Discount -->
+                                                        <Border Grid.Column="2" Background="White" CornerRadius="6" BorderBrush="#D1D5DB" BorderThickness="1" Padding="12">
+                                                            <StackPanel>
+                                                                <TextBlock Text="Multiple Copy Discount" FontSize="12" FontWeight="SemiBold" Foreground="#374151" Margin="0,0,0,4"/>
+                                                                <TextBlock Text="Discount % for 2+ copies" FontSize="10" Foreground="#6B7280" Margin="0,0,0,8"/>
+                                                                <Grid>
+                                                                    <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="*"/>
+                                                                        <ColumnDefinition Width="Auto"/>
+                                                                    </Grid.ColumnDefinitions>
+                                                                    <TextBox Grid.Column="0" Name="Photo4x6MultipleCopyDiscountInput" Text="0" 
+                                                                             FontSize="12" BorderThickness="0" Background="Transparent" VerticalAlignment="Center"
+                                                                             behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True" TextChanged="ExtraCopyPrice_TextChanged"/>
+                                                                    <TextBlock Grid.Column="1" Text="%" FontSize="12" Foreground="#6B7280" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                                                                </Grid>
+                                                            </StackPanel>
+                                                        </Border>
+                                                    </Grid>
                                                 </StackPanel>
                                             </Border>
 
-                                            <!-- Additional Copy Price -->
-                                            <Border Grid.Column="4" Background="#F8FAFC" CornerRadius="8" BorderBrush="#E5E7EB" BorderThickness="1" Padding="16">
+                                            <!-- Smartphone Print Pricing -->
+                                            <Border Background="#F8FAFC" CornerRadius="8" BorderBrush="#E2E8F0" BorderThickness="1" Padding="16" Margin="0,0,0,16">
                                                 <StackPanel>
-                                                    <TextBlock Text="Additional Copy Price" FontSize="14" FontWeight="SemiBold" Foreground="#374151" Margin="0,0,0,8"/>
-                                                    <TextBlock Text="Price per copy beyond 2" FontSize="12" Foreground="#6B7280" Margin="0,0,0,12"/>
-                                                    <Border Background="White" CornerRadius="6" BorderBrush="#D1D5DB" BorderThickness="1" Padding="12,8">
-                                                        <Grid>
-                                                            <Grid.ColumnDefinitions>
-                                                                <ColumnDefinition Width="Auto"/>
-                                                                <ColumnDefinition Width="*"/>
-                                                            </Grid.ColumnDefinitions>
-                                                            <TextBlock Grid.Column="0" Text="$" FontSize="14" Foreground="#6B7280" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                                                            <TextBox Grid.Column="1" Name="ExtraCopyAdditionalPriceInput" Text="1.50" 
-                                                                     FontSize="14" BorderThickness="0" Background="Transparent" VerticalAlignment="Center"
-                                                                     behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True" TextChanged="ExtraCopyPrice_TextChanged"/>
-                                                        </Grid>
-                                                    </Border>
+                                                    <TextBlock Text="📱 Smartphone Print Pricing" FontSize="16" FontWeight="SemiBold" Foreground="#1E293B" Margin="0,0,0,12"/>
+                                                    <TextBlock Text="Pricing for Smartphone Print extra copies (Base: $6.00)" FontSize="12" Foreground="#64748B" Margin="0,0,0,16"/>
+                                                    
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="16"/>
+                                                            <ColumnDefinition Width="*"/>
+                                                        </Grid.ColumnDefinitions>
+
+                                                        <!-- Smartphone Extra Copy Price -->
+                                                        <Border Grid.Column="0" Background="White" CornerRadius="6" BorderBrush="#D1D5DB" BorderThickness="1" Padding="12">
+                                                            <StackPanel>
+                                                                <TextBlock Text="Extra Copy Price" FontSize="12" FontWeight="SemiBold" Foreground="#374151" Margin="0,0,0,4"/>
+                                                                <TextBlock Text="Price per additional copy" FontSize="10" Foreground="#6B7280" Margin="0,0,0,8"/>
+                                                                <Grid>
+                                                                    <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="Auto"/>
+                                                                        <ColumnDefinition Width="*"/>
+                                                                    </Grid.ColumnDefinitions>
+                                                                    <TextBlock Grid.Column="0" Text="$" FontSize="12" Foreground="#6B7280" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                                                    <TextBox Grid.Column="1" Name="SmartphoneExtraCopyPriceInput" Text="3.00" 
+                                                                             FontSize="12" BorderThickness="0" Background="Transparent" VerticalAlignment="Center"
+                                                                             behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True" TextChanged="ExtraCopyPrice_TextChanged"/>
+                                                                </Grid>
+                                                            </StackPanel>
+                                                        </Border>
+
+                                                        <!-- Smartphone Multiple Copy Discount -->
+                                                        <Border Grid.Column="2" Background="White" CornerRadius="6" BorderBrush="#D1D5DB" BorderThickness="1" Padding="12">
+                                                            <StackPanel>
+                                                                <TextBlock Text="Multiple Copy Discount" FontSize="12" FontWeight="SemiBold" Foreground="#374151" Margin="0,0,0,4"/>
+                                                                <TextBlock Text="Discount % for 2+ copies" FontSize="10" Foreground="#6B7280" Margin="0,0,0,8"/>
+                                                                <Grid>
+                                                                    <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="*"/>
+                                                                        <ColumnDefinition Width="Auto"/>
+                                                                    </Grid.ColumnDefinitions>
+                                                                    <TextBox Grid.Column="0" Name="SmartphoneMultipleCopyDiscountInput" Text="0" 
+                                                                             FontSize="12" BorderThickness="0" Background="Transparent" VerticalAlignment="Center"
+                                                                             behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True" TextChanged="ExtraCopyPrice_TextChanged"/>
+                                                                    <TextBlock Grid.Column="1" Text="%" FontSize="12" Foreground="#6B7280" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                                                                </Grid>
+                                                            </StackPanel>
+                                                        </Border>
+                                                    </Grid>
                                                 </StackPanel>
                                             </Border>
-                                        </Grid>
 
-                                        <!-- Pricing Examples -->
-                                        <Border Background="#EFF6FF" CornerRadius="8" BorderBrush="#BFDBFE" BorderThickness="1" Padding="16" Margin="0,20,0,0">
-                                            <StackPanel>
-                                                <TextBlock Text="💡 Pricing Examples" FontSize="14" FontWeight="SemiBold" Foreground="#1E40AF" Margin="0,0,0,8"/>
-                                                <TextBlock Name="PricingExamplesText" FontSize="12" Foreground="#1E40AF" TextWrapping="Wrap">
-                                                    <Run Text="• 1 extra copy: $3.00"/>
-                                                    <LineBreak/>
-                                                    <Run Text="• 2 extra copies: $5.00"/>
-                                                    <LineBreak/>
-                                                    <Run Text="• 3 extra copies: $5.00 + $1.50 = $6.50"/>
-                                                    <LineBreak/>
-                                                    <Run Text="• 5 extra copies: $5.00 + (3 × $1.50) = $9.50"/>
-                                                </TextBlock>
-                                            </StackPanel>
-                                        </Border>
+
                                         </StackPanel>
                                     </StackPanel>
                                 </Border>

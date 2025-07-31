@@ -162,10 +162,10 @@ namespace Photobooth
         /// <summary>
         /// Sets up the application and navigates to the welcome screen
         /// </summary>
-        private void InitializeApplication()
+        private async void InitializeApplication()
         {
             // Initialize admin dashboard screen for credit management (even for regular users)
-            InitializeAdminDashboardForCredits();
+            await InitializeAdminDashboardForCreditsAsync();
             
             // Start with the welcome screen
             NavigateToWelcome();
@@ -174,34 +174,38 @@ namespace Photobooth
         /// <summary>
         /// Initialize admin dashboard for credit management (used by all users)
         /// </summary>
-        private async void InitializeAdminDashboardForCredits()
+        private async Task InitializeAdminDashboardForCreditsAsync()
         {
             try
             {
-                Console.WriteLine("=== INITIALIZING ADMIN DASHBOARD FOR CREDITS ===");
+                LoggingService.Application.Debug("Initializing admin dashboard for credit management");
                 if (adminDashboardScreen == null)
                 {
                     adminDashboardScreen = new AdminDashboardScreen(_databaseService);
-                    Console.WriteLine("Admin Dashboard created for credit management");
+                    LoggingService.Application.Debug("Admin Dashboard created for credit management");
                     
                     // Subscribe to admin dashboard events
                     adminDashboardScreen.ExitAdminRequested += AdminDashboardScreen_ExitAdminRequested;
-                    Console.WriteLine("Admin Dashboard event handlers attached");
+                    LoggingService.Application.Debug("Admin Dashboard event handlers attached");
                     
                     // CRITICAL: Initialize admin dashboard with minimal access to load credits
-                    Console.WriteLine("Initializing admin dashboard to load credits...");
+                    LoggingService.Application.Debug("Initializing admin dashboard to load credits...");
                     await adminDashboardScreen.SetAccessLevel(AdminAccessLevel.None, "SYSTEM_CREDIT_MANAGER");
-                    var currentCredits = adminDashboardScreen.GetCurrentCredits();
-                    Console.WriteLine($"Credits loaded: ${currentCredits}");
+                    
+                    // Add null check to prevent potential null reference
+                    if (adminDashboardScreen != null)
+                    {
+                        var currentCredits = adminDashboardScreen.GetCurrentCredits();
+                        LoggingService.Application.Information("Credits loaded from admin dashboard", ("Credits", currentCredits));
+                    }
                 }
                 else
                 {
-                    Console.WriteLine("Admin Dashboard already exists");
+                    LoggingService.Application.Debug("Admin Dashboard already exists");
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"!!! FAILED TO INITIALIZE ADMIN DASHBOARD: {ex.Message} !!!");
                 LoggingService.Application.Error("Failed to initialize admin dashboard for credit management", ex);
             }
         }
@@ -284,6 +288,11 @@ namespace Photobooth
                     productSelectionScreen.ProductSelected += ProductSelectionScreen_ProductSelected;
                     Console.WriteLine("ProductSelectionScreen created");
                 }
+
+                // Refresh product prices from database to ensure we have the latest values
+                Console.WriteLine("Refreshing product prices from database...");
+                await productSelectionScreen.RefreshProductPricesAsync();
+                Console.WriteLine("Product prices refreshed successfully");
 
                 // Update credit display if admin dashboard is available
                 if (adminDashboardScreen != null)
@@ -405,7 +414,7 @@ namespace Photobooth
         /// <summary>
         /// Navigate to template selection screen with categorized view
         /// </summary>
-        public void NavigateToTemplateSelectionWithCategories(ProductInfo product)
+        public async Task NavigateToTemplateSelectionWithCategories(ProductInfo product)
         {
             try
             {
@@ -439,6 +448,9 @@ namespace Photobooth
 
                 // Set the product type for template filtering
                 templateSelectionScreen.SetProductType(product);
+
+                // Refresh product prices from database to ensure we have the latest values
+                await templateSelectionScreen.RefreshProductPricesAsync();
 
                 // Refresh credits when navigating back to template selection
                 if (adminDashboardScreen != null)
@@ -524,7 +536,7 @@ namespace Photobooth
                 // Fallback to template selection if customization navigation fails
                 if (currentProduct != null)
                 {
-                    NavigateToTemplateSelectionWithCategories(currentProduct);
+                    await NavigateToTemplateSelectionWithCategories(currentProduct);
                 }
                 else
                 {
@@ -825,7 +837,7 @@ namespace Photobooth
 
                 if (upsellScreen == null)
                 {
-                    upsellScreen = new UpsellScreen();
+                    upsellScreen = new UpsellScreen(_databaseService);
                     // Subscribe to upsell completion events
                     upsellScreen.UpsellCompleted += UpsellScreen_UpsellCompleted;
                     upsellScreen.UpsellTimeout += UpsellScreen_UpsellTimeout;
@@ -1061,7 +1073,7 @@ namespace Photobooth
                 if (adminDashboardScreen == null)
                 {
                     Console.WriteLine("WARN: Admin Dashboard was null, creating new instance");
-                    InitializeAdminDashboardForCredits();
+                    await InitializeAdminDashboardForCreditsAsync();
                 }
 
                 // Set access level and configure UI accordingly
@@ -1179,12 +1191,12 @@ namespace Photobooth
         /// <summary>
         /// Handles product selection
         /// </summary>
-        private void ProductSelectionScreen_ProductSelected(object? sender, ProductSelectedEventArgs e)
+        private async void ProductSelectionScreen_ProductSelected(object? sender, ProductSelectedEventArgs e)
         {
             try
             {
                 // Skip category selection and go directly to template selection with categorized view
-                NavigateToTemplateSelectionWithCategories(e.ProductInfo);
+                await NavigateToTemplateSelectionWithCategories(e.ProductInfo);
             }
             catch (Exception ex)
             {
@@ -1248,7 +1260,7 @@ namespace Photobooth
         /// <summary>
         /// Handles template selection
         /// </summary>
-        private void TemplateSelectionScreen_TemplateSelected(object? sender, TemplateSelectedEventArgs e)
+        private async void TemplateSelectionScreen_TemplateSelected(object? sender, TemplateSelectedEventArgs e)
         {
             try
             {
@@ -1269,7 +1281,7 @@ namespace Photobooth
                     // Fallback to template selection if template is null
                     if (currentProduct != null)
                     {
-                        NavigateToTemplateSelectionWithCategories(currentProduct);
+                        await NavigateToTemplateSelectionWithCategories(currentProduct);
                     }
                     else
                     {
@@ -1497,14 +1509,14 @@ namespace Photobooth
         /// <summary>
         /// Handles template customization back button click
         /// </summary>
-        private void TemplateCustomizationScreen_BackButtonClicked(object? sender, EventArgs e)
+        private async void TemplateCustomizationScreen_BackButtonClicked(object? sender, EventArgs e)
         {
             try
             {
                 // Navigate back to template selection if we have current product
                 if (currentProduct != null)
                 {
-                    NavigateToTemplateSelectionWithCategories(currentProduct);
+                    await NavigateToTemplateSelectionWithCategories(currentProduct);
                 }
                 else
                 {
@@ -1751,16 +1763,16 @@ namespace Photobooth
                 // Navigate to printing with upsell results
                 if (e.Result.OriginalProduct != null)
                 {
-                    await NavigateToPrinting(
-                        e.Result.OriginalTemplate,
-                        e.Result.OriginalProduct,
-                        e.Result.ComposedImagePath,
-                        e.Result.CapturedPhotosPaths,
-                        e.Result.ExtraCopies,
-                        e.Result.CrossSellProduct,
-                        e.Result.TotalAdditionalCost,
-                        e.Result.CrossSellAccepted
-                    );
+                await NavigateToPrinting(
+                    e.Result.OriginalTemplate,
+                    e.Result.OriginalProduct,
+                    e.Result.ComposedImagePath,
+                    e.Result.CapturedPhotosPaths,
+                    e.Result.ExtraCopies,
+                    e.Result.CrossSellProduct,
+                    e.Result.TotalAdditionalCost,
+                    e.Result.CrossSellAccepted
+                );
                 }
                 else
                 {

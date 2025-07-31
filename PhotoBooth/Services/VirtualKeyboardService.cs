@@ -30,12 +30,13 @@ namespace Photobooth.Services
 
         // Add flag to prevent recursive operations during text manipulation
         private bool _isManipulatingText = false;
+        private bool _bindingReenabled = false;
         private Dictionary<TextBox, BindingExpression> _textBoxBindingExpressions = new Dictionary<TextBox, BindingExpression>();
 
         /// <summary>
         /// Show virtual keyboard for the specified input control
         /// </summary>
-        public void ShowKeyboard(Control inputControl, Window parentWindow)
+        public async Task ShowKeyboardAsync(Control inputControl, Window parentWindow)
         {
             try
             {
@@ -179,7 +180,7 @@ namespace Photobooth.Services
                     if (_keyboardContainer == null && attempts < maxAttempts)
                 {
                         Console.WriteLine("Container not found, waiting before retry...");
-                        System.Threading.Thread.Sleep(100);
+                        await Task.Delay(100);
                     }
                 }
 
@@ -600,11 +601,12 @@ namespace Photobooth.Services
                     Console.WriteLine("No keyboard or container to hide");
                 }
 
-                // Re-enable binding for the active input before clearing it
-                if (_activeInput != null)
+                // Re-enable binding for the active input before clearing it (unless already done)
+                if (_activeInput != null && !_bindingReenabled)
                 {
                     ReenableBinding(_activeInput);
                 }
+                _bindingReenabled = false; // Reset flag
 
                 // Reset manipulation flag
                 _isManipulatingText = false;
@@ -682,13 +684,17 @@ namespace Photobooth.Services
             var controlName = inputControl.Name?.ToLower() ?? "";
             var controlTag = inputControl.Tag?.ToString()?.ToLower() ?? "";
             
-            // Check both Name and Tag for price/number indicators
+            // Check both Name and Tag for price/number indicators (case-insensitive)
             if (controlName.Contains("price") || controlName.Contains("number") || 
                 controlName.Contains("priority") || controlName.Contains("sort") ||
+                controlName.Contains("discount") || controlName.Contains("amount") ||
                 controlTag.Contains("price") || controlTag.Contains("number") ||
+                controlTag.Contains("discount") || controlTag.Contains("amount") ||
                 // Specific product keys that should use numeric keyboard for pricing
                 controlTag.Contains("photostrips") || controlTag.Contains("photo4x6") || 
-                controlTag.Contains("smartphoneprint"))
+                controlTag.Contains("smartphoneprint") ||
+                // Specific TextBox names for the new simplified pricing system
+                controlName.Contains("extracopypriceinput") || controlName.Contains("multiplecopydiscountinput"))
             {
                 return VirtualKeyboardMode.Numeric;
             }
@@ -993,15 +999,22 @@ namespace Photobooth.Services
         private void HandleEnter()
         {
             // Check if we're in a price input field in the Admin Dashboard
-            if (_activeInput is TextBox textBox && 
-                (textBox.Tag?.ToString() == "PhotoStrips" || 
-                 textBox.Tag?.ToString() == "Photo4x6" || 
-                 textBox.Tag?.ToString() == "SmartphonePrint"))
+            if (_activeInput is TextBox textBox)
             {
-                // This is a product price field - save and close keyboard
-                TriggerProductConfigurationSave();
-                HideKeyboard();
-                return;
+                var textBoxName = textBox.Name?.ToLower() ?? "";
+                var textBoxTag = textBox.Tag?.ToString() ?? "";
+                
+                // Check for both old tag-based and new name-based price fields
+                if (textBoxTag == "PhotoStrips" || textBoxTag == "Photo4x6" || textBoxTag == "SmartphonePrint" ||
+                    textBoxName.Contains("extracopypriceinput") || textBoxName.Contains("multiplecopydiscountinput"))
+                {
+                    // This is a product price field - update binding first, then save and close keyboard
+                    _bindingReenabled = true;
+                    ReenableBinding(_activeInput);
+                    TriggerProductConfigurationSave();
+                    HideKeyboard();
+                    return;
+                }
             }
 
             // Default Enter behavior for other inputs
@@ -1218,27 +1231,23 @@ namespace Photobooth.Services
                     var binding = bindingExpression.ParentBinding;
                     textBox.SetBinding(TextBox.TextProperty, binding);
                     
-                    // Use Dispatcher to ensure user input is restored after binding sync
-                    textBox.Dispatcher.BeginInvoke(new Action(() =>
+                    // Set the user's input back to prevent ViewModel overwrite
+                    var currentTextAfterBinding = textBox.Text;
+                    Console.WriteLine($"Text after binding restore: '{currentTextAfterBinding}', setting back to user input: '{currentUserInput}'");
+                    textBox.Text = currentUserInput;
+                    
+                    // CRITICAL FIX: Force binding to update the source (ViewModel) IMMEDIATELY
+                    // This ensures the ViewModel gets the new value even with UpdateSourceTrigger=LostFocus
+                    var newBindingExpression = textBox.GetBindingExpression(TextBox.TextProperty);
+                    if (newBindingExpression != null)
                     {
-                        // Set the user's input back to prevent ViewModel overwrite
-                        var currentTextAfterBinding = textBox.Text;
-                        Console.WriteLine($"Text after binding restore: '{currentTextAfterBinding}', setting back to user input: '{currentUserInput}'");
-                        textBox.Text = currentUserInput;
-                        
-                        // CRITICAL FIX: Force binding to update the source (ViewModel)
-                        // This ensures the ViewModel gets the new value even with UpdateSourceTrigger=LostFocus
-                        var newBindingExpression = textBox.GetBindingExpression(TextBox.TextProperty);
-                        if (newBindingExpression != null)
-                        {
-                            var textBoxId = string.IsNullOrEmpty(textBox.Name) ? textBox.Tag?.ToString() ?? "Unknown" : textBox.Name;
-                            Console.WriteLine($"Manually updating binding source for TextBox: {textBoxId} with value: '{currentUserInput}'");
-                            newBindingExpression.UpdateSource();
-                        }
-                        
-                        var textBoxId2 = string.IsNullOrEmpty(textBox.Name) ? textBox.Tag?.ToString() ?? "Unknown" : textBox.Name;
-                        Console.WriteLine($"Re-enabled binding for TextBox: {textBoxId2}, restored user input: '{currentUserInput}'");
-                    }), System.Windows.Threading.DispatcherPriority.Input);
+                        var textBoxId = string.IsNullOrEmpty(textBox.Name) ? textBox.Tag?.ToString() ?? "Unknown" : textBox.Name;
+                        Console.WriteLine($"Manually updating binding source for TextBox: {textBoxId} with value: '{currentUserInput}'");
+                        newBindingExpression.UpdateSource();
+                    }
+                    
+                    var textBoxId2 = string.IsNullOrEmpty(textBox.Name) ? textBox.Tag?.ToString() ?? "Unknown" : textBox.Name;
+                    Console.WriteLine($"Re-enabled binding for TextBox: {textBoxId2}, restored user input: '{currentUserInput}'");
                 }
                 _textBoxBindingExpressions.Remove(textBox);
             }

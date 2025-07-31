@@ -2,6 +2,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using FluentAssertions;
 using Photobooth;
 using Photobooth.Models;
+using Photobooth.Services;
 using Photobooth.Tests.Mocks;
 using System;
 using System.Collections.Generic;
@@ -74,7 +75,7 @@ namespace Photobooth.Tests.Screens
             // Initialize UpsellScreen on UI thread
             Application.Current.Dispatcher.Invoke(() =>
             {
-                _upsellScreen = new UpsellScreen();
+                _upsellScreen = new UpsellScreen(new DatabaseService());
             });
         }
 

@@ -281,7 +281,7 @@ namespace Photobooth.Controls
             }
             
             // Otherwise, try to find the template folder within the layout structure
-            var templateFolderName = Path.GetFileName(_template.FolderPath) ?? SanitizeFileName(_template.Name);
+            var templateFolderName = Path.GetFileName(_template.FolderPath) ?? _template.Name;
             
             // Search through layout folders to find the template
             if (Directory.Exists(templatesBaseFolder))
@@ -503,164 +503,9 @@ namespace Photobooth.Controls
 
                 // Name is now read-only, so use the existing template name
                 var newTemplateName = _template.Name;
-                var nameChanged = false; // Name cannot be changed in kiosk mode
                 string newFolderPath = _template.FolderPath;
                 string newTemplatePath = _template.TemplatePath;
                 string newPreviewPath = _template.PreviewPath;
-
-                // Handle folder renaming if name changed
-                if (nameChanged && !string.IsNullOrEmpty(_template.FolderPath))
-                {
-                    try
-                    {
-
-
-                        var currentFolderPath = GetActualTemplateFolderPath();
-                        var layoutFolder = Path.GetDirectoryName(currentFolderPath);
-
-
-                        var sanitizedName = SanitizeFileName(newTemplateName);
-
-                        // Maintain layout-based structure: Templates/layout-folder/template-folder
-                        if (layoutFolder != null)
-                        {
-                            newFolderPath = Path.Combine(layoutFolder, sanitizedName);
-                        }
-                        else
-                        {
-                            // Fallback: keep in same directory as current template
-                            var templatesBaseFolder = GetTemplatesFolderPath();
-                            newFolderPath = Path.Combine(templatesBaseFolder, sanitizedName);
-                        }
-
-                        // Ensure unique folder name if it already exists
-                        int suffix = 1;
-                        while (Directory.Exists(newFolderPath) && newFolderPath != currentFolderPath)
-                        {
-                            var newFolderName = $"{sanitizedName}_{suffix}";
-                            if (layoutFolder != null)
-                            {
-                                newFolderPath = Path.Combine(layoutFolder, newFolderName);
-                            }
-                            else
-                            {
-                                var templatesBaseFolder = GetTemplatesFolderPath();
-                                newFolderPath = Path.Combine(templatesBaseFolder, newFolderName);
-                            }
-                            suffix++;
-
-                        }
-
-
-                        // Only rename if the path actually changed
-                        if (newFolderPath != currentFolderPath)
-                        {
-                            if (Directory.Exists(currentFolderPath))
-                            {
-
-
-                                // Rename in runtime folder (bin/Debug/Templates)
-                                Directory.Move(currentFolderPath, newFolderPath);
-                                
-                                // Verify the move was successful
-                                var sourceStillExists = Directory.Exists(currentFolderPath);
-                                var destinationExists = Directory.Exists(newFolderPath);
-
-
-                                if (!sourceStillExists && destinationExists)
-                                {
-
-                                    // Also rename in project source folder (PhotoBooth/Templates)
-                                    try
-                                    {
-                                        var currentTemplateFolderName = Path.GetFileName(currentFolderPath);
-                                        var layoutFolderName = Path.GetFileName(Path.GetDirectoryName(currentFolderPath));
-                                        var newTemplateFolderName = Path.GetFileName(newFolderPath);
-                                        
-                                        if (!string.IsNullOrEmpty(currentTemplateFolderName) && !string.IsNullOrEmpty(layoutFolderName) && !string.IsNullOrEmpty(newTemplateFolderName))
-                                        {
-                                            // Get project root directory using robust method
-                                            var currentDir = AppDomain.CurrentDomain.BaseDirectory;
-                                            var projectRoot = FindProjectRoot(currentDir);
-                                            
-                                            if (projectRoot != null)
-                                            {
-                                                var currentSourcePath = Path.Combine(projectRoot, "Templates", layoutFolderName, currentTemplateFolderName);
-                                                var newSourcePath = Path.Combine(projectRoot, "Templates", layoutFolderName, newTemplateFolderName);
-                                            
-                                            if (Directory.Exists(currentSourcePath))
-                                            {
-
-                                                Directory.Move(currentSourcePath, newSourcePath);
-
-                                            }
-                                            else
-                                            {
-
-                                            }
-                                            }
-                                            else
-                                            {
-                                                // Project root not found, skip source folder renaming
-                                                Console.WriteLine("Warning: Could not find project root directory - skipping source template folder rename");
-                                            }
-                                        }
-                                    }
-                                    catch
-                                    {
-
-                                        // Continue anyway since runtime folder was successfully renamed
-                                    }
-
-                                    // Update all file paths
-                                    newTemplatePath = Path.Combine(newFolderPath, "template.png");
-                                    
-                                    // Detect actual preview file extension
-                                    var previewExtensions = new[] { ".png", ".jpg", ".jpeg" };
-                                    var actualPreviewFile = previewExtensions
-                                        .Select(ext => Path.Combine(newFolderPath, $"preview{ext}"))
-                                        .FirstOrDefault(File.Exists);
-                                    
-                                    if (actualPreviewFile != null)
-                                    {
-                                        newPreviewPath = actualPreviewFile;
-
-                                    }
-                                    else
-                                    {
-                                        // Fallback to .png if no preview file found
-                                        newPreviewPath = Path.Combine(newFolderPath, "preview.png");
-
-                                    }
-
-
-                                }
-                                else
-                                {
-
-
-                                    throw new InvalidOperationException("Folder rename operation did not complete successfully");
-                                }
-                            }
-                            else
-                            {
-
-                            }
-                        }
-                        else
-                        {
-
-                        }
-
-                    }
-                    catch (Exception ex)
-                    {
-
-
-                        _notificationService.ShowError("Folder Rename Error", $"Failed to rename template folder: {ex.Message}");
-                        // Continue with the update but keep old paths
-                    }
-                }
 
                 // Get the selected category name
                 var selectedCategory = _categories.FirstOrDefault(c => c.Id == selectedCategoryId);
@@ -711,39 +556,6 @@ namespace Photobooth.Controls
 
                 if (result.Success)
                 {
-                    // Update database paths if they changed
-                    if (nameChanged && newFolderPath != _template.FolderPath)
-                    {
-
-
-                        // Config path removed in layout-based system
-
-                        var pathUpdateResult = await _databaseService.UpdateTemplatePathsAsync(
-                            _template.Id,
-                            newFolderPath,
-                            newTemplatePath,
-                            newPreviewPath
-                        );
-
-                        if (!pathUpdateResult.Success)
-                        {
-
-                        }
-                        else
-                        {
-                            // Update the updatedTemplate object with the new paths
-
-                            updatedTemplate.FolderPath = newFolderPath;
-                            updatedTemplate.TemplatePath = newTemplatePath;
-                            updatedTemplate.PreviewPath = newPreviewPath;
-                            // ConfigPath removed in layout-based system
-
-                        }
-                    }
-                    else
-                    {
-
-                    }
 
                     // Note: Config files no longer used in layout-based system
 
@@ -791,30 +603,7 @@ namespace Photobooth.Controls
             return $"{size:0.##} {sizes[order]}";
         }
 
-        private static string SanitizeFileName(string fileName)
-        {
-            // Remove invalid characters for folder names
-            var invalidChars = Path.GetInvalidFileNameChars();
-            var sanitized = fileName;
-            
-            foreach (var invalidChar in invalidChars)
-            {
-                sanitized = sanitized.Replace(invalidChar, '_');
-            }
-            
-            // Also replace some additional problematic characters
-            sanitized = sanitized.Replace(' ', '-')  // Replace spaces with hyphens
-                                .Replace("--", "-")   // Replace double hyphens with single
-                                .Trim('-', '_');      // Remove leading/trailing hyphens and underscores
-            
-            // Ensure it's not empty
-            if (string.IsNullOrWhiteSpace(sanitized))
-            {
-                sanitized = "template";
-            }
-            
-            return sanitized;
-        }
+
 
         /// <summary>
         /// Find project root directory using robust method instead of fragile ".." navigation

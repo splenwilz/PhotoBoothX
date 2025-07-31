@@ -99,9 +99,8 @@ namespace Photobooth
             _ = RefreshCreditsFromDatabase(); // Fire and forget
         }
 
-        public UpsellScreen() : this(new DatabaseService())
-        {
-        }
+        // Parameterless constructor removed to enforce proper dependency injection
+        // Use UpsellScreen(IDatabaseService databaseService) instead
 
         #endregion
 
@@ -183,15 +182,49 @@ namespace Photobooth
                     
                     if (_useCustomExtraCopyPricing)
                     {
-                        // Use custom pricing if enabled and values are provided
-                        _extraCopyPrice1 = product.ExtraCopy1Price ?? basePrice;
-                        _extraCopyPrice2 = product.ExtraCopy2Price ?? (basePrice * 2);
-                        _extraCopyPriceAdditional = product.ExtraCopyAdditionalPrice ?? basePrice;
+                        // Use product-specific pricing if available, otherwise fall back to legacy pricing
+                        var productType = GetProductTypeFromName(_originalProduct?.Type);
                         
-                        Console.WriteLine($"CUSTOM PRICING ENABLED:");
-                        Console.WriteLine($"- ExtraCopy1Price: ${_extraCopyPrice1:F2} (DB: {product.ExtraCopy1Price?.ToString("F2") ?? "null"})");
-                        Console.WriteLine($"- ExtraCopy2Price: ${_extraCopyPrice2:F2} (DB: {product.ExtraCopy2Price?.ToString("F2") ?? "null"})");
-                        Console.WriteLine($"- ExtraCopyAdditionalPrice: ${_extraCopyPriceAdditional:F2} (DB: {product.ExtraCopyAdditionalPrice?.ToString("F2") ?? "null"})");
+                        switch (productType)
+                        {
+                            case ProductType.PhotoStrips:
+                                var stripsPrice = product.StripsExtraCopyPrice ?? product.ExtraCopy1Price ?? basePrice;
+                                var stripsDiscount = product.StripsMultipleCopyDiscount ?? 0;
+                                _extraCopyPrice1 = stripsPrice;
+                                _extraCopyPrice2 = (stripsPrice * 2) * (1 - stripsDiscount / 100);
+                                _extraCopyPriceAdditional = stripsPrice * (1 - stripsDiscount / 100);
+                                Console.WriteLine($"PHOTO STRIPS SIMPLIFIED PRICING: Price=${stripsPrice:F2}, Discount={stripsDiscount:F0}%");
+                                break;
+                                
+                            case ProductType.Photo4x6:
+                                var photo4x6Price = product.Photo4x6ExtraCopyPrice ?? product.ExtraCopy1Price ?? basePrice;
+                                var photo4x6Discount = product.Photo4x6MultipleCopyDiscount ?? 0;
+                                _extraCopyPrice1 = photo4x6Price;
+                                _extraCopyPrice2 = (photo4x6Price * 2) * (1 - photo4x6Discount / 100);
+                                _extraCopyPriceAdditional = photo4x6Price * (1 - photo4x6Discount / 100);
+                                Console.WriteLine($"4X6 PHOTOS SIMPLIFIED PRICING: Price=${photo4x6Price:F2}, Discount={photo4x6Discount:F0}%");
+                                break;
+                                
+                            case ProductType.SmartphonePrint:
+                                var smartphonePrice = product.SmartphoneExtraCopyPrice ?? product.ExtraCopy1Price ?? basePrice;
+                                var smartphoneDiscount = product.SmartphoneMultipleCopyDiscount ?? 0;
+                                _extraCopyPrice1 = smartphonePrice;
+                                _extraCopyPrice2 = (smartphonePrice * 2) * (1 - smartphoneDiscount / 100);
+                                _extraCopyPriceAdditional = smartphonePrice * (1 - smartphoneDiscount / 100);
+                                Console.WriteLine($"SMARTPHONE PRINT SIMPLIFIED PRICING: Price=${smartphonePrice:F2}, Discount={smartphoneDiscount:F0}%");
+                                break;
+                                
+                            default:
+                                _extraCopyPrice1 = product.ExtraCopy1Price ?? basePrice;
+                                _extraCopyPrice2 = product.ExtraCopy2Price ?? (basePrice * 2);
+                                _extraCopyPriceAdditional = product.ExtraCopyAdditionalPrice ?? basePrice;
+                                Console.WriteLine($"LEGACY CUSTOM PRICING:");
+                                break;
+                        }
+                        
+                        Console.WriteLine($"- ExtraCopy1Price: ${_extraCopyPrice1:F2}");
+                        Console.WriteLine($"- ExtraCopy2Price: ${_extraCopyPrice2:F2}");
+                        Console.WriteLine($"- ExtraCopyAdditionalPrice: ${_extraCopyPriceAdditional:F2}");
                     }
                     else
                     {
@@ -343,7 +376,7 @@ namespace Photobooth
         /// <summary>
         /// Complete the upselling process
         /// </summary>
-        private void CompleteUpselling()
+        private async void CompleteUpselling()
         {
             try
             {
@@ -380,7 +413,7 @@ namespace Photobooth
                     ("TotalOrderCost", totalOrderCost));
 
                 // CRITICAL: Validate credits before proceeding
-                if (!ValidateCreditsForTotalOrder(totalOrderCost))
+                if (!await ValidateCreditsForTotalOrderAsync(totalOrderCost))
                 {
                     return; // Validation failed, error message already shown
                 }
@@ -540,7 +573,7 @@ namespace Photobooth
         /// <summary>
         /// Handle "Continue" button click for cross-sell acceptance
         /// </summary>
-        private void Continue_Click(object sender, RoutedEventArgs e)
+        private async void Continue_Click(object sender, RoutedEventArgs e)
         {
             try
             {
@@ -549,7 +582,7 @@ namespace Photobooth
                 
                 // Validate credits before proceeding
                 var totalOrderCost = (_originalProduct?.Price ?? 0) + _extraCopiesPrice + _crossSellPrice;
-                if (!ValidateCreditsForTotalOrder(totalOrderCost))
+                if (!await ValidateCreditsForTotalOrderAsync(totalOrderCost))
                 {
                     _crossSellAccepted = false; // Reset if validation fails
                     _crossSellPrice = 0;
@@ -605,7 +638,7 @@ namespace Photobooth
                     
                     // Validate credits for order without cross-sell
                     var totalOrderCost = (_originalProduct?.Price ?? 0) + _extraCopiesPrice;
-                    if (!ValidateCreditsForTotalOrder(totalOrderCost))
+                    if (!await ValidateCreditsForTotalOrderAsync(totalOrderCost))
                     {
                         return; // Validation failed, don't proceed
                     }
@@ -657,15 +690,16 @@ namespace Photobooth
             Console.WriteLine($"=== UPDATE PRICING DISPLAYS DEBUG ===");
             
             // Update copy pricing using configurable values from admin dashboard
-            OneCopyPrice.Text = $"${_extraCopyPrice1:F0}";
-            TwoCopyPrice.Text = $"${_extraCopyPrice2:F0}";
+            // Round UP to nearest dollar for display (no decimals in photo booth pricing)
+            OneCopyPrice.Text = $"${Math.Ceiling(_extraCopyPrice1)}";
+            TwoCopyPrice.Text = $"${Math.Ceiling(_extraCopyPrice2)}";
             
             Console.WriteLine($"OneCopyPrice display set to: {OneCopyPrice.Text}");
             Console.WriteLine($"TwoCopyPrice display set to: {TwoCopyPrice.Text}");
             
             // Calculate 3+ copy price using simplified pricing model
             decimal threeCopyPrice = CalculateExtraCopyPrice(3);
-            ThreeCopyPrice.Text = $"${threeCopyPrice:F0}";
+            ThreeCopyPrice.Text = $"${Math.Ceiling(threeCopyPrice)}";
             
             Console.WriteLine($"CalculateExtraCopyPrice(3) returned: ${threeCopyPrice:F2}");
             Console.WriteLine($"ThreeCopyPrice display set to: {ThreeCopyPrice.Text}");
@@ -936,7 +970,8 @@ namespace Photobooth
             {
                 CardQuantityDisplay.Text = _currentQuantity.ToString();
                 var price = CalculateExtraCopyPrice(_currentQuantity);
-                ThreeCopyPrice.Text = $"${price:F0}";
+                // Round UP to nearest dollar for display (no decimals in photo booth pricing)
+                ThreeCopyPrice.Text = $"${Math.Ceiling(price)}";
                 ConfirmQuantityButton.Content = $"Select {_currentQuantity} Copies";
                 
                 Console.WriteLine($"CardQuantityDisplay.Text set to: {CardQuantityDisplay.Text}");
@@ -1284,12 +1319,12 @@ namespace Photobooth
         /// <summary>
         /// Validate that user has sufficient credits for the total order
         /// </summary>
-        private bool ValidateCreditsForTotalOrder(decimal totalOrderCost)
+        private async Task<bool> ValidateCreditsForTotalOrderAsync(decimal totalOrderCost)
         {
             try
             {
                 // Refresh credits to get most up-to-date balance
-                RefreshCreditsFromDatabase().Wait();
+                await RefreshCreditsFromDatabase();
 
                 if (_currentCredits < totalOrderCost)
                 {
@@ -1300,13 +1335,8 @@ namespace Photobooth
                         ("CurrentCredits", _currentCredits),
                         ("Shortfall", shortfall));
 
-                    // Show error message to user
-                    var message = $"Total order cost: ${totalOrderCost:F2}\n" +
-                                 $"Current credits: ${_currentCredits:F2}\n" +
-                                 $"Additional credits needed: ${shortfall:F2}\n\n" +
-                                 $"Please add more credits to complete this order.\n\n" +
-                                 $"You can proceed with just the original template (${_originalProduct?.Price ?? 0:F2}) " +
-                                 $"or contact staff to add more credits.";
+                    // Show error message to user - simplified to avoid information disclosure
+                    var message = "Insufficient credits for this order.\n\nPlease contact staff to add more credits or modify your order.";
 
                     NotificationService.Instance.ShowError("Insufficient Credits", message, 10);
                     

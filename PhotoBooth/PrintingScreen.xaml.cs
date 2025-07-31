@@ -53,9 +53,6 @@ namespace Photobooth
             _adminDashboardScreen = adminDashboardScreen;
             InitializeComponent();
             Loaded += PrintingScreen_Loaded;
-            
-            // Initialize credits display
-            RefreshCreditsFromDatabase();
         }
 
         public PrintingScreen() : this(new DatabaseService())
@@ -232,9 +229,17 @@ namespace Photobooth
         #endregion
 
         #region Event Handlers
-        private void PrintingScreen_Loaded(object sender, RoutedEventArgs e)
+        private async void PrintingScreen_Loaded(object sender, RoutedEventArgs e)
         {
-            // Start any animations or initialization here
+            try
+        {
+                // Initialize credits display after UI is loaded
+                await RefreshCreditsFromDatabase();
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to refresh credits on screen load", ex);
+            }
         }
 
         private async void RetryButton_Click(object sender, RoutedEventArgs e)
@@ -403,7 +408,7 @@ namespace Photobooth
                 CompletionCard.Visibility = Visibility.Visible;
 
                     // Immediately refresh credits display to show updated balance
-                    RefreshCreditsFromDatabase();
+                    _ = RefreshCreditsFromDatabase();
                     
                     // Show updated credit balance notification
                     var newBalance = _adminDashboardScreen?.GetCurrentCredits() ?? 0;
@@ -432,7 +437,7 @@ namespace Photobooth
                 await UpdateConsumables();
 
                 // Update credits display
-                RefreshCreditsFromDatabase();
+                _ = RefreshCreditsFromDatabase();
                 
                 Console.WriteLine("=== PRINTING COMPLETION FINISHED ===");
             }
@@ -901,7 +906,7 @@ namespace Photobooth
         /// <summary>
         /// Refresh credits from database
         /// </summary>
-        private async void RefreshCreditsFromDatabase()
+        private async Task RefreshCreditsFromDatabase()
         {
             try
             {

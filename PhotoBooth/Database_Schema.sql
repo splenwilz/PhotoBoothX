@@ -50,15 +50,29 @@ CREATE TABLE Products (
     PhotoCount INTEGER DEFAULT 1, -- For strips: 4 photos, for 4x6: 1 photo
     MaxCopies INTEGER DEFAULT 10,
     ProductType TEXT NOT NULL DEFAULT 'PhotoStrips' CHECK (ProductType IN ('PhotoStrips', 'Photo4x6', 'SmartphonePrint')),
-    -- Extra copy pricing configuration for upselling
+    -- Legacy extra copy pricing configuration (deprecated - use product-specific pricing below)
     UseCustomExtraCopyPricing BOOLEAN DEFAULT 0, -- If false, extra copies cost same as base price
     ExtraCopy1Price DECIMAL(10,2), -- Price for 1 extra copy (nullable, uses base price if null)
     ExtraCopy2Price DECIMAL(10,2), -- Price for 2 extra copies (nullable, uses base price if null)  
     ExtraCopy4BasePrice DECIMAL(10,2), -- Base price for 4+ extra copies (nullable, uses base price if null)
     ExtraCopyAdditionalPrice DECIMAL(10,2), -- Price per additional copy beyond 4 (nullable, uses base price if null)
+    
+    -- Simplified product-specific extra copy pricing configuration
+    -- Photo Strips extra copy pricing
+    StripsExtraCopyPrice DECIMAL(10,2), -- Price per extra strip copy
+    StripsMultipleCopyDiscount DECIMAL(5,2) DEFAULT 0.00, -- Discount percentage for 2+ copies (0-100)
+    
+    -- 4x6 Photos extra copy pricing
+    Photo4x6ExtraCopyPrice DECIMAL(10,2), -- Price per extra 4x6 copy
+    Photo4x6MultipleCopyDiscount DECIMAL(5,2) DEFAULT 0.00, -- Discount percentage for 2+ copies (0-100)
+    
+    -- Smartphone Print extra copy pricing
+    SmartphoneExtraCopyPrice DECIMAL(10,2), -- Price per extra smartphone print copy
+    SmartphoneMultipleCopyDiscount DECIMAL(5,2) DEFAULT 0.00, -- Discount percentage for 2+ copies (0-100)
     CreatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UpdatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (CategoryId) REFERENCES ProductCategories(Id)
+    FOREIGN KEY (CategoryId) REFERENCES ProductCategories(Id),
+    UNIQUE(ProductType) -- Ensure only one product per type
 );
 
 -- =============================================
@@ -393,8 +407,8 @@ INSERT INTO ProductCategories (Name, Description, SortOrder) VALUES
     ('4x6', 'Single 4x6 photo prints', 2),
     ('Smartphone', 'Customer phone photo prints', 3);
 
--- Insert default products (by default, extra copies cost same as base price)
-INSERT INTO Products (CategoryId, Name, Description, Price, PhotoCount, ProductType, UseCustomExtraCopyPricing, ExtraCopy1Price, ExtraCopy2Price, ExtraCopy4BasePrice, ExtraCopyAdditionalPrice) VALUES
+-- Insert default products only if they don't exist (by default, extra copies cost same as base price)
+INSERT OR IGNORE INTO Products (CategoryId, Name, Description, Price, PhotoCount, ProductType, UseCustomExtraCopyPricing, ExtraCopy1Price, ExtraCopy2Price, ExtraCopy4BasePrice, ExtraCopyAdditionalPrice) VALUES
     (1, 'Photo Strip', '4 photos in classic strip format', 5.00, 4, 'PhotoStrips', 0, NULL, NULL, NULL, NULL),
     (2, '4x6 Photo', 'Single high-quality 4x6 print', 3.00, 1, 'Photo4x6', 0, NULL, NULL, NULL, NULL),
     (3, 'Phone Print', 'Print photos from your phone', 2.00, 1, 'SmartphonePrint', 0, NULL, NULL, NULL, NULL);

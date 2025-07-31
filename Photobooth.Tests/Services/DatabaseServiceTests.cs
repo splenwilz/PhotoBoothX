@@ -1041,6 +1041,31 @@ namespace Photobooth.Tests.Services
         #endregion
 
         [TestMethod]
+        public async Task GetProductsAsync_DefaultProducts_ShouldHaveCorrectPrices()
+        {
+            // Act
+            var result = await _databaseService.GetProductsAsync();
+
+            // Assert
+            result.Success.Should().BeTrue();
+            result.Data.Should().NotBeNull();
+            result.Data!.Should().HaveCount(3, "Should have 3 default products");
+
+            // Verify each product has the correct default price
+            var photoStrips = result.Data!.FirstOrDefault(p => p.ProductType == ProductType.PhotoStrips);
+            photoStrips.Should().NotBeNull("Photo Strips product should exist");
+            photoStrips!.Price.Should().Be(5.00m, "Photo Strips should cost $5.00");
+
+            var photo4x6 = result.Data!.FirstOrDefault(p => p.ProductType == ProductType.Photo4x6);
+            photo4x6.Should().NotBeNull("4x6 Photos product should exist");
+            photo4x6!.Price.Should().Be(3.00m, "4x6 Photos should cost $3.00");
+
+            var smartphonePrint = result.Data!.FirstOrDefault(p => p.ProductType == ProductType.SmartphonePrint);
+            smartphonePrint.Should().NotBeNull("Smartphone Print product should exist");
+            smartphonePrint!.Price.Should().Be(2.00m, "Smartphone Print should cost $2.00");
+        }
+
+        [TestMethod]
         public async Task GetTemplatesByTypeAsync_QueryContainsIsActiveFilter()
         {
             // Arrange & Act - Test that the method doesn't crash and handles empty results

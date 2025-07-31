@@ -76,14 +76,14 @@ namespace Photobooth.Tests.Services
         }
 
         [TestMethod]
-        public void ShowKeyboard_WithNullInputControl_DoesNotThrow()
+        public async Task ShowKeyboard_WithNullInputControl_DoesNotThrow()
         {
             // Arrange
             var service = VirtualKeyboardService.Instance;
 
             // Act & Assert
-            var act = () => service.ShowKeyboard(null!, null!);
-            act.Should().NotThrow();
+            var act = () => service.ShowKeyboardAsync(null!, null!);
+            await act.Should().NotThrowAsync();
         }
 
         #endregion
@@ -118,20 +118,20 @@ namespace Photobooth.Tests.Services
         #region Error Handling Tests
 
         [TestMethod]
-        public void Service_ExceptionHandling_DoesNotCrashApplication()
+        public async Task Service_ExceptionHandling_DoesNotCrashApplication()
         {
             // Arrange
             var service = VirtualKeyboardService.Instance;
 
             // Act & Assert - Various null/invalid calls should not crash
-            var act = () =>
+            var act = async () =>
             {
-                service.ShowKeyboard(null!, null!);
+                await service.ShowKeyboardAsync(null!, null!);
                 service.HideKeyboard();
-                service.ShowKeyboard(null!, null!);
+                await service.ShowKeyboardAsync(null!, null!);
                 service.HideKeyboard();
             };
-            act.Should().NotThrow();
+            await act.Should().NotThrowAsync();
         }
 
         #endregion
@@ -227,7 +227,7 @@ namespace Photobooth.Tests.Services
         #region Performance Tests
 
         [TestMethod]
-        public void Service_MultipleRapidCalls_CompletesInReasonableTime()
+        public async Task Service_MultipleRapidCalls_CompletesInReasonableTime()
         {
             // Arrange
             var service = VirtualKeyboardService.Instance;
@@ -236,7 +236,7 @@ namespace Photobooth.Tests.Services
             // Act - Make rapid calls to service methods
             for (int i = 0; i < 100; i++)
             {
-                service.ShowKeyboard(null!, null!);
+                await service.ShowKeyboardAsync(null!, null!);
                 service.HideKeyboard();
             }
 

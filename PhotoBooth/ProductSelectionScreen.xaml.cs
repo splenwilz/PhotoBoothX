@@ -72,7 +72,7 @@ namespace Photobooth
             _databaseService = databaseService ?? throw new ArgumentNullException(nameof(databaseService));
             InitializeComponent();
             this.Loaded += OnLoaded;
-            RefreshCreditsFromDatabase();
+            _ = RefreshCreditsFromDatabase();
         }
 
         /// <summary>
@@ -89,9 +89,23 @@ namespace Photobooth
         {
             try
             {
+                LoggingService.Application.Information("ProductSelectionScreen.OnLoaded called");
                 InitializeAnimations();
-                RefreshCreditsFromDatabase();
-                _ = LoadProductsFromDatabase(); // Load prices from database
+                _ = RefreshCreditsFromDatabase();
+                
+                // Load products from database on UI thread to ensure proper UI updates
+                _ = Dispatcher.BeginInvoke(async () =>
+                {
+                    try
+                    {
+                        LoggingService.Application.Information("Loading products from database on startup");
+                        await LoadProductsFromDatabase();
+                    }
+                    catch (Exception ex)
+                    {
+                        LoggingService.Application.Error("Failed to load products on startup", ex);
+                    }
+                });
             }
             catch (Exception ex)
             {
@@ -107,10 +121,17 @@ namespace Photobooth
         {
             try
             {
+                LoggingService.Application.Information("LoadProductsFromDatabase called");
                 var result = await _databaseService.GetProductsAsync();
                 if (result.Success && result.Data != null)
                 {
                     _products = result.Data;
+                    LoggingService.Application.Information("Products loaded from database", 
+                        ("Count", _products.Count),
+                        ("PhotoStrips", _products.FirstOrDefault(p => p.ProductType == ProductType.PhotoStrips)?.Price ?? 0),
+                        ("Photo4x6", _products.FirstOrDefault(p => p.ProductType == ProductType.Photo4x6)?.Price ?? 0),
+                        ("SmartphonePrint", _products.FirstOrDefault(p => p.ProductType == ProductType.SmartphonePrint)?.Price ?? 0));
+                    
                     UpdateProductPricesInUI();
                     UpdateProductConfiguration();
                 }
@@ -127,6 +148,28 @@ namespace Photobooth
         }
 
         /// <summary>
+        /// Refresh product prices from database and update UI
+        /// This method can be called externally to refresh prices after admin changes
+        /// </summary>
+        public async Task RefreshProductPricesAsync()
+        {
+            try
+            {
+                LoggingService.Application.Information("Refreshing product prices from database");
+                await LoadProductsFromDatabase();
+                
+                // Add a small delay to ensure the UI is fully rendered before updating prices
+                await Task.Delay(100);
+                // Note: UpdateProductPricesInUI() is already called by LoadProductsFromDatabase()
+                // No need to call it again here
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Error refreshing product prices", ex);
+            }
+        }
+
+        /// <summary>
         /// Update the UI price displays with database values
         /// </summary>
         private void UpdateProductPricesInUI()
@@ -135,15 +178,63 @@ namespace Photobooth
             {
                 var photoStrips = _products.FirstOrDefault(p => p.ProductType == ProductType.PhotoStrips);
                 var photo4x6 = _products.FirstOrDefault(p => p.ProductType == ProductType.Photo4x6);
+                var smartphonePrint = _products.FirstOrDefault(p => p.ProductType == ProductType.SmartphonePrint);
 
                 if (photoStrips != null && PhotoStripsPriceText != null)
                 {
                     PhotoStripsPriceText.Text = $"${photoStrips.Price:F0}";
+                    LoggingService.Application.Information("Updated Photo Strips price in UI", ("Price", photoStrips.Price));
                 }
 
                 if (photo4x6 != null && Photo4x6PriceText != null)
                 {
                     Photo4x6PriceText.Text = $"${photo4x6.Price:F0}";
+                    LoggingService.Application.Information("Updated 4x6 Photos price in UI", ("Price", photo4x6.Price));
+                }
+
+                // Update smartphone print price in the button text
+                if (smartphonePrint != null && PhonePrintButton != null)
+                {
+                    try
+                    {
+                        LoggingService.Application.Information("Attempting to update smartphone print price", ("Price", smartphonePrint.Price));
+                        
+                        // Force the button to update its visual tree first
+                        PhonePrintButton.UpdateLayout();
+                        
+                        // Find the TextBlock within the button's visual tree
+                        var textBlock = FindVisualChild<TextBlock>(PhonePrintButton, "PhonePrintPriceText");
+                        if (textBlock != null)
+                        {
+                            textBlock.Text = $"Print from Phone • ${smartphonePrint.Price:F0}";
+                            LoggingService.Application.Information("Successfully updated Smartphone Print price in UI", ("Price", smartphonePrint.Price));
+                        }
+                        else
+                        {
+                            LoggingService.Application.Warning("Could not find PhonePrintPriceText TextBlock in button visual tree");
+                            
+                            // Try to find any TextBlock in the button
+                            var anyTextBlock = FindVisualChild<TextBlock>(PhonePrintButton, null);
+                            if (anyTextBlock != null)
+                            {
+                                LoggingService.Application.Information("Found TextBlock in button", ("Name", anyTextBlock.Name), ("Text", anyTextBlock.Text));
+                                
+                                // Try to update this TextBlock if it contains the price
+                                if (anyTextBlock.Text.Contains("Print from Phone"))
+                                {
+                                    anyTextBlock.Text = $"Print from Phone • ${smartphonePrint.Price:F0}";
+                                }
+                            }
+                            else
+                            {
+                                LoggingService.Application.Warning("No TextBlock found in button visual tree at all");
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        LoggingService.Application.Error("Error updating smartphone print price", ex);
+                    }
                 }
             }
             catch (Exception ex)
@@ -163,19 +254,27 @@ namespace Photobooth
                 var photo4x6 = _products.FirstOrDefault(p => p.ProductType == ProductType.Photo4x6);
                 var smartphonePrint = _products.FirstOrDefault(p => p.ProductType == ProductType.SmartphonePrint);
 
+                LoggingService.Application.Information("Updating ProductConfiguration with database values",
+                    ("PhotoStrips", photoStrips?.Price ?? 0),
+                    ("Photo4x6", photo4x6?.Price ?? 0),
+                    ("SmartphonePrint", smartphonePrint?.Price ?? 0));
+
                 if (photoStrips != null && ProductConfiguration.Products.ContainsKey("strips"))
                 {
                     ProductConfiguration.Products["strips"].Price = photoStrips.Price;
+                    LoggingService.Application.Information("Updated ProductConfiguration.strips.Price", ("Price", photoStrips.Price));
                 }
 
                 if (photo4x6 != null && ProductConfiguration.Products.ContainsKey("4x6"))
                 {
                     ProductConfiguration.Products["4x6"].Price = photo4x6.Price;
+                    LoggingService.Application.Information("Updated ProductConfiguration.4x6.Price", ("Price", photo4x6.Price));
                 }
 
                 if (smartphonePrint != null && ProductConfiguration.Products.ContainsKey("phone"))
                 {
                     ProductConfiguration.Products["phone"].Price = smartphonePrint.Price;
+                    LoggingService.Application.Information("Updated ProductConfiguration.phone.Price", ("Price", smartphonePrint.Price));
                 }
             }
             catch (Exception ex)
@@ -347,7 +446,7 @@ namespace Photobooth
         /// <summary>
         /// Refresh credits directly from database
         /// </summary>
-        private async void RefreshCreditsFromDatabase()
+        private async Task RefreshCreditsFromDatabase()
         {
             try
             {
@@ -597,6 +696,40 @@ namespace Photobooth
                 disposed = true;
             }
         }
+
+        #endregion
+
+        #region Helper Methods
+
+        /// <summary>
+        /// Find a visual child of a specific type and name in the visual tree
+        /// </summary>
+        private T? FindVisualChild<T>(DependencyObject parent, string? name = null) where T : FrameworkElement
+        {
+            for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+            {
+                var child = VisualTreeHelper.GetChild(parent, i);
+                
+                if (child is T element)
+                {
+                    // If name is null, return the first element of type T
+                    // If name is provided, only return if it matches
+                    if (name == null || element.Name == name)
+                    {
+                        return element;
+                    }
+                }
+                
+                var result = FindVisualChild<T>(child, name);
+                if (result != null)
+                {
+                    return result;
+                }
+            }
+            return null;
+        }
+
+
 
         #endregion
     }

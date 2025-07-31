@@ -114,7 +114,7 @@ namespace Photobooth
                     ("SelectedProductType", selectedProduct?.Type ?? "NULL"));
                 
                 Console.WriteLine("Calling RefreshCurrentCredits...");
-                RefreshCurrentCredits(); // This now includes UpdateCreditsDisplay()
+                _ = RefreshCurrentCredits(); // This now includes UpdateCreditsDisplay()
                 
                 Console.WriteLine("Calling LoadTemplates...");
                 LoadTemplates();
@@ -142,6 +142,40 @@ namespace Photobooth
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Failed to set product type: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Refresh product prices from database and update the selected product
+        /// This ensures we have the latest prices even if admin made changes
+        /// </summary>
+        public async Task RefreshProductPricesAsync()
+        {
+            try
+            {
+                LoggingService.Application.Information("Refreshing product prices in TemplateSelectionScreen");
+                
+                var result = await _databaseService.GetProductsAsync();
+                if (result.Success && result.Data != null)
+                {
+                    // Find the matching product in the database
+                    var dbProduct = result.Data.FirstOrDefault(p => 
+                        selectedProduct != null && 
+                        GetProductTypeFromName(selectedProduct.Type) == p.ProductType);
+                    
+                    if (dbProduct != null && selectedProduct != null)
+                    {
+                        // Update the selected product with the latest price from database
+                        selectedProduct.Price = dbProduct.Price;
+                        LoggingService.Application.Information("Updated product price from database", 
+                            ("ProductType", selectedProduct.Type),
+                            ("NewPrice", selectedProduct.Price));
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Error refreshing product prices in TemplateSelectionScreen", ex);
             }
         }
 
@@ -457,6 +491,20 @@ namespace Photobooth
                 "4x6" or "photo4x6" => TemplateType.Photo4x6,
                 "phone" or "smartphoneprint" => TemplateType.Photo4x6, // Phone prints use 4x6 templates
                 _ => TemplateType.Strip // Default to strips
+            };
+        }
+
+        /// <summary>
+        /// Maps product type name to ProductType enum
+        /// </summary>
+        private ProductType GetProductTypeFromName(string? productTypeName)
+        {
+            return productTypeName?.ToLowerInvariant() switch
+            {
+                "strips" or "photostrips" => ProductType.PhotoStrips,
+                "4x6" or "photo4x6" => ProductType.Photo4x6,
+                "phone" or "smartphoneprint" => ProductType.SmartphonePrint,
+                _ => ProductType.PhotoStrips // Default to strips
             };
         }
 
@@ -1018,13 +1066,13 @@ namespace Photobooth
             {
                 Console.WriteLine("Admin dashboard set successfully, refreshing credits...");
             }
-            RefreshCurrentCredits();
+            _ = RefreshCurrentCredits();
         }
 
         /// <summary>
         /// Refresh current credits from admin dashboard or database
         /// </summary>
-        private void RefreshCurrentCredits()
+        private async Task RefreshCurrentCredits()
         {
             try
             {
@@ -1042,10 +1090,8 @@ namespace Photobooth
 
                 Console.WriteLine("Admin dashboard not available, querying database...");
                 
-                // Fallback: Get credits directly from database synchronously
-                var task = _databaseService.GetSettingValueAsync<decimal>("System", "CurrentCredits");
-                task.Wait(); // Wait for async operation to complete
-                var creditsResult = task.Result;
+                // Fallback: Get credits directly from database asynchronously
+                var creditsResult = await _databaseService.GetSettingValueAsync<decimal>("System", "CurrentCredits");
                 
                 Console.WriteLine($"Database query completed. Success: {creditsResult.Success}");
                 Console.WriteLine($"Database Data Value: {creditsResult.Data}");
@@ -1088,18 +1134,18 @@ namespace Photobooth
         /// </summary>
         private decimal GetTemplatePrice(TemplateInfo template)
         {
-            // Check database for template-specific pricing first, fall back to product pricing
             try
             {
-                // For now, use standard product pricing
-                // In the future, this could check template.Config for custom pricing
-                return selectedProduct?.Type?.ToLowerInvariant() switch
+                // Use actual product price from the selected product
+                if (selectedProduct?.Price > 0)
                 {
-                    "strips" or "photostrips" => 5.00m,
-                    "4x6" or "photo4x6" => 3.00m,
-                    "phone" or "smartphoneprint" => 2.00m,
-                    _ => 3.00m
-                };
+                    return selectedProduct.Price;
+                }
+                
+                // Fallback to default if product price not available
+                LoggingService.Application.Warning("Product price not available, using default", 
+                    ("ProductType", selectedProduct?.Type ?? "Unknown"));
+                return 3.00m;
             }
             catch
             {

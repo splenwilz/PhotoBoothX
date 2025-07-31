@@ -70,8 +70,8 @@ namespace Photobooth.Behaviors
                     var parentWindow = Window.GetWindow(control);
                     if (parentWindow != null)
                     {
-                        Console.WriteLine($"Manually calling VirtualKeyboardService.ShowKeyboard for {control.Name}");
-                        VirtualKeyboardService.Instance.ShowKeyboard(control, parentWindow);
+                        Console.WriteLine($"Manually calling VirtualKeyboardService.ShowKeyboardAsync for {control.Name}");
+                        _ = VirtualKeyboardService.Instance.ShowKeyboardAsync(control, parentWindow);
                     }
                 }
             }
@@ -116,7 +116,7 @@ namespace Photobooth.Behaviors
                 if (parentWindow != null)
                 {
                     // Show virtual keyboard for this control
-                    VirtualKeyboardService.Instance.ShowKeyboard(control, parentWindow);
+                    _ = VirtualKeyboardService.Instance.ShowKeyboardAsync(control, parentWindow);
                 }
             }
         }

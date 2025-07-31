@@ -76,12 +76,25 @@ namespace Photobooth.Models
         public int MaxCopies { get; set; } = 10;
         public ProductType ProductType { get; set; } = ProductType.PhotoStrips;
         
-        // Extra copy pricing configuration for upselling
+        // Legacy extra copy pricing configuration (deprecated - use product-specific pricing below)
         public bool UseCustomExtraCopyPricing { get; set; } = false; // If false, extra copies cost same as base price
         public decimal? ExtraCopy1Price { get; set; } // Price for 1 extra copy (nullable, uses base price if null)
         public decimal? ExtraCopy2Price { get; set; } // Price for 2 extra copies (nullable, uses base price if null)
         public decimal? ExtraCopy4BasePrice { get; set; } // Base price for 4+ extra copies (nullable, uses base price if null)
         public decimal? ExtraCopyAdditionalPrice { get; set; } // Price per additional copy beyond 4 (nullable, uses base price if null)
+        
+        // Simplified product-specific extra copy pricing configuration
+        // Photo Strips extra copy pricing
+        public decimal? StripsExtraCopyPrice { get; set; } // Price per extra strip copy
+        public decimal? StripsMultipleCopyDiscount { get; set; } // Discount percentage for 2+ copies (0-100)
+        
+        // 4x6 Photos extra copy pricing
+        public decimal? Photo4x6ExtraCopyPrice { get; set; } // Price per extra 4x6 copy
+        public decimal? Photo4x6MultipleCopyDiscount { get; set; } // Discount percentage for 2+ copies (0-100)
+        
+        // Smartphone Print extra copy pricing
+        public decimal? SmartphoneExtraCopyPrice { get; set; } // Price per extra smartphone print copy
+        public decimal? SmartphoneMultipleCopyDiscount { get; set; } // Discount percentage for 2+ copies (0-100)
         
         public DateTime CreatedAt { get; set; } = DateTime.Now;
         public DateTime UpdatedAt { get; set; } = DateTime.Now;

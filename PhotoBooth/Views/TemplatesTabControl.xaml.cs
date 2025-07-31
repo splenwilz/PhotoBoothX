@@ -1762,12 +1762,8 @@ namespace Photobooth.Views
                         case "Edit":
                             await EditTemplate_Click(template);
                             break;
-                        case "Duplicate":
-                            await DuplicateTemplate_Click(template);
-                            break;
-                        case "Rename":
-                            await RenameTemplate_Click(template);
-                            break;
+
+
                         case "Toggle":
                             await ToggleTemplateStatusAsync(template.Id);
                             break;
@@ -2170,107 +2166,9 @@ namespace Photobooth.Views
             }
         }
 
-        private async Task DuplicateTemplate_Click(Template template)
-        {
-            try
-            {
-                var parentWindow = Window.GetWindow(this);
-                
-                // Show input dialog to get new template name
-                var newName = InputDialog.ShowInputDialog(
-                    "Duplicate Template", 
-                    $"Enter a name for the copy of '{template.Name}':",
-                    $"{template.Name} - Copy",
-                    parentWindow);
-                
-                if (string.IsNullOrEmpty(newName))
-                {
-                    return; // User cancelled
-                }
 
-                LoadingPanel.Visibility = Visibility.Visible;
-                
-                // Use TemplateManager to duplicate the template
-                var duplicateResult = await _templateManager.DuplicateTemplateAsync(template.Id, newName);
-                
-                if (duplicateResult.Success && duplicateResult.Data != null)
-                {
-                    // Refresh templates to show the new copy
-                    await LoadTemplatesAsync();
-                    
-                    // Show success notification toast
-                    NotificationService.Instance.ShowSuccess("Template Duplicated", 
-                        $"'{template.Name}' has been duplicated as '{duplicateResult.Data.Name}'.");
-                }
-                else
-                {
-                    MessageBox.Show($"Failed to duplicate template: {duplicateResult.ErrorMessage}", "Error", 
-                                  MessageBoxButton.OK, MessageBoxImage.Error);
-                }
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Error duplicating template: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-            finally
-            {
-                LoadingPanel.Visibility = Visibility.Collapsed;
-            }
-        }
 
-        private async Task RenameTemplate_Click(Template template)
-        {
-            try
-            {
-                var parentWindow = Window.GetWindow(this);
-                
-                // Show input dialog to get new template name
-                var newName = InputDialog.ShowInputDialog(
-                    "Rename Template", 
-                    $"Enter a new name for '{template.Name}':",
-                    template.Name,
-                    parentWindow);
-                
-                if (string.IsNullOrEmpty(newName))
-                {
-                    return; // User cancelled
-                }
 
-                if (newName == template.Name)
-                {
-                    // No change needed
-                    return;
-                }
-
-                LoadingPanel.Visibility = Visibility.Visible;
-                
-                // Use TemplateManager to rename the template completely (database + folder)
-                var renameResult = await _templateManager.RenameTemplateCompletelyAsync(template.Id, newName);
-                
-                if (renameResult.Success && renameResult.Data != null)
-                {
-                    // Refresh templates to show the updated name
-                    await LoadTemplatesAsync();
-                    
-                    // Show success notification toast
-                    NotificationService.Instance.ShowSuccess("Template Renamed", 
-                        $"Template has been renamed to '{renameResult.Data.Name}' successfully.");
-                }
-                else
-                {
-                    MessageBox.Show($"Failed to rename template: {renameResult.ErrorMessage}", "Error", 
-                                  MessageBoxButton.OK, MessageBoxImage.Error);
-                }
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Error renaming template: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-            finally
-            {
-                LoadingPanel.Visibility = Visibility.Collapsed;
-            }
-        }
 
         /// <summary>
         /// Update the active filters display to show which filters are currently applied

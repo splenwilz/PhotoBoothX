@@ -65,7 +65,11 @@ namespace Photobooth.Services
         Task<DatabaseResult> UpdateProductPriceAsync(int productId, decimal price);
         Task<DatabaseResult> UpdateProductAsync(int productId, bool? isActive = null, decimal? price = null, 
             bool? useCustomExtraCopyPricing = null, decimal? extraCopy1Price = null, decimal? extraCopy2Price = null, 
-            decimal? extraCopy4BasePrice = null, decimal? extraCopyAdditionalPrice = null);
+            decimal? extraCopy4BasePrice = null, decimal? extraCopyAdditionalPrice = null,
+            // Simplified product-specific extra copy pricing
+            decimal? stripsExtraCopyPrice = null, decimal? stripsMultipleCopyDiscount = null,
+            decimal? photo4x6ExtraCopyPrice = null, decimal? photo4x6MultipleCopyDiscount = null,
+            decimal? smartphoneExtraCopyPrice = null, decimal? smartphoneMultipleCopyDiscount = null);
         Task<DatabaseResult<List<Setting>>> GetSettingsByCategoryAsync(string category);
         Task<DatabaseResult<T?>> GetSettingValueAsync<T>(string category, string key);
         Task<DatabaseResult> SetSettingValueAsync<T>(string category, string key, T value, string? updatedBy = null);
@@ -76,6 +80,9 @@ namespace Photobooth.Services
         Task<DatabaseResult<int>> InsertCreditTransactionAsync(CreditTransaction transaction);
         Task<DatabaseResult<List<CreditTransaction>>> GetCreditTransactionsAsync(int limit = 50);
         Task<DatabaseResult> DeleteOldCreditTransactionsAsync(int keepCount = 100);
+        
+        // Transaction management methods
+        Task<DatabaseResult<List<Transaction>>> GetRecentTransactionsAsync(int limit);
         
         // Template pricing methods
         Task<DatabaseResult> UpdateTemplatePricingAsync();
@@ -2501,11 +2508,18 @@ namespace Photobooth.Services
 
         public async Task<DatabaseResult> UpdateProductAsync(int productId, bool? isActive = null, decimal? price = null, 
             bool? useCustomExtraCopyPricing = null, decimal? extraCopy1Price = null, decimal? extraCopy2Price = null, 
-            decimal? extraCopy4BasePrice = null, decimal? extraCopyAdditionalPrice = null)
+            decimal? extraCopy4BasePrice = null, decimal? extraCopyAdditionalPrice = null,
+            // Simplified product-specific extra copy pricing
+            decimal? stripsExtraCopyPrice = null, decimal? stripsMultipleCopyDiscount = null,
+            decimal? photo4x6ExtraCopyPrice = null, decimal? photo4x6MultipleCopyDiscount = null,
+            decimal? smartphoneExtraCopyPrice = null, decimal? smartphoneMultipleCopyDiscount = null)
         {
             // Validate that at least one parameter is provided
             if (!isActive.HasValue && !price.HasValue && !useCustomExtraCopyPricing.HasValue && !extraCopy1Price.HasValue && 
-                !extraCopy2Price.HasValue && !extraCopy4BasePrice.HasValue && !extraCopyAdditionalPrice.HasValue)
+                !extraCopy2Price.HasValue && !extraCopy4BasePrice.HasValue && !extraCopyAdditionalPrice.HasValue &&
+                !stripsExtraCopyPrice.HasValue && !stripsMultipleCopyDiscount.HasValue &&
+                !photo4x6ExtraCopyPrice.HasValue && !photo4x6MultipleCopyDiscount.HasValue &&
+                !smartphoneExtraCopyPrice.HasValue && !smartphoneMultipleCopyDiscount.HasValue)
             {
                 return DatabaseResult.ErrorResult("At least one field must be provided for update");
             }
@@ -2571,6 +2585,49 @@ namespace Photobooth.Services
                         setParts.Add("ExtraCopyAdditionalPrice = @extraCopyAdditionalPrice");
                         parameters.Add(("@extraCopyAdditionalPrice", extraCopyAdditionalPrice.Value));
                         logMessages.Add($"extraCopyAdditionalPrice = ${extraCopyAdditionalPrice.Value:F2}");
+                    }
+
+                    // Simplified product-specific extra copy pricing
+                    if (stripsExtraCopyPrice.HasValue)
+                    {
+                        setParts.Add("StripsExtraCopyPrice = @stripsExtraCopyPrice");
+                        parameters.Add(("@stripsExtraCopyPrice", stripsExtraCopyPrice.Value));
+                        logMessages.Add($"stripsExtraCopyPrice = ${stripsExtraCopyPrice.Value:F2}");
+                    }
+
+                    if (stripsMultipleCopyDiscount.HasValue)
+                    {
+                        setParts.Add("StripsMultipleCopyDiscount = @stripsMultipleCopyDiscount");
+                        parameters.Add(("@stripsMultipleCopyDiscount", stripsMultipleCopyDiscount.Value));
+                        logMessages.Add($"stripsMultipleCopyDiscount = ${stripsMultipleCopyDiscount.Value:F0}%");
+                    }
+
+                    if (photo4x6ExtraCopyPrice.HasValue)
+                    {
+                        setParts.Add("Photo4x6ExtraCopyPrice = @photo4x6ExtraCopyPrice");
+                        parameters.Add(("@photo4x6ExtraCopyPrice", photo4x6ExtraCopyPrice.Value));
+                        logMessages.Add($"photo4x6ExtraCopyPrice = ${photo4x6ExtraCopyPrice.Value:F2}");
+                    }
+
+                    if (photo4x6MultipleCopyDiscount.HasValue)
+                    {
+                        setParts.Add("Photo4x6MultipleCopyDiscount = @photo4x6MultipleCopyDiscount");
+                        parameters.Add(("@photo4x6MultipleCopyDiscount", photo4x6MultipleCopyDiscount.Value));
+                        logMessages.Add($"photo4x6MultipleCopyDiscount = ${photo4x6MultipleCopyDiscount.Value:F0}%");
+                    }
+
+                    if (smartphoneExtraCopyPrice.HasValue)
+                    {
+                        setParts.Add("SmartphoneExtraCopyPrice = @smartphoneExtraCopyPrice");
+                        parameters.Add(("@smartphoneExtraCopyPrice", smartphoneExtraCopyPrice.Value));
+                        logMessages.Add($"smartphoneExtraCopyPrice = ${smartphoneExtraCopyPrice.Value:F2}");
+                    }
+
+                    if (smartphoneMultipleCopyDiscount.HasValue)
+                    {
+                        setParts.Add("SmartphoneMultipleCopyDiscount = @smartphoneMultipleCopyDiscount");
+                        parameters.Add(("@smartphoneMultipleCopyDiscount", smartphoneMultipleCopyDiscount.Value));
+                        logMessages.Add($"smartphoneMultipleCopyDiscount = ${smartphoneMultipleCopyDiscount.Value:F0}%");
                     }
 
                     setParts.Add("UpdatedAt = @updatedAt");
@@ -2939,6 +2996,55 @@ namespace Photobooth.Services
             catch (Exception ex)
             {
                 return DatabaseResult.ErrorResult($"Failed to cleanup old credit transactions: {ex.Message}", ex);
+            }
+        }
+
+        /// <summary>
+        /// Get recent transactions ordered by most recent first with database-level limiting
+        /// </summary>
+        public async Task<DatabaseResult<List<Transaction>>> GetRecentTransactionsAsync(int limit)
+        {
+            try
+            {
+                var query = @"
+                    SELECT * FROM Transactions 
+                    ORDER BY CreatedAt DESC 
+                    LIMIT @limit";
+
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+                using var command = new SqliteCommand(query, connection);
+                command.Parameters.AddWithValue("@limit", limit);
+                using var reader = await command.ExecuteReaderAsync();
+
+                var transactions = new List<Transaction>();
+                while (await reader.ReadAsync())
+                {
+                    var transaction = new Transaction
+                    {
+                        Id = reader.GetInt32("Id"),
+                        TransactionCode = reader.IsDBNull("TransactionCode") ? string.Empty : reader.GetString("TransactionCode"),
+                        ProductId = reader.GetInt32("ProductId"),
+                        TemplateId = reader.IsDBNull("TemplateId") ? null : reader.GetInt32("TemplateId"),
+                        Quantity = reader.GetInt32("Quantity"),
+                        BasePrice = reader.GetDecimal("BasePrice"),
+                        TotalPrice = reader.GetDecimal("TotalPrice"),
+                        PaymentStatus = Enum.Parse<PaymentStatus>(reader.GetString("PaymentStatus")),
+                        PaymentMethod = Enum.Parse<PaymentMethod>(reader.GetString("PaymentMethod")),
+                        CustomerEmail = reader.IsDBNull("CustomerEmail") ? null : reader.GetString("CustomerEmail"),
+                        SessionId = reader.IsDBNull("SessionId") ? null : reader.GetString("SessionId"),
+                        CreatedAt = DateTime.Parse(reader.GetString("CreatedAt")),
+                        CompletedAt = reader.IsDBNull("CompletedAt") ? null : DateTime.Parse(reader.GetString("CompletedAt")),
+                        Notes = reader.IsDBNull("Notes") ? null : reader.GetString("Notes")
+                    };
+                    transactions.Add(transaction);
+                }
+
+                return DatabaseResult<List<Transaction>>.SuccessResult(transactions);
+            }
+            catch (Exception ex)
+            {
+                return DatabaseResult<List<Transaction>>.ErrorResult($"Failed to get recent transactions: {ex.Message}", ex);
             }
         }
 
