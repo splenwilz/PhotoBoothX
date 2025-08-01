@@ -83,14 +83,11 @@ namespace Photobooth
         /// </summary>
         public TemplateSelectionScreen(IDatabaseService databaseService, ITemplateConversionService templateConversionService)
         {
-            Console.WriteLine("=== TemplateSelectionScreen Constructor ===");
             _databaseService = databaseService ?? throw new ArgumentNullException(nameof(databaseService));
             _templateConversionService = templateConversionService ?? throw new ArgumentNullException(nameof(templateConversionService));
-            Console.WriteLine("Database and template services initialized");
             InitializeComponent();
             this.Loaded += OnLoaded;
             InitializeTemplateWatcher();
-            Console.WriteLine("=== Constructor END ===");
         }
 
         /// <summary>
@@ -107,22 +104,15 @@ namespace Photobooth
         {
             try
             {
-                Console.WriteLine("=== TemplateSelectionScreen OnLoaded ===");
-                Console.WriteLine($"selectedProduct?.Type: {selectedProduct?.Type ?? "NULL"}");
-                
                 LoggingService.Application.Information("Template selection screen loaded",
                     ("SelectedProductType", selectedProduct?.Type ?? "NULL"));
                 
-                Console.WriteLine("Calling RefreshCurrentCredits...");
                 _ = RefreshCurrentCredits(); // This now includes UpdateCreditsDisplay()
                 
-                Console.WriteLine("Calling LoadTemplates...");
                 LoadTemplates();
-                Console.WriteLine("=== OnLoaded END ===");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Exception in OnLoaded: {ex.Message}");
                 LoggingService.Application.Error("Template screen initialization failed", ex);
                 System.Diagnostics.Debug.WriteLine($"Template screen initialization failed: {ex.Message}");
                 ShowErrorMessage("Failed to load templates. Please restart the application.");
@@ -1059,13 +1049,7 @@ namespace Photobooth
         /// </summary>
         public void SetAdminDashboard(AdminDashboardScreen adminDashboard)
         {
-            Console.WriteLine("=== SetAdminDashboard called ===");
-            Console.WriteLine($"adminDashboard is null: {adminDashboard == null}");
             _adminDashboard = adminDashboard;
-            if (_adminDashboard != null)
-            {
-                Console.WriteLine("Admin dashboard set successfully, refreshing credits...");
-            }
             _ = RefreshCurrentCredits();
         }
 
@@ -1076,43 +1060,29 @@ namespace Photobooth
         {
             try
             {
-                Console.WriteLine("=== RefreshCurrentCredits DEBUG ===");
-                Console.WriteLine($"_adminDashboard is null: {_adminDashboard == null}");
-                
                 // Try to get credits from admin dashboard first (if available)
                 if (_adminDashboard != null)
                 {
                     _currentCredits = _adminDashboard.GetCurrentCredits();
-                    Console.WriteLine($"Got credits from admin dashboard: ${_currentCredits}");
                     UpdateCreditsDisplay();
                     return;
                 }
 
-                Console.WriteLine("Admin dashboard not available, querying database...");
-                
                 // Fallback: Get credits directly from database asynchronously
                 var creditsResult = await _databaseService.GetSettingValueAsync<decimal>("System", "CurrentCredits");
-                
-                Console.WriteLine($"Database query completed. Success: {creditsResult.Success}");
-                Console.WriteLine($"Database Data Value: {creditsResult.Data}");
                 
                 if (creditsResult.Success)
                 {
                     _currentCredits = creditsResult.Data;
-                    Console.WriteLine($"Set _currentCredits to: ${_currentCredits}");
                 }
                 else
                 {
                     _currentCredits = 0;
-                    Console.WriteLine("Setting _currentCredits to 0 (fallback)");
-                    Console.WriteLine($"Database query failed. Error: {creditsResult.ErrorMessage}");
                 }
                 UpdateCreditsDisplay();
-                Console.WriteLine("=== RefreshCurrentCredits END ===");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Exception in RefreshCurrentCredits: {ex.Message}");
                 LoggingService.Application.Error("Error refreshing credits", ex);
                 _currentCredits = 0;
                 UpdateCreditsDisplay();
@@ -1180,25 +1150,14 @@ namespace Photobooth
         {
             try
             {
-                Console.WriteLine($"=== UpdateCreditsDisplay DEBUG ===");
-                Console.WriteLine($"CreditsDisplay is null: {CreditsDisplay == null}");
-                Console.WriteLine($"_currentCredits value: ${_currentCredits}");
-                
                 if (CreditsDisplay != null)
                 {
                     var displayText = $"Credits: ${_currentCredits:F0}";
                     CreditsDisplay.Text = displayText;
-                    Console.WriteLine($"Set CreditsDisplay.Text to: '{displayText}'");
                 }
-                else
-                {
-                    Console.WriteLine("CreditsDisplay is null - cannot update display");
-                }
-                Console.WriteLine($"=== UpdateCreditsDisplay END ===");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Exception in UpdateCreditsDisplay: {ex.Message}");
                 LoggingService.Application.Error("Failed to update credits display", ex);
                 System.Diagnostics.Debug.WriteLine($"Failed to update credits display: {ex.Message}");
             }

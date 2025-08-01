@@ -1535,7 +1535,7 @@
                                                                     </Grid.ColumnDefinitions>
                                                                     <TextBox Grid.Column="0" Name="StripsMultipleCopyDiscountInput" Text="0" 
                                                                              FontSize="12" BorderThickness="0" Background="Transparent" VerticalAlignment="Center"
-                                                                             behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True" TextChanged="ExtraCopyPrice_TextChanged"/>
+                                                                             behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True" TextChanged="MultipleCopyDiscount_TextChanged"/>
                                                                     <TextBlock Grid.Column="1" Text="%" FontSize="12" Foreground="#6B7280" VerticalAlignment="Center" Margin="4,0,0,0"/>
                                                                 </Grid>
                                                             </StackPanel>
@@ -1587,7 +1587,7 @@
                                                                     </Grid.ColumnDefinitions>
                                                                     <TextBox Grid.Column="0" Name="Photo4x6MultipleCopyDiscountInput" Text="0" 
                                                                              FontSize="12" BorderThickness="0" Background="Transparent" VerticalAlignment="Center"
-                                                                             behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True" TextChanged="ExtraCopyPrice_TextChanged"/>
+                                                                             behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True" TextChanged="MultipleCopyDiscount_TextChanged"/>
                                                                     <TextBlock Grid.Column="1" Text="%" FontSize="12" Foreground="#6B7280" VerticalAlignment="Center" Margin="4,0,0,0"/>
                                                                 </Grid>
                                                             </StackPanel>
@@ -1639,7 +1639,7 @@
                                                                     </Grid.ColumnDefinitions>
                                                                     <TextBox Grid.Column="0" Name="SmartphoneMultipleCopyDiscountInput" Text="0" 
                                                                              FontSize="12" BorderThickness="0" Background="Transparent" VerticalAlignment="Center"
-                                                                             behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True" TextChanged="ExtraCopyPrice_TextChanged"/>
+                                                                             behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True" TextChanged="MultipleCopyDiscount_TextChanged"/>
                                                                     <TextBlock Grid.Column="1" Text="%" FontSize="12" Foreground="#6B7280" VerticalAlignment="Center" Margin="4,0,0,0"/>
                                                                 </Grid>
                                                             </StackPanel>

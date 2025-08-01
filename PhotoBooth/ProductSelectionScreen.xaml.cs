@@ -475,10 +475,6 @@ namespace Photobooth
         /// <param name="credits">Current credit amount</param>
         public void UpdateCredits(decimal credits)
         {
-            Console.WriteLine($"=== ProductSelectionScreen.UpdateCredits DEBUG ===");
-            Console.WriteLine($"Received credits value: ${credits}");
-            Console.WriteLine($"Current cached credits: ${currentCredits}");
-            
             if (credits < 0)
             {
                 System.Diagnostics.Debug.WriteLine($"Warning: Negative credits value provided: {credits}");
@@ -486,10 +482,7 @@ namespace Photobooth
             }
 
             currentCredits = credits;
-            Console.WriteLine($"Set currentCredits to: ${currentCredits}");
-            Console.WriteLine("Calling UpdateCreditsDisplay...");
             UpdateCreditsDisplay();
-            Console.WriteLine("=== ProductSelectionScreen.UpdateCredits END ===");
         }
 
         #endregion
@@ -503,25 +496,14 @@ namespace Photobooth
         {
             try
             {
-                Console.WriteLine($"=== ProductSelectionScreen.UpdateCreditsDisplay DEBUG ===");
-                Console.WriteLine($"CreditsDisplay is null: {CreditsDisplay == null}");
-                Console.WriteLine($"currentCredits value: ${currentCredits}");
-                
                 if (CreditsDisplay != null)
                 {
                     var displayText = $"Credits: ${currentCredits:F0}";
                     CreditsDisplay.Text = displayText;
-                    Console.WriteLine($"Set CreditsDisplay.Text to: '{displayText}'");
                 }
-                else
-                {
-                    Console.WriteLine("CreditsDisplay is null - cannot update display");
-                }
-                Console.WriteLine($"=== ProductSelectionScreen.UpdateCreditsDisplay END ===");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Exception in UpdateCreditsDisplay: {ex.Message}");
                 System.Diagnostics.Debug.WriteLine($"Failed to update credits display: {ex.Message}");
             }
         }
@@ -554,27 +536,19 @@ namespace Photobooth
             {
                 if (sender is Button button && button.Tag is string productType)
                 {
-                    Console.WriteLine($"=== PRODUCT SELECTION DEBUG ===");
-                    Console.WriteLine($"Product selected: {productType}");
-                    
                     var productInfo = GetProductInfo(productType);
                     if (productInfo != null)
                     {
-                        Console.WriteLine($"Product info - Name: {productInfo.Name}, Type: {productInfo.Type}, Price: ${productInfo.Price:F2}");
-                        Console.WriteLine($"Invoking ProductSelected event...");
                         ProductSelected?.Invoke(this, new ProductSelectedEventArgs(productInfo));
-                        Console.WriteLine($"=== PRODUCT SELECTION COMPLETE ===");
                     }
                     else
                     {
-                        Console.WriteLine($"ERROR: Unknown product type selected: {productType}");
                         System.Diagnostics.Debug.WriteLine($"Unknown product type selected: {productType}");
                     }
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: Product selection error: {ex.Message}");
                 System.Diagnostics.Debug.WriteLine($"Product selection error: {ex.Message}");
             }
         }

@@ -99,7 +99,7 @@ namespace Photobooth
             ModalService.Instance.Initialize(ModalOverlayContainer, ModalContentContainer, ModalBackdrop);
 
             InitializeDatabaseAsync();
-            InitializeApplication();
+            _ = InitializeApplication();
         }
 
 
@@ -162,7 +162,7 @@ namespace Photobooth
         /// <summary>
         /// Sets up the application and navigates to the welcome screen
         /// </summary>
-        private async void InitializeApplication()
+        private async Task InitializeApplication()
         {
             // Initialize admin dashboard screen for credit management (even for regular users)
             await InitializeAdminDashboardForCreditsAsync();
@@ -278,7 +278,7 @@ namespace Photobooth
         {
             try
             {
-                Console.WriteLine("=== NAVIGATING TO PRODUCT SELECTION ===");
+                LoggingService.Application.Information("Navigating to product selection");
                 
                 if (productSelectionScreen == null)
                 {
@@ -286,39 +286,37 @@ namespace Photobooth
                     // Subscribe to product selection events
                     productSelectionScreen.BackButtonClicked += ProductSelectionScreen_BackButtonClicked;
                     productSelectionScreen.ProductSelected += ProductSelectionScreen_ProductSelected;
-                    Console.WriteLine("ProductSelectionScreen created");
+                    LoggingService.Application.Debug("ProductSelectionScreen created");
                 }
 
                 // Refresh product prices from database to ensure we have the latest values
-                Console.WriteLine("Refreshing product prices from database...");
+                LoggingService.Application.Debug("Refreshing product prices from database");
                 await productSelectionScreen.RefreshProductPricesAsync();
-                Console.WriteLine("Product prices refreshed successfully");
+                LoggingService.Application.Debug("Product prices refreshed successfully");
 
                 // Update credit display if admin dashboard is available
                 if (adminDashboardScreen != null)
                 {
                     // Force refresh credits from database to ensure we have the latest value
-                    Console.WriteLine("Forcing admin dashboard to refresh credits from database...");
+                    LoggingService.Application.Debug("Refreshing credits from database");
                     await adminDashboardScreen.RefreshCreditsFromDatabase();
                     
                     var currentCredits = adminDashboardScreen.GetCurrentCredits();
-                    Console.WriteLine($"Admin dashboard credits after refresh: ${currentCredits}");
-                    Console.WriteLine("Calling UpdateCredits on ProductSelectionScreen...");
+                    LoggingService.Application.Debug("Credits refreshed", ("CurrentCredits", currentCredits));
                     productSelectionScreen.UpdateCredits(currentCredits);
-                    Console.WriteLine("UpdateCredits called successfully");
+                    LoggingService.Application.Debug("Credits updated on ProductSelectionScreen");
                 }
                 else
                 {
-                    Console.WriteLine("Admin dashboard is null, cannot refresh credits");
+                    LoggingService.Application.Debug("Admin dashboard not available, skipping credit refresh");
                 }
 
                 CurrentScreenContainer.Content = productSelectionScreen;
-                Console.WriteLine("=== PRODUCT SELECTION NAVIGATION COMPLETE ===");
+                LoggingService.Application.Information("Product selection navigation completed");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Navigation to product selection failed: {ex.Message}");
-                System.Diagnostics.Debug.WriteLine($"Navigation to product selection failed: {ex.Message}");
+                LoggingService.Application.Error("Navigation to product selection failed", ex);
             }
         }
 
@@ -986,35 +984,32 @@ namespace Photobooth
         {
             try
             {
-                System.Diagnostics.Debug.WriteLine("=== NavigateToAdminLogin CALLED ===");
+                LoggingService.Application.Information("Navigating to admin login");
                 
                 if (adminLoginScreen == null)
                 {
-                    System.Diagnostics.Debug.WriteLine("Creating new AdminLoginScreen instance");
+                    LoggingService.Application.Debug("Creating new AdminLoginScreen instance");
                     adminLoginScreen = new AdminLoginScreen();
                     // Subscribe to admin login events
                     adminLoginScreen.LoginSuccessful += AdminLoginScreen_LoginSuccessful;
                     adminLoginScreen.LoginCancelled += AdminLoginScreen_LoginCancelled;
-                    System.Diagnostics.Debug.WriteLine("AdminLoginScreen created and events subscribed");
+                    LoggingService.Application.Debug("AdminLoginScreen created and events subscribed");
                 }
                 else
                 {
-                    System.Diagnostics.Debug.WriteLine("AdminLoginScreen already exists, reusing");
+                    LoggingService.Application.Debug("AdminLoginScreen already exists, reusing");
                 }
 
                 // Reset the login screen
-                System.Diagnostics.Debug.WriteLine("Calling adminLoginScreen.Reset()...");
+                LoggingService.Application.Debug("Resetting admin login screen");
                 adminLoginScreen.Reset();
-                System.Diagnostics.Debug.WriteLine("adminLoginScreen.Reset() completed");
                 
-                System.Diagnostics.Debug.WriteLine("Setting CurrentScreenContainer.Content to adminLoginScreen");
                 CurrentScreenContainer.Content = adminLoginScreen;
-                System.Diagnostics.Debug.WriteLine("=== NavigateToAdminLogin COMPLETED ===");
+                LoggingService.Application.Information("Admin login navigation completed");
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"NavigateToAdminLogin failed: {ex.Message}");
-                System.Diagnostics.Debug.WriteLine($"Stack trace: {ex.StackTrace}");
+                LoggingService.Application.Error("Navigation to admin login failed", ex);
             }
         }
 
@@ -1066,51 +1061,45 @@ namespace Photobooth
         {
             try
             {
-                Console.WriteLine($"=== NAVIGATING TO ADMIN DASHBOARD ===");
-                Console.WriteLine($"Access Level: {accessLevel}, User ID: {userId}");
+                LoggingService.Application.Information("Navigating to admin dashboard", 
+                    ("AccessLevel", accessLevel.ToString()),
+                    ("UserId", userId));
                 
                 // AdminDashboardScreen should already exist from initialization
                 if (adminDashboardScreen == null)
                 {
-                    Console.WriteLine("WARN: Admin Dashboard was null, creating new instance");
+                    LoggingService.Application.Warning("Admin Dashboard was null, creating new instance");
                     await InitializeAdminDashboardForCreditsAsync();
                 }
 
                 // Set access level and configure UI accordingly
                 currentAdminAccess = accessLevel;
-                Console.WriteLine("Setting access level...");
+                LoggingService.Application.Debug("Setting admin access level");
                 await adminDashboardScreen!.SetAccessLevel(accessLevel, userId);
-                Console.WriteLine("Access level set successfully");
+                LoggingService.Application.Debug("Access level set successfully");
                 
-                Console.WriteLine("Refreshing sales data...");
+                LoggingService.Application.Debug("Refreshing sales data");
                 adminDashboardScreen.RefreshSalesData();
-                Console.WriteLine("Sales data refreshed");
+                LoggingService.Application.Debug("Sales data refreshed");
 
-                Console.WriteLine("Setting screen content...");
                 CurrentScreenContainer.Content = adminDashboardScreen;
-                Console.WriteLine("=== ADMIN DASHBOARD NAVIGATION COMPLETE ===");
+                LoggingService.Application.Information("Admin dashboard navigation completed");
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"CRITICAL ERROR - Navigation to admin dashboard failed:");
-                System.Diagnostics.Debug.WriteLine($"Exception Type: {ex.GetType().Name}");
-                System.Diagnostics.Debug.WriteLine($"Message: {ex.Message}");
-                System.Diagnostics.Debug.WriteLine($"Stack Trace: {ex.StackTrace}");
-                if (ex.InnerException != null)
-                {
-                    System.Diagnostics.Debug.WriteLine($"Inner Exception: {ex.InnerException.Message}");
-                    System.Diagnostics.Debug.WriteLine($"Inner Stack Trace: {ex.InnerException.StackTrace}");
-                }
+                LoggingService.Application.Error("Navigation to admin dashboard failed", ex,
+                    ("AccessLevel", accessLevel.ToString()),
+                    ("UserId", userId));
                 
                 // Show error message instead of silently falling back
                 try
                 {
-                    MessageBox.Show($"Failed to load admin dashboard: {ex.Message}\n\nPlease check the debug output for details.", 
+                    MessageBox.Show($"Failed to load admin dashboard: {ex.Message}\n\nPlease check the logs for details.", 
                                   "Admin Dashboard Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
                 catch
                 {
-                    // If MessageBox fails, at least we have debug output
+                    // If MessageBox fails, at least we have logging
                 }
                 
                 // Fallback to welcome screen

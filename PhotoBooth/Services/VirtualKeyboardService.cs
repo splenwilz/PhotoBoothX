@@ -26,6 +26,11 @@ namespace Photobooth.Services
         // Events
         public event EventHandler<bool>? KeyboardVisibilityChanged;
 
+        /// <summary>
+        /// Callback to be invoked when price input is completed (Enter key pressed on price fields)
+        /// </summary>
+        public Action<string>? OnPriceInputComplete { get; set; }
+
         private VirtualKeyboardService() { }
 
         // Add flag to prevent recursive operations during text manipulation
@@ -40,15 +45,16 @@ namespace Photobooth.Services
         {
             try
             {
-                Console.WriteLine($"=== VirtualKeyboardService.ShowKeyboard CALLED ===");
-                Console.WriteLine($"InputControl: {inputControl?.GetType().Name ?? "null"} '{inputControl?.Name ?? "null"}'");
-                Console.WriteLine($"ParentWindow: {parentWindow?.GetType().Name ?? "null"}");
-                Console.WriteLine($"Current keyboard exists: {_currentKeyboard != null}");
+                LoggingService.Application.Debug("VirtualKeyboardService.ShowKeyboard called", 
+                    ("InputControlType", inputControl?.GetType().Name ?? "null"),
+                    ("InputControlName", inputControl?.Name ?? "null"),
+                    ("ParentWindowType", parentWindow?.GetType().Name ?? "null"),
+                    ("CurrentKeyboardExists", _currentKeyboard != null));
                 
                 // Prevent recursive calls during text manipulation
                 if (_isManipulatingText)
                 {
-                    Console.WriteLine("SKIPPING ShowKeyboard - currently manipulating text");
+                    LoggingService.Application.Debug("Skipping ShowKeyboard - currently manipulating text");
                     return;
                 }
                 
@@ -56,21 +62,19 @@ namespace Photobooth.Services
                 if (inputControl == null)
                 {
                     LoggingService.Application.Warning("ShowKeyboard called with null inputControl");
-                    Console.WriteLine("WARNING: inputControl is null, returning");
                     return;
                 }
                 
                 if (parentWindow == null)
                 {
                     LoggingService.Application.Warning("ShowKeyboard called with null parentWindow");
-                    Console.WriteLine("WARNING: parentWindow is null, returning");
                     return;
                 }
 
                 // CRITICAL FIX: If switching to a different input, restore binding for previous input
                 if (_activeInput != null && _activeInput != inputControl)
                 {
-                    Console.WriteLine($"Switching from previous input, restoring binding for previous input");
+                    LoggingService.Application.Debug("Switching from previous input, restoring binding for previous input");
                     ReenableBinding(_activeInput);
                 }
 
@@ -84,22 +88,24 @@ namespace Photobooth.Services
                 }
                 else if (inputControl is TextBox)
                 {
-                    Console.WriteLine($"Binding already disabled for TextBox: {inputControl.Name}");
+                    LoggingService.Application.Debug("Binding already disabled for TextBox", ("TextBoxName", inputControl.Name));
                 }
                 else
                 {
                     // Not a TextBox, no binding to disable
-                    Console.WriteLine($"No binding to disable for {inputControl.GetType().Name}: {inputControl.Name}");
+                    LoggingService.Application.Debug("No binding to disable for non-TextBox control", 
+                        ("ControlType", inputControl.GetType().Name),
+                        ("ControlName", inputControl.Name));
                 }
 
                 // Determine keyboard mode based on input type
                 var keyboardMode = DetermineKeyboardMode(inputControl);
-                Console.WriteLine($"Keyboard mode: {keyboardMode}");
+                LoggingService.Application.Debug("Keyboard mode determined", ("Mode", keyboardMode.ToString()));
 
                 // Check if we can reuse the existing keyboard
                 if (_currentKeyboard != null && _parentWindow == parentWindow)
                 {
-                    Console.WriteLine("Checking if existing keyboard can be reused...");
+                    LoggingService.Application.Debug("Checking if existing keyboard can be reused");
                     
                     // Check if the keyboard mode matches and we're on the same window
                     var currentMode = _currentKeyboard.GetCurrentMode();
@@ -109,11 +115,14 @@ namespace Photobooth.Services
                     bool canReuse = (currentMode == keyboardMode) || 
                                    (IsTextBasedMode(currentMode) && IsTextBasedMode(keyboardMode));
                     
-                    Console.WriteLine($"Can reuse: {canReuse} (current: {currentMode}, new: {keyboardMode})");
+                    LoggingService.Application.Debug("Keyboard reuse decision", 
+                        ("CanReuse", canReuse),
+                        ("CurrentMode", currentMode.ToString()),
+                        ("NewMode", keyboardMode.ToString()));
                     
                     if (canReuse)
                     {
-                        Console.WriteLine("Reusing existing keyboard");
+                        LoggingService.Application.Debug("Reusing existing keyboard");
                         
                         // Ensure the new input has focus
                         EnsureInputFocus();
@@ -128,20 +137,20 @@ namespace Photobooth.Services
                             LoggingService.Application.Debug("Reusing existing keyboard for login screen");
                         }
                         
-                        Console.WriteLine("=== VirtualKeyboardService.ShowKeyboard COMPLETED (reused) ===");
+                        LoggingService.Application.Debug("VirtualKeyboardService.ShowKeyboard completed (reused)");
                         return;
                     }
                     else
                     {
-                        Console.WriteLine("Cannot reuse existing keyboard, creating new one");
+                        LoggingService.Application.Debug("Cannot reuse existing keyboard, creating new one");
                         // Hide the existing keyboard first
                         HideKeyboard();
                     }
                     }
                     else
                     {
-                    Console.WriteLine("No existing keyboard to reuse");
-                }
+                        LoggingService.Application.Debug("No existing keyboard to reuse");
+                    }
 
                 // Store parent window for future reference
                 _parentWindow = parentWindow;
@@ -158,28 +167,28 @@ namespace Photobooth.Services
                 while (_keyboardContainer == null && attempts < maxAttempts)
                 {
                     attempts++;
-                    Console.WriteLine($"Finding keyboard container (attempt {attempts}/{maxAttempts})");
+                    LoggingService.Application.Debug("Finding keyboard container", ("Attempt", attempts), ("MaxAttempts", maxAttempts));
                     
-                if (_parentWindow?.Content is Panel mainPanel)
-                {
-                    _keyboardContainer = mainPanel;
-                        Console.WriteLine("Found keyboard container as Panel");
-                }
-                else if (_parentWindow?.Content is Border border && border.Child is Panel panel)
-                {
-                    _keyboardContainer = panel;
-                        Console.WriteLine("Found keyboard container as Border > Panel");
-                }
-                else if (_parentWindow?.Content is Grid grid)
-                {
-                    _keyboardContainer = grid;
-                        Console.WriteLine("Found keyboard container as Grid");
-                }
+                    if (_parentWindow?.Content is Panel mainPanel)
+                    {
+                        _keyboardContainer = mainPanel;
+                        LoggingService.Application.Debug("Found keyboard container as Panel");
+                    }
+                    else if (_parentWindow?.Content is Border border && border.Child is Panel panel)
+                    {
+                        _keyboardContainer = panel;
+                        LoggingService.Application.Debug("Found keyboard container as Border > Panel");
+                    }
+                    else if (_parentWindow?.Content is Grid grid)
+                    {
+                        _keyboardContainer = grid;
+                        LoggingService.Application.Debug("Found keyboard container as Grid");
+                    }
 
                     // If still not found and we have more attempts, wait a bit
                     if (_keyboardContainer == null && attempts < maxAttempts)
-                {
-                        Console.WriteLine("Container not found, waiting before retry...");
+                    {
+                        LoggingService.Application.Debug("Container not found, waiting before retry");
                         await Task.Delay(100);
                     }
                 }
@@ -190,20 +199,18 @@ namespace Photobooth.Services
                         ("ParentWindowContent", _parentWindow?.Content?.GetType().Name ?? "null"),
                         ("InputControl", inputControl.GetType().Name),
                         ("Attempts", attempts));
-                    Console.WriteLine($"ERROR: Failed to find keyboard container after {attempts} attempts");
                     return;
                 }
 
                 // Try to find keyboard container with retries
-                Console.WriteLine("Successfully found keyboard container, creating keyboard");
+                LoggingService.Application.Debug("Successfully found keyboard container, creating keyboard");
                 CreateAndShowKeyboard(keyboardMode, IsLoginScreen(parentWindow));
                 
-                Console.WriteLine("=== VirtualKeyboardService.ShowKeyboard COMPLETED (new keyboard) ===");
+                LoggingService.Application.Debug("VirtualKeyboardService.ShowKeyboard completed (new keyboard)");
             }
             catch (Exception ex)
             {
                 LoggingService.Application.Error("Failed to show virtual keyboard", ex);
-                Console.WriteLine($"ShowKeyboard failed: {ex.Message}");
             }
         }
 
@@ -416,14 +423,15 @@ namespace Photobooth.Services
         {
             try
             {
-                Console.WriteLine("=== VirtualKeyboardService.CreateAndShowKeyboard CALLED ===");
-                Console.WriteLine($"Keyboard mode: {keyboardMode}, Is login screen: {isLoginScreen}");
-                Console.WriteLine($"Current keyboard exists before creation: {_currentKeyboard != null}");
+                LoggingService.Application.Debug("VirtualKeyboardService.CreateAndShowKeyboard called",
+                    ("KeyboardMode", keyboardMode.ToString()),
+                    ("IsLoginScreen", isLoginScreen),
+                    ("CurrentKeyboardExists", _currentKeyboard != null));
                 
                 // CRITICAL FIX: If a keyboard already exists, clean it up first to prevent duplicates
                 if (_currentKeyboard != null)
                 {
-                    Console.WriteLine("WARNING: A keyboard already exists! Cleaning it up before creating new one...");
+                    LoggingService.Application.Debug("A keyboard already exists, cleaning it up before creating new one");
                     
                     // Remove existing keyboard from container
                     if (_keyboardContainer != null)
@@ -440,45 +448,49 @@ namespace Photobooth.Services
 
                         if (existingCanvasWrapper != null)
                         {
-                            Console.WriteLine("Removing existing keyboard canvas wrapper");
+                            LoggingService.Application.Debug("Removing existing keyboard canvas wrapper");
                             _keyboardContainer.Children.Remove(existingCanvasWrapper);
                         }
                         else
                         {
-                            Console.WriteLine("Removing existing keyboard directly");
+                            LoggingService.Application.Debug("Removing existing keyboard directly");
                             _keyboardContainer.Children.Remove(_currentKeyboard);
                         }
                     }
                     
                     // Detach existing event handlers
-                    Console.WriteLine("Detaching existing keyboard event handlers");
+                    LoggingService.Application.Debug("Detaching existing keyboard event handlers");
                     _currentKeyboard.OnKeyPressed -= HandleKeyPressed;
                     _currentKeyboard.OnSpecialKeyPressed -= HandleSpecialKeyPressed;
                     _currentKeyboard.OnKeyboardClosed -= HandleKeyboardClosed;
                     _currentKeyboard = null;
-                    Console.WriteLine("Existing keyboard cleaned up successfully");
+                    LoggingService.Application.Debug("Existing keyboard cleaned up successfully");
                 }
                 
                 // Create and configure virtual keyboard
                 _currentKeyboard = new VirtualKeyboard(keyboardMode, isLoginScreen);
-                Console.WriteLine($"Virtual keyboard created - Instance ID: {_currentKeyboard.GetHashCode()}");
+                LoggingService.Application.Debug("Virtual keyboard created", ("InstanceId", _currentKeyboard.GetHashCode()));
 
-                Console.WriteLine("Attaching event handlers...");
+                LoggingService.Application.Debug("Attaching event handlers");
                 _currentKeyboard.OnKeyPressed += HandleKeyPressed;
                 _currentKeyboard.OnSpecialKeyPressed += HandleSpecialKeyPressed;
                 _currentKeyboard.OnKeyboardClosed += HandleKeyboardClosed;
-                Console.WriteLine($"Event handlers attached successfully to keyboard {_currentKeyboard.GetHashCode()}");
+                LoggingService.Application.Debug("Event handlers attached successfully", ("KeyboardId", _currentKeyboard.GetHashCode()));
 
                 // Position keyboard at bottom of screen initially
                 _currentKeyboard.VerticalAlignment = VerticalAlignment.Bottom;
                 _currentKeyboard.HorizontalAlignment = HorizontalAlignment.Stretch;
                 _currentKeyboard.Margin = new Thickness(0, 0, 0, 0);
+#if DEBUG
                 Console.WriteLine("Keyboard positioning set");
+#endif
 
                 // Add keyboard to container
                 if (_keyboardContainer != null)
                 {
+#if DEBUG
                     Console.WriteLine("Adding keyboard to container...");
+#endif
                     
                     // Create a Canvas wrapper for proper drag functionality
                     var canvasWrapper = new Canvas
@@ -490,11 +502,11 @@ namespace Photobooth.Services
                     
                     Panel.SetZIndex(canvasWrapper, 9999); // Ensure wrapper is on top
                     _keyboardContainer.Children.Add(canvasWrapper);
-                    Console.WriteLine("Canvas wrapper added to container");
+                    LoggingService.Application.Debug("Canvas wrapper added to container");
                     
                     // Add keyboard to canvas wrapper
                     canvasWrapper.Children.Add(_currentKeyboard);
-                    Console.WriteLine($"Keyboard {_currentKeyboard.GetHashCode()} added to canvas wrapper");
+                    LoggingService.Application.Debug("Keyboard added to canvas wrapper", ("KeyboardId", _currentKeyboard.GetHashCode()));
                     
                     // Now Canvas positioning will work properly
                     // Center horizontally if possible, otherwise position at left
@@ -510,30 +522,29 @@ namespace Photobooth.Services
                     }
                     
                     Canvas.SetBottom(_currentKeyboard, 0);
-                    Console.WriteLine("Keyboard positioned in canvas");
+                    LoggingService.Application.Debug("Keyboard positioned in canvas");
                     
                     // Initialize drag and resize with the canvas wrapper as parent
                     _currentKeyboard.InitializeDragResize(canvasWrapper);
-                    Console.WriteLine("Drag and resize initialized");
+                    LoggingService.Application.Debug("Drag and resize initialized");
                     
                     // Ensure the input field has focus when keyboard is shown
                     EnsureInputFocus();
-                    Console.WriteLine("Input focus ensured");
+                    LoggingService.Application.Debug("Input focus ensured");
 
                     // Notify that keyboard is now visible
                     KeyboardVisibilityChanged?.Invoke(this, true);
-                    Console.WriteLine("KeyboardVisibilityChanged event invoked");
+                    LoggingService.Application.Debug("KeyboardVisibilityChanged event invoked");
                 }
                 else
                 {
-                    Console.WriteLine("ERROR: No keyboard container available");
+                    LoggingService.Application.Error("No keyboard container available");
                 }
 
-                Console.WriteLine($"=== VirtualKeyboardService.CreateAndShowKeyboard COMPLETED - Final keyboard ID: {_currentKeyboard?.GetHashCode()} ===");
+                LoggingService.Application.Debug("VirtualKeyboardService.CreateAndShowKeyboard completed", ("FinalKeyboardId", _currentKeyboard?.GetHashCode() ?? -1));
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: CreateAndShowKeyboard failed: {ex.Message}");
                 LoggingService.Application.Error("Failed to create and show keyboard", ex);
             }
         }
@@ -545,19 +556,16 @@ namespace Photobooth.Services
         {
             try
             {
-                Console.WriteLine("=== VirtualKeyboardService.HideKeyboard CALLED ===");
-                Console.WriteLine($"Current keyboard exists: {_currentKeyboard != null}");
-                if (_currentKeyboard != null)
-                {
-                    Console.WriteLine($"Current keyboard ID to hide: {_currentKeyboard.GetHashCode()}");
-                }
-                Console.WriteLine($"Current container exists: {_keyboardContainer != null}");
+                LoggingService.Application.Debug("VirtualKeyboardService.HideKeyboard called",
+                    ("CurrentKeyboardExists", _currentKeyboard != null),
+                    ("CurrentKeyboardId", _currentKeyboard?.GetHashCode() ?? -1),
+                    ("CurrentContainerExists", _keyboardContainer != null));
                 
                 LoggingService.Application.Debug("Hiding virtual keyboard");
                 
                 if (_currentKeyboard != null && _keyboardContainer != null)
                 {
-                    Console.WriteLine($"Looking for keyboard {_currentKeyboard.GetHashCode()} canvas wrapper...");
+                    LoggingService.Application.Debug("Looking for keyboard canvas wrapper", ("KeyboardId", _currentKeyboard.GetHashCode()));
                     
                     // Find and remove the canvas wrapper that contains the keyboard
                     Canvas? canvasWrapper = null;
@@ -572,33 +580,33 @@ namespace Photobooth.Services
 
                     if (canvasWrapper != null)
                     {
-                        Console.WriteLine($"Found canvas wrapper for keyboard {_currentKeyboard.GetHashCode()}, removing from container");
+                        LoggingService.Application.Debug("Found canvas wrapper for keyboard, removing from container", ("KeyboardId", _currentKeyboard.GetHashCode()));
                         _keyboardContainer.Children.Remove(canvasWrapper);
                         LoggingService.Application.Debug("Removed keyboard canvas wrapper from container");
                     }
                     else
                     {
-                        Console.WriteLine($"No canvas wrapper found for keyboard {_currentKeyboard.GetHashCode()}, trying direct removal");
+                        LoggingService.Application.Debug("No canvas wrapper found for keyboard, trying direct removal", ("KeyboardId", _currentKeyboard.GetHashCode()));
                         // Fallback - try to remove directly (for older keyboards)
                         _keyboardContainer.Children.Remove(_currentKeyboard);
                         LoggingService.Application.Debug("Removed keyboard directly from container");
                     }
                     
-                    Console.WriteLine($"Detaching event handlers from keyboard {_currentKeyboard.GetHashCode()}...");
+                    LoggingService.Application.Debug("Detaching event handlers from keyboard", ("KeyboardId", _currentKeyboard.GetHashCode()));
                     _currentKeyboard.OnKeyPressed -= HandleKeyPressed;
                     _currentKeyboard.OnSpecialKeyPressed -= HandleSpecialKeyPressed;
                     _currentKeyboard.OnKeyboardClosed -= HandleKeyboardClosed;
                     var hiddenKeyboardId = _currentKeyboard.GetHashCode();
                     _currentKeyboard = null;
-                    Console.WriteLine($"Event handlers detached, keyboard {hiddenKeyboardId} set to null");
+                    LoggingService.Application.Debug("Event handlers detached, keyboard set to null", ("HiddenKeyboardId", hiddenKeyboardId));
 
                     // Notify that keyboard is now hidden
                     KeyboardVisibilityChanged?.Invoke(this, false);
-                    Console.WriteLine("KeyboardVisibilityChanged event invoked");
+                    LoggingService.Application.Debug("KeyboardVisibilityChanged event invoked");
                 }
                 else
                 {
-                    Console.WriteLine("No keyboard or container to hide");
+                    LoggingService.Application.Debug("No keyboard or container to hide");
                 }
 
                 // Re-enable binding for the active input before clearing it (unless already done)
@@ -613,16 +621,15 @@ namespace Photobooth.Services
 
                 // Clear the active input reference
                 _activeInput = null;
-                Console.WriteLine("Active input cleared");
+                LoggingService.Application.Debug("Active input cleared");
                 
                 // Don't clear _keyboardContainer and _parentWindow - preserve them for next show
                 // This prevents timing issues when quickly hiding and showing keyboard
                 LoggingService.Application.Debug("Virtual keyboard hidden, preserving container for next show");
-                Console.WriteLine("=== VirtualKeyboardService.HideKeyboard COMPLETED ===");
+                LoggingService.Application.Debug("VirtualKeyboardService.HideKeyboard completed");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: HideKeyboard failed: {ex.Message}");
                 LoggingService.Application.Error("Failed to hide keyboard", ex);
             }
         }
@@ -849,25 +856,35 @@ namespace Photobooth.Services
         /// </summary>
         private void HandleKeyPressed(string key)
         {
+#if DEBUG
             Console.WriteLine($"=== VirtualKeyboardService.HandleKeyPressed CALLED ===");
             Console.WriteLine($"Key pressed: '{key}'");
             Console.WriteLine($"Active input: {_activeInput?.GetType().Name ?? "null"} '{_activeInput?.Name ?? "null"}'");
+#endif
             
             if (_activeInput != null)
                         {
+#if DEBUG
                 Console.WriteLine($"Active input current text: '{GetInputText(_activeInput)}'");
                 Console.WriteLine("Sending key to active input...");
+#endif
                     
                 // Send the key to the active input control
                 SendKeyToInput(key);
                 
+#if DEBUG
                 Console.WriteLine($"Active input text after key: '{GetInputText(_activeInput)}'");
+#endif
                         }
             else
             {
+#if DEBUG
                 Console.WriteLine("WARNING: No active input to send key to");
+#endif
             }
+#if DEBUG
             Console.WriteLine($"=== VirtualKeyboardService.HandleKeyPressed COMPLETED ===");
+#endif
         }
 
         /// <summary>
@@ -875,48 +892,68 @@ namespace Photobooth.Services
         /// </summary>
         private void HandleSpecialKeyPressed(VirtualKeyboardSpecialKey specialKey)
         {
+#if DEBUG
             Console.WriteLine($"=== VirtualKeyboardService.HandleSpecialKeyPressed CALLED ===");
             Console.WriteLine($"Special key pressed: {specialKey}");
             Console.WriteLine($"Active input: {_activeInput?.GetType().Name ?? "null"} '{_activeInput?.Name ?? "null"}'");
+#endif
 
             if (_activeInput != null)
             {
+#if DEBUG
                 Console.WriteLine($"Active input current text: '{GetInputText(_activeInput)}'");
+#endif
             }
 
                 switch (specialKey)
                 {
                     case VirtualKeyboardSpecialKey.Backspace:
+#if DEBUG
                     Console.WriteLine("Processing backspace...");
+#endif
                         HandleBackspace();
                         break;
                     case VirtualKeyboardSpecialKey.Enter:
+#if DEBUG
                     Console.WriteLine("Processing enter...");
+#endif
                         HandleEnter();
                         break;
                     case VirtualKeyboardSpecialKey.Space:
+#if DEBUG
                     Console.WriteLine("Processing space...");
+#endif
                     SendKeyToInput(" ");
                         break;
                     case VirtualKeyboardSpecialKey.Tab:
+#if DEBUG
                     Console.WriteLine("Processing tab...");
+#endif
                         HandleTab();
                         break;
                 case VirtualKeyboardSpecialKey.Shift:
+#if DEBUG
                     Console.WriteLine("Processing shift...");
+#endif
                     // Note: Shift handling is done internally by the keyboard control
                     break;
                 case VirtualKeyboardSpecialKey.CapsLock:
+#if DEBUG
                     Console.WriteLine("Processing caps lock...");
+#endif
                     // Note: CapsLock handling is done internally by the keyboard control
                     break;
             }
             
             if (_activeInput != null)
             {
+#if DEBUG
                 Console.WriteLine($"Active input text after special key: '{GetInputText(_activeInput)}'");
+#endif
             }
+#if DEBUG
             Console.WriteLine($"=== VirtualKeyboardService.HandleSpecialKeyPressed COMPLETED ===");
+#endif
         }
 
         /// <summary>
@@ -924,16 +961,22 @@ namespace Photobooth.Services
         /// </summary>
         private void HandleBackspace()
         {
+#if DEBUG
             Console.WriteLine($"=== VirtualKeyboardService.HandleBackspace CALLED ===");
             Console.WriteLine($"Active input: {_activeInput?.GetType().Name ?? "null"} '{_activeInput?.Name ?? "null"}'");
+#endif
             
             if (_activeInput == null)
             {
+#if DEBUG
                 Console.WriteLine("WARNING: No active input for backspace");
+#endif
                 return;
             }
 
+#if DEBUG
             Console.WriteLine($"Active input current text before backspace: '{GetInputText(_activeInput)}'");
+#endif
 
             try
             {
@@ -942,46 +985,64 @@ namespace Photobooth.Services
             
             if (_activeInput is TextBox textBox)
             {
+#if DEBUG
                     Console.WriteLine($"Processing backspace for TextBox, CaretIndex: {textBox.CaretIndex}");
+#endif
                     
                         var caretIndex = textBox.CaretIndex;
                         var currentText = textBox.Text ?? "";
                         
                         if (caretIndex > 0 && currentText.Length > 0)
                         {
+#if DEBUG
                         Console.WriteLine($"Removing character at position {caretIndex - 1}");
+#endif
                         // Remove character before caret
                             var newText = currentText.Remove(caretIndex - 1, 1);
                             textBox.Text = newText;
                             textBox.CaretIndex = caretIndex - 1;
+#if DEBUG
                         Console.WriteLine($"New text after backspace: '{newText}', New caret: {caretIndex - 1}");
+#endif
                         }
                     else
                     {
+#if DEBUG
                         Console.WriteLine("Nothing to delete - caret at beginning or empty text");
+#endif
                     }
             }
             else if (_activeInput is PasswordBox passwordBox)
             {
+#if DEBUG
                     Console.WriteLine($"Processing backspace for PasswordBox, current length: {passwordBox.Password?.Length ?? 0}");
+#endif
                     
                     var currentPassword = passwordBox.Password ?? "";
                 if (currentPassword.Length > 0)
                 {
+#if DEBUG
                         Console.WriteLine($"Removing last character from password");
+#endif
                         // Remove last character
                     passwordBox.Password = currentPassword.Substring(0, currentPassword.Length - 1);
+#if DEBUG
                         Console.WriteLine($"New password length: {passwordBox.Password.Length}");
+#endif
                     }
                     else
                     {
+#if DEBUG
                         Console.WriteLine("Nothing to delete - password is empty");
+#endif
                     }
                 }
                         }
                         catch (Exception ex)
                         {
+#if DEBUG
                 Console.WriteLine($"ERROR in HandleBackspace: {ex.Message}");
+#endif
                 LoggingService.Application.Error("Failed to handle backspace", ex);
                         }
             finally
@@ -990,7 +1051,9 @@ namespace Photobooth.Services
                 _isManipulatingText = false;
                 }
             
+#if DEBUG
             Console.WriteLine($"=== VirtualKeyboardService.HandleBackspace COMPLETED ===");
+#endif
         }
 
         /// <summary>
@@ -1008,10 +1071,13 @@ namespace Photobooth.Services
                 if (textBoxTag == "PhotoStrips" || textBoxTag == "Photo4x6" || textBoxTag == "SmartphonePrint" ||
                     textBoxName.Contains("extracopypriceinput") || textBoxName.Contains("multiplecopydiscountinput"))
                 {
-                    // This is a product price field - update binding first, then save and close keyboard
+                    // This is a product price field - update binding first, then invoke callback and close keyboard
                     _bindingReenabled = true;
                     ReenableBinding(_activeInput);
-                    TriggerProductConfigurationSave();
+                    
+                    // Invoke callback with the text box tag or name for context
+                    OnPriceInputComplete?.Invoke(textBoxTag ?? textBoxName);
+                    
                     HideKeyboard();
                     return;
                 }
@@ -1029,66 +1095,7 @@ namespace Photobooth.Services
             _activeInput?.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
         }
 
-        /// <summary>
-        /// Trigger the save functionality for product configuration
-        /// </summary>
-        private void TriggerProductConfigurationSave()
-        {
-            try
-            {
-                // Find the AdminDashboardScreen in the current window
-                var adminDashboard = FindAdminDashboardScreen(_parentWindow);
-                if (adminDashboard != null)
-                {
-                    // Use reflection to call the SaveProductConfig_Click method
-                    var saveMethod = adminDashboard.GetType().GetMethod("SaveProductConfig_Click", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                    if (saveMethod != null)
-                    {
-                        // Create dummy event args for the method call
-                        saveMethod.Invoke(adminDashboard, new object[] { adminDashboard, new RoutedEventArgs() });
-                        Console.WriteLine("Product configuration save triggered by Enter key");
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error triggering product configuration save: {ex.Message}");
-            }
-        }
 
-        /// <summary>
-        /// Find the AdminDashboardScreen instance in the window
-        /// </summary>
-        private object? FindAdminDashboardScreen(Window? window)
-        {
-            if (window == null) return null;
-
-            // Search through the visual tree for AdminDashboardScreen
-            return FindAdminDashboardScreenInElement(window);
-        }
-
-        /// <summary>
-        /// Recursively search for AdminDashboardScreen in visual tree
-        /// </summary>
-        private object? FindAdminDashboardScreenInElement(DependencyObject element)
-        {
-            if (element == null) return null;
-
-            // Check if this element is AdminDashboardScreen
-            if (element.GetType().Name == "AdminDashboardScreen")
-                return element;
-
-            // Search children
-            int childCount = VisualTreeHelper.GetChildrenCount(element);
-            for (int i = 0; i < childCount; i++)
-            {
-                var child = VisualTreeHelper.GetChild(element, i);
-                var result = FindAdminDashboardScreenInElement(child);
-                if (result != null) return result;
-            }
-
-            return null;
-        }
 
         /// <summary>
         /// Handle tab key
@@ -1104,11 +1111,15 @@ namespace Photobooth.Services
         /// </summary>
         private void HandleKeyboardClosed()
         {
+#if DEBUG
             Console.WriteLine("=== VirtualKeyboardService.HandleKeyboardClosed CALLED ===");
             Console.WriteLine($"Current tracked keyboard ID: {_currentKeyboard?.GetHashCode() ?? -1}");
             Console.WriteLine("Close button clicked, calling HideKeyboard()");
+#endif
             HideKeyboard();
+#if DEBUG
             Console.WriteLine("=== VirtualKeyboardService.HandleKeyboardClosed COMPLETED ===");
+#endif
         }
 
         /// <summary>

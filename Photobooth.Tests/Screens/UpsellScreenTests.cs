@@ -223,12 +223,12 @@ namespace Photobooth.Tests.Screens
         public async Task CrossSellProduct_StripsToPhoto4x6_ReturnsCorrectProduct()
         {
             // Arrange & Act
-            await Application.Current.Dispatcher.InvokeAsync(() =>
+            await Application.Current.Dispatcher.InvokeAsync(async () =>
             {
                 var stripsProduct = new ProductInfo { Type = "strips" };
                 _upsellScreen.SetOriginalProductForTesting(stripsProduct);
 
-                var crossSellProduct = _upsellScreen.GetCrossSellProduct();
+                var crossSellProduct = await _upsellScreen.GetCrossSellProductAsync();
 
                 // Assert
                 crossSellProduct.Should().NotBeNull();
@@ -242,12 +242,12 @@ namespace Photobooth.Tests.Screens
         public async Task CrossSellProduct_Photo4x6ToStrips_ReturnsCorrectProduct()
         {
             // Arrange & Act
-            await Application.Current.Dispatcher.InvokeAsync(() =>
+            await Application.Current.Dispatcher.InvokeAsync(async () =>
             {
                 var photo4x6Product = new ProductInfo { Type = "4x6" };
                 _upsellScreen.SetOriginalProductForTesting(photo4x6Product);
 
-                var crossSellProduct = _upsellScreen.GetCrossSellProduct();
+                var crossSellProduct = await _upsellScreen.GetCrossSellProductAsync();
 
                 // Assert
                 crossSellProduct.Should().NotBeNull();
@@ -261,12 +261,12 @@ namespace Photobooth.Tests.Screens
         public async Task CrossSellProduct_PhoneProduct_ReturnsNull()
         {
             // Arrange & Act
-            await Application.Current.Dispatcher.InvokeAsync(() =>
+            await Application.Current.Dispatcher.InvokeAsync(async () =>
             {
                 var phoneProduct = new ProductInfo { Type = "phone" };
                 _upsellScreen.SetOriginalProductForTesting(phoneProduct);
 
-                var crossSellProduct = _upsellScreen.GetCrossSellProduct();
+                var crossSellProduct = await _upsellScreen.GetCrossSellProductAsync();
 
                 // Assert
                 crossSellProduct.Should().BeNull();
@@ -277,12 +277,12 @@ namespace Photobooth.Tests.Screens
         public async Task CrossSellProduct_PhotoStripsVariant_ReturnsCorrectProduct()
         {
             // Arrange & Act
-            await Application.Current.Dispatcher.InvokeAsync(() =>
+            await Application.Current.Dispatcher.InvokeAsync(async () =>
             {
                 var photoStripsProduct = new ProductInfo { Type = "photostrips" };
                 _upsellScreen.SetOriginalProductForTesting(photoStripsProduct);
 
-                var crossSellProduct = _upsellScreen.GetCrossSellProduct();
+                var crossSellProduct = await _upsellScreen.GetCrossSellProductAsync();
 
                 // Assert
                 crossSellProduct.Should().NotBeNull();
@@ -295,12 +295,12 @@ namespace Photobooth.Tests.Screens
         public async Task CrossSellProduct_Photo4x6Variant_ReturnsCorrectProduct()
         {
             // Arrange & Act
-            await Application.Current.Dispatcher.InvokeAsync(() =>
+            await Application.Current.Dispatcher.InvokeAsync(async () =>
             {
                 var photo4x6Product = new ProductInfo { Type = "photo4x6" };
                 _upsellScreen.SetOriginalProductForTesting(photo4x6Product);
 
-                var crossSellProduct = _upsellScreen.GetCrossSellProduct();
+                var crossSellProduct = await _upsellScreen.GetCrossSellProductAsync();
 
                 // Assert
                 crossSellProduct.Should().NotBeNull();
@@ -312,12 +312,12 @@ namespace Photobooth.Tests.Screens
         public async Task CrossSellProduct_UnknownProductType_ReturnsNull()
         {
             // Arrange & Act
-            await Application.Current.Dispatcher.InvokeAsync(() =>
+            await Application.Current.Dispatcher.InvokeAsync(async () =>
             {
                 var unknownProduct = new ProductInfo { Type = "unknown" };
                 _upsellScreen.SetOriginalProductForTesting(unknownProduct);
 
-                var crossSellProduct = _upsellScreen.GetCrossSellProduct();
+                var crossSellProduct = await _upsellScreen.GetCrossSellProductAsync();
 
                 // Assert
                 crossSellProduct.Should().BeNull();

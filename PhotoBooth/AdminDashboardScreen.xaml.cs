@@ -275,6 +275,10 @@ namespace Photobooth
                 InitializeTemplatesTab();
 
 
+                // Set up virtual keyboard callback for price input completion
+                SetupVirtualKeyboardCallback();
+
+
             }
             catch (Exception ex)
             {
@@ -285,6 +289,44 @@ namespace Photobooth
                     System.Diagnostics.Debug.WriteLine($"Inner Exception: {ex.InnerException.Message}");
                 }
                 throw; // Re-throw to prevent silent failures
+            }
+        }
+
+        /// <summary>
+        /// Set up the virtual keyboard callback for price input completion
+        /// </summary>
+        private void SetupVirtualKeyboardCallback()
+        {
+            try
+            {
+                // Set up callback for when price input is completed via virtual keyboard
+                VirtualKeyboardService.Instance.OnPriceInputComplete = (context) =>
+                {
+                    // Trigger the save functionality when price input is completed
+                    LoggingService.Application.Information("Price input completed via virtual keyboard", ("Context", context));
+                    
+                    // Use Dispatcher to ensure we're on the UI thread
+                    Dispatcher.BeginInvoke(new Action(async () =>
+                    {
+                        try
+                        {
+                            // Trigger the save functionality
+                            await SaveProductConfiguration();
+                            
+                            // Show success feedback
+                            NotificationService.Quick.Success("Product settings saved successfully!");
+                        }
+                        catch (Exception ex)
+                        {
+                            LoggingService.Application.Error("Failed to save product configuration from virtual keyboard callback", ex);
+                            NotificationService.Quick.Error("Failed to save product settings");
+                        }
+                    }));
+                };
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to set up virtual keyboard callback", ex);
             }
         }
 
@@ -2080,7 +2122,7 @@ namespace Photobooth
                     }
                     else
                     {
-                        Console.WriteLine($"Preserving unsaved changes for {photoStripsVM.Name}: IsEnabled={photoStripsVM.IsEnabled}, Price={photoStripsVM.Price}");
+        
                     }
                 }
 
@@ -2095,7 +2137,7 @@ namespace Photobooth
                     }
                     else
                     {
-                        Console.WriteLine($"Preserving unsaved changes for {photo4x6VM.Name}: IsEnabled={photo4x6VM.IsEnabled}, Price={photo4x6VM.Price}");
+        
                     }
                 }
 
@@ -2110,7 +2152,7 @@ namespace Photobooth
                     }
                     else
                     {
-                        Console.WriteLine($"Preserving unsaved changes for {smartphonePrintVM.Name}: IsEnabled={smartphonePrintVM.IsEnabled}, Price={smartphonePrintVM.Price}");
+        
                     }
                 }
 
@@ -2130,7 +2172,7 @@ namespace Photobooth
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error in UpdateProductsUI: {ex.Message}");
+                LoggingService.Application.Error("Failed to update products UI", ex);
             }
         }
 
@@ -2277,13 +2319,28 @@ namespace Photobooth
                 // Check if any ProductViewModel has unsaved changes
                 var hasAnyUnsavedChanges = ProductViewModels.Any(vm => vm.HasUnsavedChanges);
 
-                if (hasAnyUnsavedChanges)
+                // Check if there are any validation errors in pricing inputs
+                var hasValidationErrors = HasAnyValidationErrors();
+
+                if (hasValidationErrors)
+                {
+                    // Show validation error state - disable save button
+                    SaveButtonBorder.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#DC2626")); // Red
+                    SaveButtonText.Text = "Fix Errors";
+                    UnsavedChangesIndicator.Text = "Validation errors detected";
+                    UnsavedChangesIndicator.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#DC2626")); // Red
+                    UnsavedChangesIndicator.Visibility = Visibility.Visible;
+                    SaveProductConfigButton.IsEnabled = false;
+                }
+                else if (hasAnyUnsavedChanges)
                 {
                     // Show unsaved changes state
                     SaveButtonBorder.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#059669")); // Green
                     SaveButtonText.Text = "Save Changes";
                     UnsavedChangesIndicator.Text = "Unsaved changes";
+                    UnsavedChangesIndicator.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F59E0B")); // Amber
                     UnsavedChangesIndicator.Visibility = Visibility.Visible;
+                    SaveProductConfigButton.IsEnabled = true;
                 }
                 else
                 {
@@ -2291,13 +2348,12 @@ namespace Photobooth
                     SaveButtonBorder.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#3B82F6")); // Blue
                     SaveButtonText.Text = "Save Configuration";
                     UnsavedChangesIndicator.Visibility = Visibility.Collapsed;
+                    SaveProductConfigButton.IsEnabled = true;
                 }
             }
             catch (Exception ex)
             {
-#if DEBUG
-                Console.WriteLine($"Error updating save button state: {ex.Message}");
-#endif
+                LoggingService.Application.Error("Error updating save button state", ex);
             }
         }
 
@@ -2654,14 +2710,10 @@ namespace Photobooth
                     product.SmartphoneMultipleCopyDiscount = smartphoneMultipleCopyDiscount;
                 }
 
-                Console.WriteLine($"Simplified product-specific extra copy pricing saved: UseCustom={useCustomPricing}");
-                Console.WriteLine($"  Photo Strips: Price=${stripsExtraCopyPrice}, Discount=${stripsMultipleCopyDiscount}%");
-                Console.WriteLine($"  4x6 Photos: Price=${photo4x6ExtraCopyPrice}, Discount=${photo4x6MultipleCopyDiscount}%");
-                Console.WriteLine($"  Smartphone Print: Price=${smartphoneExtraCopyPrice}, Discount=${smartphoneMultipleCopyDiscount}%");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error saving extra copy pricing: {ex.Message}");
+                LoggingService.Application.Error("Failed to save extra copy pricing", ex);
                 throw;
             }
         }
@@ -2671,6 +2723,30 @@ namespace Photobooth
         /// </summary>
         private void ExtraCopyPrice_TextChanged(object sender, TextChangedEventArgs e)
         {
+            if (sender is TextBox textBox)
+            {
+                ValidatePricingInput(textBox);
+            }
+            
+            UpdatePricingExamples();
+            
+            // Mark as having unsaved changes (unless we're loading from database)
+            if (!_isLoadingProducts)
+            {
+                UpdateSaveButtonState();
+            }
+        }
+
+        /// <summary>
+        /// Event handler for multiple copy discount changes
+        /// </summary>
+        private void MultipleCopyDiscount_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (sender is TextBox textBox)
+            {
+                ValidateDiscountInput(textBox);
+            }
+            
             UpdatePricingExamples();
             
             // Mark as having unsaved changes (unless we're loading from database)
@@ -2731,6 +2807,238 @@ namespace Photobooth
         {
             // Pricing examples removed - they were causing confusion and didn't match frontend display
             // The frontend now shows rounded prices (Math.Ceiling) to avoid decimal pricing issues
+        }
+
+        /// <summary>
+        /// Validate pricing input and provide user feedback
+        /// </summary>
+        private void ValidatePricingInput(TextBox textBox)
+        {
+            try
+            {
+                var inputText = textBox.Text?.Trim() ?? "";
+                
+                // Allow empty input during typing
+                if (string.IsNullOrEmpty(inputText))
+                {
+                    ClearValidationError(textBox);
+                    return;
+                }
+
+                // Try to parse the input as decimal
+                if (decimal.TryParse(inputText, out decimal price))
+                {
+                    // Validate price range (must be >= 0)
+                    if (price < 0)
+                    {
+                        // Clamp negative values to 0
+                        textBox.Text = "0.00";
+                        ShowValidationError(textBox, "Price cannot be negative. Set to 0.00.");
+                        LoggingService.Application.Warning("Negative price input corrected", 
+                            ("Field", textBox.Name),
+                            ("OriginalValue", price),
+                            ("CorrectedValue", 0.00m));
+                    }
+                    else
+                    {
+                        // Valid price - format to 2 decimal places
+                        textBox.Text = price.ToString("F2");
+                        ClearValidationError(textBox);
+                    }
+                }
+                else
+                {
+                    // Invalid numeric input - revert to previous valid value or 0
+                    var previousValue = GetPreviousValidPrice(textBox);
+                    textBox.Text = previousValue.ToString("F2");
+                    ShowValidationError(textBox, "Please enter a valid price (e.g., 5.00)");
+                    LoggingService.Application.Warning("Invalid price input corrected", 
+                        ("Field", textBox.Name),
+                        ("InvalidInput", inputText),
+                        ("CorrectedValue", previousValue));
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Error validating pricing input", ex,
+                    ("Field", textBox.Name),
+                    ("Input", textBox.Text));
+                // Fallback to safe value
+                textBox.Text = "0.00";
+            }
+        }
+
+        /// <summary>
+        /// Validate discount input and provide user feedback
+        /// </summary>
+        private void ValidateDiscountInput(TextBox textBox)
+        {
+            try
+            {
+                var inputText = textBox.Text?.Trim() ?? "";
+                
+                // Allow empty input during typing
+                if (string.IsNullOrEmpty(inputText))
+                {
+                    ClearValidationError(textBox);
+                    return;
+                }
+
+                // Try to parse the input as decimal
+                if (decimal.TryParse(inputText, out decimal discount))
+                {
+                    // Validate discount range (0-100)
+                    if (discount < 0)
+                    {
+                        // Clamp negative values to 0
+                        textBox.Text = "0";
+                        ShowValidationError(textBox, "Discount cannot be negative. Set to 0%.");
+                        LoggingService.Application.Warning("Negative discount input corrected", 
+                            ("Field", textBox.Name),
+                            ("OriginalValue", discount),
+                            ("CorrectedValue", 0));
+                    }
+                    else if (discount > 100)
+                    {
+                        // Clamp values over 100 to 100
+                        textBox.Text = "100";
+                        ShowValidationError(textBox, "Discount cannot exceed 100%. Set to 100%.");
+                        LoggingService.Application.Warning("Excessive discount input corrected", 
+                            ("Field", textBox.Name),
+                            ("OriginalValue", discount),
+                            ("CorrectedValue", 100));
+                    }
+                    else
+                    {
+                        // Valid discount - format as whole number
+                        textBox.Text = ((int)discount).ToString();
+                        ClearValidationError(textBox);
+                    }
+                }
+                else
+                {
+                    // Invalid numeric input - revert to previous valid value or 0
+                    var previousValue = GetPreviousValidDiscount(textBox);
+                    textBox.Text = previousValue.ToString();
+                    ShowValidationError(textBox, "Please enter a valid discount (0-100)");
+                    LoggingService.Application.Warning("Invalid discount input corrected", 
+                        ("Field", textBox.Name),
+                        ("InvalidInput", inputText),
+                        ("CorrectedValue", previousValue));
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Error validating discount input", ex,
+                    ("Field", textBox.Name),
+                    ("Input", textBox.Text));
+                // Fallback to safe value
+                textBox.Text = "0";
+            }
+        }
+
+        /// <summary>
+        /// Get the previous valid price for a text box (fallback to 0.00)
+        /// </summary>
+        private decimal GetPreviousValidPrice(TextBox textBox)
+        {
+            // Try to get from current product data if available
+            if (_products?.Count > 0)
+            {
+                var productType = GetProductTypeFromTextBoxName(textBox.Name);
+                var product = _products.FirstOrDefault(p => p.ProductType.ToString() == productType);
+                if (product != null)
+                {
+                    return product.Price; // Use base product price as fallback
+                }
+            }
+            return 0.00m; // Default fallback
+        }
+
+        /// <summary>
+        /// Get the previous valid discount for a text box (fallback to 0)
+        /// </summary>
+        private int GetPreviousValidDiscount(TextBox textBox)
+        {
+            // Default discount is 0%
+            return 0;
+        }
+
+        /// <summary>
+        /// Extract product type from text box name
+        /// </summary>
+        private string GetProductTypeFromTextBoxName(string textBoxName)
+        {
+            if (textBoxName.Contains("Strips"))
+                return "PhotoStrips";
+            else if (textBoxName.Contains("Photo4x6"))
+                return "Photo4x6";
+            else if (textBoxName.Contains("Smartphone"))
+                return "SmartphonePrint";
+            else
+                return "Unknown";
+        }
+
+        /// <summary>
+        /// Show validation error for a text box
+        /// </summary>
+        private void ShowValidationError(TextBox textBox, string errorMessage)
+        {
+            // Set error styling
+            textBox.BorderBrush = System.Windows.Media.Brushes.Red;
+            textBox.ToolTip = errorMessage;
+            
+            // Show error indicator if available
+            var errorIndicator = FindName("UnsavedChangesIndicator") as TextBlock;
+            if (errorIndicator != null)
+            {
+                errorIndicator.Text = "Validation Error";
+                errorIndicator.Foreground = System.Windows.Media.Brushes.Red;
+                errorIndicator.Visibility = Visibility.Visible;
+            }
+            
+            // Log the validation error
+            LoggingService.Application.Warning("Pricing input validation error", 
+                ("Field", textBox.Name),
+                ("Error", errorMessage));
+        }
+
+        /// <summary>
+        /// Clear validation error for a text box
+        /// </summary>
+        private void ClearValidationError(TextBox textBox)
+        {
+            // Clear error styling
+            textBox.BorderBrush = System.Windows.Media.Brushes.Gray;
+            textBox.ToolTip = null;
+            
+            // Hide error indicator if no other errors
+            if (!HasAnyValidationErrors())
+            {
+                var errorIndicator = FindName("UnsavedChangesIndicator") as TextBlock;
+                if (errorIndicator != null)
+                {
+                    errorIndicator.Visibility = Visibility.Collapsed;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Check if there are any validation errors in pricing inputs
+        /// </summary>
+        private bool HasAnyValidationErrors()
+        {
+            var pricingInputs = new[]
+            {
+                StripsExtraCopyPriceInput,
+                Photo4x6ExtraCopyPriceInput,
+                SmartphoneExtraCopyPriceInput,
+                StripsMultipleCopyDiscountInput,
+                Photo4x6MultipleCopyDiscountInput,
+                SmartphoneMultipleCopyDiscountInput
+            };
+
+            return pricingInputs.Any(tb => tb?.BorderBrush == System.Windows.Media.Brushes.Red);
         }
 
         /// <summary>
@@ -2798,16 +3106,10 @@ namespace Photobooth
 
                 // Update pricing examples with loaded values
                 UpdatePricingExamples();
-
-                Console.WriteLine($"Loaded simplified extra copy pricing: UseCustom={product.UseCustomExtraCopyPricing}, " +
-                    $"BasePrice=${product.Price}, " +
-                    $"Strips: Price=${product.StripsExtraCopyPrice}, Discount=${product.StripsMultipleCopyDiscount}%, " +
-                    $"4x6: Price=${product.Photo4x6ExtraCopyPrice}, Discount=${product.Photo4x6MultipleCopyDiscount}%, " +
-                    $"Smartphone: Price=${product.SmartphoneExtraCopyPrice}, Discount=${product.SmartphoneMultipleCopyDiscount}%");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error loading extra copy pricing UI: {ex.Message}");
+                LoggingService.Application.Error("Failed to load extra copy pricing UI", ex);
             }
         }
 

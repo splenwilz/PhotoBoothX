@@ -113,17 +113,11 @@ namespace Photobooth
         {
             try
             {
-                Console.WriteLine($"=== UPSELL SCREEN INITIALIZATION DEBUG ===");
-                Console.WriteLine($"Template: {template.Name ?? "Unknown"}");
-                Console.WriteLine($"Original Product - Name: {originalProduct.Name}, Type: {originalProduct.Type}, Price: ${originalProduct.Price:F2}");
-                
                 _currentTemplate = template;
                 _originalProduct = originalProduct;
                 _composedImagePath = composedImagePath;
                 _capturedPhotosPaths = new List<string>(capturedPhotosPaths);
                 _originalPrice = originalProduct.Price;
-
-                Console.WriteLine($"Set _originalPrice to: ${_originalPrice:F2}");
 
                 LoggingService.Application.Information("Upsell screen initialized",
                     ("OriginalProduct", originalProduct.Type),
@@ -131,11 +125,9 @@ namespace Photobooth
                     ("TemplateName", template.Name ?? "Unknown"));
 
                 // Load extra copy pricing from database
-                Console.WriteLine($"Loading extra copy pricing from database...");
                 await LoadExtraCopyPricingFromDatabase();
 
                 // Update pricing displays
-                Console.WriteLine($"Updating pricing displays...");
                 UpdatePricingDisplays();
 
                 // Start with extra copies stage
@@ -175,11 +167,6 @@ namespace Photobooth
                     // Use the selected product's price as the base price for calculations
                     var basePrice = _originalProduct?.Price ?? product.Price;
                     
-                    Console.WriteLine($"=== PRICING CALCULATION DEBUG ===");
-                    Console.WriteLine($"Database product found - Type: {product.ProductType}, Price: ${product.Price:F2}");
-                    Console.WriteLine($"UseCustomExtraCopyPricing: {_useCustomExtraCopyPricing}");
-                    Console.WriteLine($"Base price for calculations: ${basePrice:F2}");
-                    
                     if (_useCustomExtraCopyPricing)
                     {
                         // Use product-specific pricing if available, otherwise fall back to legacy pricing
@@ -193,7 +180,6 @@ namespace Photobooth
                                 _extraCopyPrice1 = stripsPrice;
                                 _extraCopyPrice2 = (stripsPrice * 2) * (1 - stripsDiscount / 100);
                                 _extraCopyPriceAdditional = stripsPrice * (1 - stripsDiscount / 100);
-                                Console.WriteLine($"PHOTO STRIPS SIMPLIFIED PRICING: Price=${stripsPrice:F2}, Discount={stripsDiscount:F0}%");
                                 break;
                                 
                             case ProductType.Photo4x6:
@@ -202,7 +188,6 @@ namespace Photobooth
                                 _extraCopyPrice1 = photo4x6Price;
                                 _extraCopyPrice2 = (photo4x6Price * 2) * (1 - photo4x6Discount / 100);
                                 _extraCopyPriceAdditional = photo4x6Price * (1 - photo4x6Discount / 100);
-                                Console.WriteLine($"4X6 PHOTOS SIMPLIFIED PRICING: Price=${photo4x6Price:F2}, Discount={photo4x6Discount:F0}%");
                                 break;
                                 
                             case ProductType.SmartphonePrint:
@@ -211,20 +196,14 @@ namespace Photobooth
                                 _extraCopyPrice1 = smartphonePrice;
                                 _extraCopyPrice2 = (smartphonePrice * 2) * (1 - smartphoneDiscount / 100);
                                 _extraCopyPriceAdditional = smartphonePrice * (1 - smartphoneDiscount / 100);
-                                Console.WriteLine($"SMARTPHONE PRINT SIMPLIFIED PRICING: Price=${smartphonePrice:F2}, Discount={smartphoneDiscount:F0}%");
                                 break;
                                 
                             default:
                                 _extraCopyPrice1 = product.ExtraCopy1Price ?? basePrice;
                                 _extraCopyPrice2 = product.ExtraCopy2Price ?? (basePrice * 2);
                                 _extraCopyPriceAdditional = product.ExtraCopyAdditionalPrice ?? basePrice;
-                                Console.WriteLine($"LEGACY CUSTOM PRICING:");
                                 break;
                         }
-                        
-                        Console.WriteLine($"- ExtraCopy1Price: ${_extraCopyPrice1:F2}");
-                        Console.WriteLine($"- ExtraCopy2Price: ${_extraCopyPrice2:F2}");
-                        Console.WriteLine($"- ExtraCopyAdditionalPrice: ${_extraCopyPriceAdditional:F2}");
                     }
                     else
                     {
@@ -232,11 +211,6 @@ namespace Photobooth
                         _extraCopyPrice1 = basePrice;
                         _extraCopyPrice2 = basePrice * 2;
                         _extraCopyPriceAdditional = basePrice;
-                        
-                        Console.WriteLine($"BASE PRICING ENABLED (no custom pricing):");
-                        Console.WriteLine($"- ExtraCopy1Price: ${_extraCopyPrice1:F2}");
-                        Console.WriteLine($"- ExtraCopy2Price: ${_extraCopyPrice2:F2}");
-                        Console.WriteLine($"- ExtraCopyAdditionalPrice: ${_extraCopyPriceAdditional:F2}");
                     }
 
                     LoggingService.Application.Information("Extra copy pricing loaded from database",
@@ -346,7 +320,7 @@ namespace Photobooth
                 ContinueButton.Visibility = Visibility.Visible;
 
                 // Determine cross-sell product
-                _crossSellProduct = GetCrossSellProduct();
+                _crossSellProduct = await GetCrossSellProductAsync();
                 if (_crossSellProduct == null)
                 {
                     // No cross-sell available, proceed to completion
@@ -380,14 +354,6 @@ namespace Photobooth
         {
             try
             {
-                Console.WriteLine($"=== COMPLETE UPSELLING DEBUG ===");
-                Console.WriteLine($"FINAL ORDER SUMMARY:");
-                Console.WriteLine($"  Original Product: {_originalProduct?.Name} (${_originalProduct?.Price:F2})");
-                Console.WriteLine($"  Selected Extra Copies: {_selectedExtraCopies}");
-                Console.WriteLine($"  Extra Copies Price: ${_extraCopiesPrice:F2}");
-                Console.WriteLine($"  Cross-sell Accepted: {_crossSellAccepted}");
-                Console.WriteLine($"  Cross-sell Price: ${_crossSellPrice:F2}");
-                
                 StopTimeoutTimer();
 
                 var totalAdditionalCost = _extraCopiesPrice + (_crossSellAccepted ? _crossSellPrice : 0);
@@ -395,13 +361,6 @@ namespace Photobooth
                 // Calculate total order cost (original + additional)
                 var originalPrice = _originalProduct?.Price ?? 0;
                 var totalOrderCost = originalPrice + totalAdditionalCost;
-
-                Console.WriteLine($"PRICING BREAKDOWN:");
-                Console.WriteLine($"  Original Price: ${originalPrice:F2}");
-                Console.WriteLine($"  Extra Copies Cost: ${_extraCopiesPrice:F2}");
-                Console.WriteLine($"  Cross-sell Cost: ${(_crossSellAccepted ? _crossSellPrice : 0):F2}");
-                Console.WriteLine($"  Total Additional Cost: ${totalAdditionalCost:F2}");
-                Console.WriteLine($"  TOTAL ORDER COST: ${totalOrderCost:F2}");
 
                 LoggingService.Application.Information("Upselling completed",
                     ("ExtraCopies", _selectedExtraCopies),
@@ -455,49 +414,30 @@ namespace Photobooth
         {
             try
             {
-                Console.WriteLine($"=== COPY BUTTON CLICK DEBUG ===");
                 if (sender is Button button && button.Tag is string tagValue && int.TryParse(tagValue, out int copies))
                 {
-                    Console.WriteLine($"Button tag parsed - copies: {copies}");
                     if (copies == 3)
                     {
                         // Show quantity selector for 3+ copies
-                        Console.WriteLine("3+ copies selected - showing quantity selector");
                         _currentQuantity = 3;
-                        Console.WriteLine($"Set _currentQuantity to: {_currentQuantity}");
                         ShowQuantitySelector();
                     }
                     else
                     {
                         // Direct selection for 1 or 2 copies
-                        Console.WriteLine($"Direct selection - {copies} copies");
                         _selectedExtraCopies = copies;
                         _extraCopiesPrice = CalculateExtraCopyPrice(copies);
-                        
-                        Console.WriteLine($"Set _selectedExtraCopies to: {_selectedExtraCopies}");
-                        Console.WriteLine($"Set _extraCopiesPrice to: ${_extraCopiesPrice:F2}");
                         
                         LoggingService.Application.Information("Extra copies selected",
                             ("Copies", copies),
                             ("Price", _extraCopiesPrice));
 
-                        Console.WriteLine("Starting cross-sell stage...");
                         await StartCrossSellStage();
                     }
                 }
-                else
-                {
-                    Console.WriteLine("ERROR: Failed to parse button tag or sender is not a button");
-                    if (sender is Button btn)
-                    {
-                        Console.WriteLine($"Button tag value: '{btn.Tag?.ToString() ?? "null"}'");
-                    }
-                }
-                Console.WriteLine($"=== COPY BUTTON CLICK COMPLETE ===");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: CopyButton_Click exception: {ex.Message}");
                 LoggingService.Application.Error("Copy button click failed", ex);
             }
         }
@@ -507,35 +447,23 @@ namespace Photobooth
         /// </summary>
         private void PlusButton_Click(object sender, RoutedEventArgs e)
         {
-            Console.WriteLine($"[DEBUG] PlusButton_Click triggered - Current quantity: {_currentQuantity}");
             e.Handled = true; // Prevent event bubbling to parent card button
             
             if (_currentQuantity < 10)
             {
                 _currentQuantity++;
-                Console.WriteLine($"[DEBUG] Quantity increased to: {_currentQuantity}");
                 UpdateQuantityDisplay();
-            }
-            else
-            {
-                Console.WriteLine("[DEBUG] Quantity already at max (10)");
             }
         }
 
         private void MinusButton_Click(object sender, RoutedEventArgs e)
         {
-            Console.WriteLine($"[DEBUG] MinusButton_Click triggered - Current quantity: {_currentQuantity}");
             e.Handled = true; // Prevent event bubbling to parent card button
             
             if (_currentQuantity > 3)
             {
                 _currentQuantity--;
-                Console.WriteLine($"[DEBUG] Quantity decreased to: {_currentQuantity}");
                 UpdateQuantityDisplay();
-            }
-            else
-            {
-                Console.WriteLine("[DEBUG] Quantity already at min (3)");
             }
         }
 
@@ -546,26 +474,17 @@ namespace Photobooth
         {
             try
             {
-                Console.WriteLine($"=== CONFIRM QUANTITY DEBUG ===");
-                Console.WriteLine($"Current quantity: {_currentQuantity}");
-                
                 _selectedExtraCopies = _currentQuantity;
                 _extraCopiesPrice = CalculateExtraCopyPrice(_currentQuantity);
-                
-                Console.WriteLine($"Set _selectedExtraCopies to: {_selectedExtraCopies}");
-                Console.WriteLine($"Set _extraCopiesPrice to: ${_extraCopiesPrice:F2}");
                 
                 LoggingService.Application.Information("Extra copies quantity confirmed",
                     ("Copies", _currentQuantity),
                     ("Price", _extraCopiesPrice));
 
-                Console.WriteLine("Starting cross-sell stage...");
                 await StartCrossSellStage();
-                Console.WriteLine($"=== CONFIRM QUANTITY COMPLETE ===");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: Quantity confirmation failed: {ex.Message}");
                 LoggingService.Application.Error("Quantity confirmation failed", ex);
             }
         }
@@ -687,29 +606,20 @@ namespace Photobooth
         /// </summary>
         private void UpdatePricingDisplays()
         {
-            Console.WriteLine($"=== UPDATE PRICING DISPLAYS DEBUG ===");
-            
             // Update copy pricing using configurable values from admin dashboard
             // Round UP to nearest dollar for display (no decimals in photo booth pricing)
             OneCopyPrice.Text = $"${Math.Ceiling(_extraCopyPrice1)}";
             TwoCopyPrice.Text = $"${Math.Ceiling(_extraCopyPrice2)}";
             
-            Console.WriteLine($"OneCopyPrice display set to: {OneCopyPrice.Text}");
-            Console.WriteLine($"TwoCopyPrice display set to: {TwoCopyPrice.Text}");
-            
             // Calculate 3+ copy price using simplified pricing model
             decimal threeCopyPrice = CalculateExtraCopyPrice(3);
             ThreeCopyPrice.Text = $"${Math.Ceiling(threeCopyPrice)}";
-            
-            Console.WriteLine($"CalculateExtraCopyPrice(3) returned: ${threeCopyPrice:F2}");
-            Console.WriteLine($"ThreeCopyPrice display set to: {ThreeCopyPrice.Text}");
-            Console.WriteLine($"=== PRICING DISPLAYS UPDATED ===");
         }
 
         /// <summary>
         /// Get the appropriate cross-sell product
         /// </summary>
-        public ProductInfo? GetCrossSellProduct()
+        public async Task<ProductInfo?> GetCrossSellProductAsync()
         {
             if (_originalProduct == null) return null;
 
@@ -721,14 +631,14 @@ namespace Photobooth
                     Type = "4x6", 
                     Name = "4x6 Photos", 
                     Description = "High-quality print",
-                    Price = GetDatabasePriceForProductType("Photo4x6") ?? PHOTO_4X6_PRICE 
+                    Price = await GetDatabasePriceForProductTypeAsync("Photo4x6") ?? PHOTO_4X6_PRICE 
                 },
                 "4x6" or "photo4x6" => new ProductInfo 
                 { 
                     Type = "strips", 
                     Name = "Photo Strips", 
                     Description = "Classic 4-photo strip",
-                    Price = GetDatabasePriceForProductType("PhotoStrips") ?? STRIPS_PRICE 
+                    Price = await GetDatabasePriceForProductTypeAsync("PhotoStrips") ?? STRIPS_PRICE 
                 },
                 _ => null // No cross-sell for phone prints or unknown types
             };
@@ -737,22 +647,39 @@ namespace Photobooth
         /// <summary>
         /// Get product price from database by product type
         /// </summary>
-        private decimal? GetDatabasePriceForProductType(string productType)
+        private async Task<decimal?> GetDatabasePriceForProductTypeAsync(string productType)
         {
             try
             {
-                var productsResult = _databaseService.GetAllAsync<Product>().Result;
+                var productsResult = await _databaseService.GetAllAsync<Product>();
                 if (productsResult.Success && productsResult.Data?.Count > 0)
                 {
                     var product = productsResult.Data.FirstOrDefault(p => p.ProductType.ToString() == productType);
-                    return product?.Price;
+                    if (product != null)
+                    {
+                        LoggingService.Application.Debug("Retrieved product price from database", 
+                            ("ProductType", productType),
+                            ("Price", product.Price));
+                        return product.Price;
+                    }
+                    else
+                    {
+                        LoggingService.Application.Warning("Product not found in database, using fallback price", 
+                            ("ProductType", productType));
+                    }
+                }
+                else
+                {
+                    LoggingService.Application.Warning("Failed to retrieve products from database, using fallback price", 
+                        ("ProductType", productType),
+                        ("Success", productsResult.Success),
+                        ("DataCount", productsResult.Data?.Count ?? 0));
                 }
             }
             catch (Exception ex)
             {
-                LoggingService.Application.Warning("Failed to get database price for cross-sell product", 
-                    ("ProductType", productType),
-                    ("ErrorMessage", ex.Message));
+                LoggingService.Application.Error("Failed to get database price for cross-sell product", ex,
+                    ("ProductType", productType));
             }
             return null; // Fallback to hardcoded constant
         }
@@ -762,13 +689,6 @@ namespace Photobooth
         /// </summary>
         public decimal CalculateExtraCopyPrice(int copies)
         {
-            Console.WriteLine($"=== CALCULATE EXTRA COPY PRICE DEBUG ===");
-            Console.WriteLine($"Calculating price for {copies} copies");
-            Console.WriteLine($"Current pricing values:");
-            Console.WriteLine($"  _extraCopyPrice1: ${_extraCopyPrice1:F2}");
-            Console.WriteLine($"  _extraCopyPrice2: ${_extraCopyPrice2:F2}");
-            Console.WriteLine($"  _extraCopyPriceAdditional: ${_extraCopyPriceAdditional:F2}");
-            
             decimal result = copies switch
             {
                 1 => _extraCopyPrice1,
@@ -777,16 +697,6 @@ namespace Photobooth
                 _ => 0
             };
             
-            if (copies >= 3)
-            {
-                Console.WriteLine($"For {copies} copies: ${_extraCopyPrice2:F2} + (({copies} - 2) * ${_extraCopyPriceAdditional:F2}) = ${result:F2}");
-            }
-            else
-            {
-                Console.WriteLine($"For {copies} copies: ${result:F2}");
-            }
-            
-            Console.WriteLine($"=== CALCULATION RESULT: ${result:F2} ===");
             return result;
         }
 
@@ -852,23 +762,19 @@ namespace Photobooth
                         _selectedPhotoIndex = 0;
                         UpdatePhotoDisplay();
                         UpdateNavigationButtons();
-                        Console.WriteLine($"[DEBUG] Photo carousel initialized with {_capturedPhotos.Count} photos");
                     }
                     else
                     {
-                        Console.WriteLine("[DEBUG] No valid captured photos found");
                         SetCrossSellFallbackPreview(isStrips);
                     }
                 }
                 else
                 {
-                    Console.WriteLine("[DEBUG] No captured photos available for cross-sell preview");
                     SetCrossSellFallbackPreview(isStrips);
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[DEBUG] Error initializing photo carousel: {ex.Message}");
                 LoggingService.Application.Error("Failed to initialize photo carousel", ex);
                 SetCrossSellFallbackPreview(isStrips);
             }
@@ -887,7 +793,6 @@ namespace Photobooth
                 }
 
                 var photoPath = _capturedPhotos[_selectedPhotoIndex];
-                Console.WriteLine($"[DEBUG] Displaying photo {_selectedPhotoIndex + 1}/{_capturedPhotos.Count}: {photoPath}");
 
                 // Dispose previous image if exists
                 if (CrossSellPreview.Child is Image oldImage)
@@ -912,7 +817,6 @@ namespace Photobooth
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[DEBUG] Error updating photo display: {ex.Message}");
                 LoggingService.Application.Error("Failed to update photo display", ex);
             }
         }
@@ -954,7 +858,6 @@ namespace Photobooth
         /// </summary>
         private void ShowQuantitySelector()
         {
-            Console.WriteLine("[DEBUG] ShowQuantitySelector called");
             // Since the quantity selector is now integrated in the 4+ card, we just update the display
             UpdateQuantityDisplay();
         }
@@ -964,8 +867,6 @@ namespace Photobooth
         /// </summary>
         private void UpdateQuantityDisplay()
         {
-            Console.WriteLine($"=== UPDATE QUANTITY DISPLAY DEBUG ===");
-            Console.WriteLine($"Current quantity: {_currentQuantity}");
             try
             {
                 CardQuantityDisplay.Text = _currentQuantity.ToString();
@@ -973,16 +874,10 @@ namespace Photobooth
                 // Round UP to nearest dollar for display (no decimals in photo booth pricing)
                 ThreeCopyPrice.Text = $"${Math.Ceiling(price)}";
                 ConfirmQuantityButton.Content = $"Select {_currentQuantity} Copies";
-                
-                Console.WriteLine($"CardQuantityDisplay.Text set to: {CardQuantityDisplay.Text}");
-                Console.WriteLine($"Price calculated: ${price:F2}");
-                Console.WriteLine($"ThreeCopyPrice.Text set to: {ThreeCopyPrice.Text}");
-                Console.WriteLine($"ConfirmQuantityButton.Content set to: {ConfirmQuantityButton.Content}");
-                Console.WriteLine($"=== QUANTITY DISPLAY UPDATED ===");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: UpdateQuantityDisplay failed: {ex.Message}");
+                LoggingService.Application.Error("UpdateQuantityDisplay failed", ex);
             }
         }
 
