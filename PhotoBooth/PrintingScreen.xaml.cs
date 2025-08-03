@@ -519,7 +519,7 @@ namespace Photobooth
                     var creditsBefore = _adminDashboardScreen?.GetCurrentCredits() ?? 0;
                     Console.WriteLine($"--- CREDIT DEDUCTION BEFORE --- Credits: ${creditsBefore}");
                     
-                    creditDeductionSuccess = await _adminDashboardScreen.DeductCreditsAsync(_totalOrderCost, orderDescription, transactionId);
+                    creditDeductionSuccess = await _adminDashboardScreen!.DeductCreditsAsync(_totalOrderCost, orderDescription, transactionId);
                     
                     var creditsAfter = _adminDashboardScreen?.GetCurrentCredits() ?? 0;
                     Console.WriteLine($"--- CREDIT DEDUCTION AFTER --- Credits: ${creditsAfter}, Change: ${creditsAfter - creditsBefore}");

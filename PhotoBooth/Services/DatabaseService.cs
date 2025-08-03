@@ -70,6 +70,7 @@ namespace Photobooth.Services
             decimal? stripsExtraCopyPrice = null, decimal? stripsMultipleCopyDiscount = null,
             decimal? photo4x6ExtraCopyPrice = null, decimal? photo4x6MultipleCopyDiscount = null,
             decimal? smartphoneExtraCopyPrice = null, decimal? smartphoneMultipleCopyDiscount = null);
+        Task<DatabaseResult> UpdateProductAsync(int productId, ProductUpdateRequest request);
         Task<DatabaseResult<List<Setting>>> GetSettingsByCategoryAsync(string category);
         Task<DatabaseResult<T?>> GetSettingValueAsync<T>(string category, string key);
         Task<DatabaseResult> SetSettingValueAsync<T>(string category, string key, T value, string? updatedBy = null);
@@ -2514,12 +2515,31 @@ namespace Photobooth.Services
             decimal? photo4x6ExtraCopyPrice = null, decimal? photo4x6MultipleCopyDiscount = null,
             decimal? smartphoneExtraCopyPrice = null, decimal? smartphoneMultipleCopyDiscount = null)
         {
+            // Create request object and delegate to the new overload
+            var request = new ProductUpdateRequest
+            {
+                IsActive = isActive,
+                Price = price,
+                UseCustomExtraCopyPricing = useCustomExtraCopyPricing,
+                ExtraCopy1Price = extraCopy1Price,
+                ExtraCopy2Price = extraCopy2Price,
+                ExtraCopy4BasePrice = extraCopy4BasePrice,
+                ExtraCopyAdditionalPrice = extraCopyAdditionalPrice,
+                StripsExtraCopyPrice = stripsExtraCopyPrice,
+                StripsMultipleCopyDiscount = stripsMultipleCopyDiscount,
+                Photo4x6ExtraCopyPrice = photo4x6ExtraCopyPrice,
+                Photo4x6MultipleCopyDiscount = photo4x6MultipleCopyDiscount,
+                SmartphoneExtraCopyPrice = smartphoneExtraCopyPrice,
+                SmartphoneMultipleCopyDiscount = smartphoneMultipleCopyDiscount
+            };
+
+            return await UpdateProductAsync(productId, request);
+        }
+
+        public async Task<DatabaseResult> UpdateProductAsync(int productId, ProductUpdateRequest request)
+        {
             // Validate that at least one parameter is provided
-            if (!isActive.HasValue && !price.HasValue && !useCustomExtraCopyPricing.HasValue && !extraCopy1Price.HasValue && 
-                !extraCopy2Price.HasValue && !extraCopy4BasePrice.HasValue && !extraCopyAdditionalPrice.HasValue &&
-                !stripsExtraCopyPrice.HasValue && !stripsMultipleCopyDiscount.HasValue &&
-                !photo4x6ExtraCopyPrice.HasValue && !photo4x6MultipleCopyDiscount.HasValue &&
-                !smartphoneExtraCopyPrice.HasValue && !smartphoneMultipleCopyDiscount.HasValue)
+            if (!request.HasAnyValue())
             {
                 return DatabaseResult.ErrorResult("At least one field must be provided for update");
             }
@@ -2538,96 +2558,96 @@ namespace Photobooth.Services
                     var parameters = new List<(string name, object value)>();
                     var logMessages = new List<string>();
 
-                    if (isActive.HasValue)
+                    if (request.IsActive.HasValue)
                     {
                         setParts.Add("IsActive = @isActive");
-                        parameters.Add(("@isActive", isActive.Value));
-                        logMessages.Add($"status = {isActive.Value}");
+                        parameters.Add(("@isActive", request.IsActive.Value));
+                        logMessages.Add($"status = {request.IsActive.Value}");
                     }
 
-                    if (price.HasValue)
+                    if (request.Price.HasValue)
                     {
                         setParts.Add("Price = @price");
-                        parameters.Add(("@price", price.Value));
-                        logMessages.Add($"price = ${price.Value:F2}");
+                        parameters.Add(("@price", request.Price.Value));
+                        logMessages.Add($"price = ${request.Price.Value:F2}");
                     }
 
-                    if (useCustomExtraCopyPricing.HasValue)
+                    if (request.UseCustomExtraCopyPricing.HasValue)
                     {
                         setParts.Add("UseCustomExtraCopyPricing = @useCustomExtraCopyPricing");
-                        parameters.Add(("@useCustomExtraCopyPricing", useCustomExtraCopyPricing.Value));
-                        logMessages.Add($"useCustomExtraCopyPricing = {useCustomExtraCopyPricing.Value}");
+                        parameters.Add(("@useCustomExtraCopyPricing", request.UseCustomExtraCopyPricing.Value));
+                        logMessages.Add($"useCustomExtraCopyPricing = {request.UseCustomExtraCopyPricing.Value}");
                     }
 
-                    if (extraCopy1Price.HasValue)
+                    if (request.ExtraCopy1Price.HasValue)
                     {
                         setParts.Add("ExtraCopy1Price = @extraCopy1Price");
-                        parameters.Add(("@extraCopy1Price", extraCopy1Price.Value));
-                        logMessages.Add($"extraCopy1Price = ${extraCopy1Price.Value:F2}");
+                        parameters.Add(("@extraCopy1Price", request.ExtraCopy1Price.Value));
+                        logMessages.Add($"extraCopy1Price = ${request.ExtraCopy1Price.Value:F2}");
                     }
 
-                    if (extraCopy2Price.HasValue)
+                    if (request.ExtraCopy2Price.HasValue)
                     {
                         setParts.Add("ExtraCopy2Price = @extraCopy2Price");
-                        parameters.Add(("@extraCopy2Price", extraCopy2Price.Value));
-                        logMessages.Add($"extraCopy2Price = ${extraCopy2Price.Value:F2}");
+                        parameters.Add(("@extraCopy2Price", request.ExtraCopy2Price.Value));
+                        logMessages.Add($"extraCopy2Price = ${request.ExtraCopy2Price.Value:F2}");
                     }
 
-                    if (extraCopy4BasePrice.HasValue)
+                    if (request.ExtraCopy4BasePrice.HasValue)
                     {
                         setParts.Add("ExtraCopy4BasePrice = @extraCopy4BasePrice");
-                        parameters.Add(("@extraCopy4BasePrice", extraCopy4BasePrice.Value));
-                        logMessages.Add($"extraCopy4BasePrice = ${extraCopy4BasePrice.Value:F2}");
+                        parameters.Add(("@extraCopy4BasePrice", request.ExtraCopy4BasePrice.Value));
+                        logMessages.Add($"extraCopy4BasePrice = ${request.ExtraCopy4BasePrice.Value:F2}");
                     }
 
-                    if (extraCopyAdditionalPrice.HasValue)
+                    if (request.ExtraCopyAdditionalPrice.HasValue)
                     {
                         setParts.Add("ExtraCopyAdditionalPrice = @extraCopyAdditionalPrice");
-                        parameters.Add(("@extraCopyAdditionalPrice", extraCopyAdditionalPrice.Value));
-                        logMessages.Add($"extraCopyAdditionalPrice = ${extraCopyAdditionalPrice.Value:F2}");
+                        parameters.Add(("@extraCopyAdditionalPrice", request.ExtraCopyAdditionalPrice.Value));
+                        logMessages.Add($"extraCopyAdditionalPrice = ${request.ExtraCopyAdditionalPrice.Value:F2}");
                     }
 
                     // Simplified product-specific extra copy pricing
-                    if (stripsExtraCopyPrice.HasValue)
+                    if (request.StripsExtraCopyPrice.HasValue)
                     {
                         setParts.Add("StripsExtraCopyPrice = @stripsExtraCopyPrice");
-                        parameters.Add(("@stripsExtraCopyPrice", stripsExtraCopyPrice.Value));
-                        logMessages.Add($"stripsExtraCopyPrice = ${stripsExtraCopyPrice.Value:F2}");
+                        parameters.Add(("@stripsExtraCopyPrice", request.StripsExtraCopyPrice.Value));
+                        logMessages.Add($"stripsExtraCopyPrice = ${request.StripsExtraCopyPrice.Value:F2}");
                     }
 
-                    if (stripsMultipleCopyDiscount.HasValue)
+                    if (request.StripsMultipleCopyDiscount.HasValue)
                     {
                         setParts.Add("StripsMultipleCopyDiscount = @stripsMultipleCopyDiscount");
-                        parameters.Add(("@stripsMultipleCopyDiscount", stripsMultipleCopyDiscount.Value));
-                        logMessages.Add($"stripsMultipleCopyDiscount = ${stripsMultipleCopyDiscount.Value:F0}%");
+                        parameters.Add(("@stripsMultipleCopyDiscount", request.StripsMultipleCopyDiscount.Value));
+                        logMessages.Add($"stripsMultipleCopyDiscount = ${request.StripsMultipleCopyDiscount.Value:F0}%");
                     }
 
-                    if (photo4x6ExtraCopyPrice.HasValue)
+                    if (request.Photo4x6ExtraCopyPrice.HasValue)
                     {
                         setParts.Add("Photo4x6ExtraCopyPrice = @photo4x6ExtraCopyPrice");
-                        parameters.Add(("@photo4x6ExtraCopyPrice", photo4x6ExtraCopyPrice.Value));
-                        logMessages.Add($"photo4x6ExtraCopyPrice = ${photo4x6ExtraCopyPrice.Value:F2}");
+                        parameters.Add(("@photo4x6ExtraCopyPrice", request.Photo4x6ExtraCopyPrice.Value));
+                        logMessages.Add($"photo4x6ExtraCopyPrice = ${request.Photo4x6ExtraCopyPrice.Value:F2}");
                     }
 
-                    if (photo4x6MultipleCopyDiscount.HasValue)
+                    if (request.Photo4x6MultipleCopyDiscount.HasValue)
                     {
                         setParts.Add("Photo4x6MultipleCopyDiscount = @photo4x6MultipleCopyDiscount");
-                        parameters.Add(("@photo4x6MultipleCopyDiscount", photo4x6MultipleCopyDiscount.Value));
-                        logMessages.Add($"photo4x6MultipleCopyDiscount = ${photo4x6MultipleCopyDiscount.Value:F0}%");
+                        parameters.Add(("@photo4x6MultipleCopyDiscount", request.Photo4x6MultipleCopyDiscount.Value));
+                        logMessages.Add($"photo4x6MultipleCopyDiscount = ${request.Photo4x6MultipleCopyDiscount.Value:F0}%");
                     }
 
-                    if (smartphoneExtraCopyPrice.HasValue)
+                    if (request.SmartphoneExtraCopyPrice.HasValue)
                     {
                         setParts.Add("SmartphoneExtraCopyPrice = @smartphoneExtraCopyPrice");
-                        parameters.Add(("@smartphoneExtraCopyPrice", smartphoneExtraCopyPrice.Value));
-                        logMessages.Add($"smartphoneExtraCopyPrice = ${smartphoneExtraCopyPrice.Value:F2}");
+                        parameters.Add(("@smartphoneExtraCopyPrice", request.SmartphoneExtraCopyPrice.Value));
+                        logMessages.Add($"smartphoneExtraCopyPrice = ${request.SmartphoneExtraCopyPrice.Value:F2}");
                     }
 
-                    if (smartphoneMultipleCopyDiscount.HasValue)
+                    if (request.SmartphoneMultipleCopyDiscount.HasValue)
                     {
                         setParts.Add("SmartphoneMultipleCopyDiscount = @smartphoneMultipleCopyDiscount");
-                        parameters.Add(("@smartphoneMultipleCopyDiscount", smartphoneMultipleCopyDiscount.Value));
-                        logMessages.Add($"smartphoneMultipleCopyDiscount = ${smartphoneMultipleCopyDiscount.Value:F0}%");
+                        parameters.Add(("@smartphoneMultipleCopyDiscount", request.SmartphoneMultipleCopyDiscount.Value));
+                        logMessages.Add($"smartphoneMultipleCopyDiscount = ${request.SmartphoneMultipleCopyDiscount.Value:F0}%");
                     }
 
                     setParts.Add("UpdatedAt = @updatedAt");

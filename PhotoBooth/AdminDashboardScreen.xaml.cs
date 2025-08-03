@@ -2750,6 +2750,12 @@ namespace Photobooth
                 if (!_isLoadingProducts)
                 {
                     ValidatePricingInput(textBox);
+                    
+                    // Provide immediate feedback for better UX
+                    if (string.IsNullOrWhiteSpace(textBox.Text))
+                    {
+                        ClearValidationError(textBox);
+                    }
                 }
             }
             
@@ -2773,6 +2779,12 @@ namespace Photobooth
                 if (!_isLoadingProducts)
                 {
                     ValidateDiscountInput(textBox);
+                    
+                    // Provide immediate feedback for better UX
+                    if (string.IsNullOrWhiteSpace(textBox.Text))
+                    {
+                        ClearValidationError(textBox);
+                    }
                 }
             }
             

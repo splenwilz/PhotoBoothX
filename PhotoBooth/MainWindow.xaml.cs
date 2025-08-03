@@ -57,6 +57,9 @@ namespace Photobooth
         
         // Image composition service
         private readonly IImageCompositionService _imageCompositionService;
+        
+        // Pricing service
+        private readonly IPricingService _pricingService;
 
         #endregion
 
@@ -90,6 +93,9 @@ namespace Photobooth
             
             // Initialize image composition service
             _imageCompositionService = new ImageCompositionService(_databaseService);
+            
+            // Initialize pricing service
+            _pricingService = new PricingService(_databaseService);
             
             InitializeComponent();
             
@@ -1381,17 +1387,12 @@ namespace Photobooth
         {
             try
             {
-                // Use the same pricing logic as TemplateSelectionScreen
-                return currentProduct?.Type?.ToLowerInvariant() switch
-                {
-                    "strips" or "photostrips" => 5.00m,
-                    "4x6" or "photo4x6" => 3.00m,
-                    "phone" or "smartphoneprint" => 2.00m,
-                    _ => 3.00m
-                };
+                // Use the centralized pricing service
+                return _pricingService.GetTemplateBasePrice(currentProduct?.Type ?? "");
             }
-            catch
+            catch (Exception ex)
             {
+                LoggingService.Application.Error("Error getting template price, using default fallback", ex);
                 return 3.00m; // Default fallback price
             }
         }

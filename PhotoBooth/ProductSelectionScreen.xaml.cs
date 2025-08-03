@@ -197,51 +197,59 @@ namespace Photobooth
                 // Update smartphone print price in the button text
                 if (smartphonePrint != null && PhonePrintButton != null)
                 {
-                    try
-                    {
-                        LoggingService.Application.Information("Attempting to update smartphone print price", ("Price", smartphonePrint.Price));
-                        
-                        // Force the button to update its visual tree first
-                        PhonePrintButton.UpdateLayout();
-                        
-                        // Find the TextBlock within the button's visual tree
-                        var textBlock = FindVisualChild<TextBlock>(PhonePrintButton, "PhonePrintPriceText");
-                        if (textBlock != null)
-                        {
-                            textBlock.Text = $"Print from Phone • ${smartphonePrint.Price:F0}";
-                            LoggingService.Application.Information("Successfully updated Smartphone Print price in UI", ("Price", smartphonePrint.Price));
-                        }
-                        else
-                        {
-                            LoggingService.Application.Warning("Could not find PhonePrintPriceText TextBlock in button visual tree");
-                            
-                            // Try to find any TextBlock in the button
-                            var anyTextBlock = FindVisualChild<TextBlock>(PhonePrintButton, null);
-                            if (anyTextBlock != null)
-                            {
-                                LoggingService.Application.Information("Found TextBlock in button", ("Name", anyTextBlock.Name), ("Text", anyTextBlock.Text));
-                                
-                                // Try to update this TextBlock if it contains the price
-                                if (anyTextBlock.Text.Contains("Print from Phone"))
-                                {
-                                    anyTextBlock.Text = $"Print from Phone • ${smartphonePrint.Price:F0}";
-                                }
-                            }
-                            else
-                            {
-                                LoggingService.Application.Warning("No TextBlock found in button visual tree at all");
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        LoggingService.Application.Error("Error updating smartphone print price", ex);
-                    }
+                    UpdateSmartphonePrintPriceInUI(smartphonePrint.Price);
                 }
             }
             catch (Exception ex)
             {
                 LoggingService.Application.Error("Error updating product prices in UI", ex);
+            }
+        }
+
+        /// <summary>
+        /// Update smartphone print price in the button UI
+        /// </summary>
+        private void UpdateSmartphonePrintPriceInUI(decimal price)
+        {
+            try
+            {
+                LoggingService.Application.Information("Attempting to update smartphone print price", ("Price", price));
+                
+                // Force the button to update its visual tree first
+                PhonePrintButton.UpdateLayout();
+                
+                // Find the TextBlock within the button's visual tree
+                var textBlock = FindVisualChild<TextBlock>(PhonePrintButton, "PhonePrintPriceText");
+                if (textBlock != null)
+                {
+                    textBlock.Text = $"Print from Phone • ${price:F0}";
+                    LoggingService.Application.Information("Successfully updated Smartphone Print price in UI", ("Price", price));
+                }
+                else
+                {
+                    LoggingService.Application.Warning("Could not find PhonePrintPriceText TextBlock in button visual tree");
+                    
+                    // Try to find any TextBlock in the button
+                    var anyTextBlock = FindVisualChild<TextBlock>(PhonePrintButton, null);
+                    if (anyTextBlock != null)
+                    {
+                        LoggingService.Application.Information("Found TextBlock in button", ("Name", anyTextBlock.Name), ("Text", anyTextBlock.Text));
+                        
+                        // Try to update this TextBlock if it contains the price
+                        if (anyTextBlock.Text.Contains("Print from Phone"))
+                        {
+                            anyTextBlock.Text = $"Print from Phone • ${price:F0}";
+                        }
+                    }
+                    else
+                    {
+                        LoggingService.Application.Warning("No TextBlock found in button visual tree at all");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Error updating smartphone print price", ex);
             }
         }
 
