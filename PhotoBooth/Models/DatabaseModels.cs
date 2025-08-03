@@ -75,11 +75,66 @@ namespace Photobooth.Models
         public int PhotoCount { get; set; } = 1;
         public int MaxCopies { get; set; } = 10;
         public ProductType ProductType { get; set; } = ProductType.PhotoStrips;
+        
+        // Legacy extra copy pricing configuration (deprecated - use product-specific pricing below)
+        public bool UseCustomExtraCopyPricing { get; set; } = false; // If false, extra copies cost same as base price
+        public decimal? ExtraCopy1Price { get; set; } // Price for 1 extra copy (nullable, uses base price if null)
+        public decimal? ExtraCopy2Price { get; set; } // Price for 2 extra copies (nullable, uses base price if null)
+        public decimal? ExtraCopy4BasePrice { get; set; } // Base price for 4+ extra copies (nullable, uses base price if null)
+        public decimal? ExtraCopyAdditionalPrice { get; set; } // Price per additional copy beyond 4 (nullable, uses base price if null)
+        
+        // Simplified product-specific extra copy pricing configuration
+        // Photo Strips extra copy pricing
+        public decimal? StripsExtraCopyPrice { get; set; } // Price per extra strip copy
+        public decimal? StripsMultipleCopyDiscount { get; set; } // Discount percentage for 2+ copies (0-100)
+        
+        // 4x6 Photos extra copy pricing
+        public decimal? Photo4x6ExtraCopyPrice { get; set; } // Price per extra 4x6 copy
+        public decimal? Photo4x6MultipleCopyDiscount { get; set; } // Discount percentage for 2+ copies (0-100)
+        
+        // Smartphone Print extra copy pricing
+        public decimal? SmartphoneExtraCopyPrice { get; set; } // Price per extra smartphone print copy
+        public decimal? SmartphoneMultipleCopyDiscount { get; set; } // Discount percentage for 2+ copies (0-100)
+        
         public DateTime CreatedAt { get; set; } = DateTime.Now;
         public DateTime UpdatedAt { get; set; } = DateTime.Now;
 
         // Navigation properties
         public ProductCategory? Category { get; set; }
+    }
+
+    /// <summary>
+    /// Request object for updating product properties
+    /// Encapsulates all optional parameters for the UpdateProductAsync method
+    /// </summary>
+    public class ProductUpdateRequest
+    {
+        public bool? IsActive { get; set; }
+        public decimal? Price { get; set; }
+        public bool? UseCustomExtraCopyPricing { get; set; }
+        public decimal? ExtraCopy1Price { get; set; }
+        public decimal? ExtraCopy2Price { get; set; }
+        public decimal? ExtraCopy4BasePrice { get; set; }
+        public decimal? ExtraCopyAdditionalPrice { get; set; }
+        public decimal? StripsExtraCopyPrice { get; set; }
+        public decimal? StripsMultipleCopyDiscount { get; set; }
+        public decimal? Photo4x6ExtraCopyPrice { get; set; }
+        public decimal? Photo4x6MultipleCopyDiscount { get; set; }
+        public decimal? SmartphoneExtraCopyPrice { get; set; }
+        public decimal? SmartphoneMultipleCopyDiscount { get; set; }
+
+        /// <summary>
+        /// Validates that at least one property has a value
+        /// </summary>
+        public bool HasAnyValue()
+        {
+            return IsActive.HasValue || Price.HasValue || UseCustomExtraCopyPricing.HasValue ||
+                   ExtraCopy1Price.HasValue || ExtraCopy2Price.HasValue || ExtraCopy4BasePrice.HasValue ||
+                   ExtraCopyAdditionalPrice.HasValue || StripsExtraCopyPrice.HasValue ||
+                   StripsMultipleCopyDiscount.HasValue || Photo4x6ExtraCopyPrice.HasValue ||
+                   Photo4x6MultipleCopyDiscount.HasValue || SmartphoneExtraCopyPrice.HasValue ||
+                   SmartphoneMultipleCopyDiscount.HasValue;
+        }
     }
 
     // =============================================
@@ -600,6 +655,35 @@ namespace Photobooth.Models
         public bool ShowLogoOnPrints { get; set; } = true;
         public DateTime UpdatedAt { get; set; } = DateTime.Now;
         public string? UpdatedBy { get; set; }
+    }
+
+    /// <summary>
+    /// Represents a credit transaction for tracking credit history
+    /// </summary>
+    public class CreditTransaction
+    {
+        public int Id { get; set; }
+        public decimal Amount { get; set; }
+        public CreditTransactionType TransactionType { get; set; }
+        public string Description { get; set; } = string.Empty;
+        public decimal BalanceAfter { get; set; }
+        public DateTime CreatedAt { get; set; } = DateTime.Now;
+        public string? CreatedBy { get; set; }
+        public int? RelatedTransactionId { get; set; }
+        
+        // Backward compatibility properties
+        public CreditTransactionType Type => TransactionType;
+        public DateTime Timestamp => CreatedAt;
+    }
+
+    /// <summary>
+    /// Types of credit transactions
+    /// </summary>
+    public enum CreditTransactionType
+    {
+        Add,
+        Deduct,
+        Reset
     }
 
     // =============================================

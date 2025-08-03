@@ -50,9 +50,29 @@ CREATE TABLE Products (
     PhotoCount INTEGER DEFAULT 1, -- For strips: 4 photos, for 4x6: 1 photo
     MaxCopies INTEGER DEFAULT 10,
     ProductType TEXT NOT NULL DEFAULT 'PhotoStrips' CHECK (ProductType IN ('PhotoStrips', 'Photo4x6', 'SmartphonePrint')),
+    -- Legacy extra copy pricing configuration (deprecated - use product-specific pricing below)
+    UseCustomExtraCopyPricing BOOLEAN DEFAULT 0, -- If false, extra copies cost same as base price
+    ExtraCopy1Price DECIMAL(10,2), -- Price for 1 extra copy (nullable, uses base price if null)
+    ExtraCopy2Price DECIMAL(10,2), -- Price for 2 extra copies (nullable, uses base price if null)  
+    ExtraCopy4BasePrice DECIMAL(10,2), -- Base price for 4+ extra copies (nullable, uses base price if null)
+    ExtraCopyAdditionalPrice DECIMAL(10,2), -- Price per additional copy beyond 4 (nullable, uses base price if null)
+    
+    -- Simplified product-specific extra copy pricing configuration
+    -- Photo Strips extra copy pricing
+    StripsExtraCopyPrice DECIMAL(10,2), -- Price per extra strip copy
+    StripsMultipleCopyDiscount DECIMAL(5,2) DEFAULT 0.00, -- Discount percentage for 2+ copies (0-100)
+    
+    -- 4x6 Photos extra copy pricing
+    Photo4x6ExtraCopyPrice DECIMAL(10,2), -- Price per extra 4x6 copy
+    Photo4x6MultipleCopyDiscount DECIMAL(5,2) DEFAULT 0.00, -- Discount percentage for 2+ copies (0-100)
+    
+    -- Smartphone Print extra copy pricing
+    SmartphoneExtraCopyPrice DECIMAL(10,2), -- Price per extra smartphone print copy
+    SmartphoneMultipleCopyDiscount DECIMAL(5,2) DEFAULT 0.00, -- Discount percentage for 2+ copies (0-100)
     CreatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UpdatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (CategoryId) REFERENCES ProductCategories(Id)
+    FOREIGN KEY (CategoryId) REFERENCES ProductCategories(Id),
+    UNIQUE(ProductType) -- Ensure only one product per type
 );
 
 -- =============================================
@@ -118,7 +138,7 @@ CREATE TABLE Templates (
     PreviewPath TEXT NOT NULL, -- Path to preview image
     IsActive BOOLEAN NOT NULL DEFAULT 1,
     IsSeasonal BOOLEAN NOT NULL DEFAULT 0,
-    Price DECIMAL(10,2) DEFAULT 0, -- Premium templates
+    Price DECIMAL(10,2) DEFAULT 0, -- Template pricing: Strip=$5.00, 4x6=$3.00 (set by application based on TemplateType)
     SortOrder INTEGER NOT NULL DEFAULT 0,
     FileSize INTEGER DEFAULT 0, -- In bytes
     Description TEXT DEFAULT '', -- Template description
@@ -200,6 +220,20 @@ CREATE TABLE PrintJobs (
     FailureReason TEXT,
     PrintsUsed INTEGER NOT NULL DEFAULT 1, -- For supply tracking
     FOREIGN KEY (TransactionId) REFERENCES Transactions(Id)
+);
+
+-- Credit transaction history for tracking credit additions/deductions
+CREATE TABLE CreditTransactions (
+    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+    Amount DECIMAL(10,2) NOT NULL, -- Positive for additions, negative for deductions
+    TransactionType TEXT NOT NULL CHECK (TransactionType IN ('Add', 'Deduct', 'Reset')),
+    Description TEXT NOT NULL,
+    BalanceAfter DECIMAL(10,2) NOT NULL, -- Credit balance after this transaction
+    CreatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CreatedBy TEXT, -- Admin user who performed the action (for manual additions)
+    RelatedTransactionId INTEGER, -- Link to main transaction if this was from a purchase
+    FOREIGN KEY (CreatedBy) REFERENCES AdminUsers(UserId),
+    FOREIGN KEY (RelatedTransactionId) REFERENCES Transactions(Id)
 );
 
 -- =============================================
@@ -373,11 +407,11 @@ INSERT INTO ProductCategories (Name, Description, SortOrder) VALUES
     ('4x6', 'Single 4x6 photo prints', 2),
     ('Smartphone', 'Customer phone photo prints', 3);
 
--- Insert default products
-INSERT INTO Products (CategoryId, Name, Description, Price, PhotoCount, ProductType) VALUES
-    (1, 'Photo Strip', '4 photos in classic strip format', 5.00, 4, 'PhotoStrips'),
-    (2, '4x6 Photo', 'Single high-quality 4x6 print', 3.00, 1, 'Photo4x6'),
-    (3, 'Phone Print', 'Print photos from your phone', 2.00, 1, 'SmartphonePrint');
+-- Insert default products only if they don't exist (by default, extra copies cost same as base price)
+INSERT OR IGNORE INTO Products (CategoryId, Name, Description, Price, PhotoCount, ProductType, UseCustomExtraCopyPricing, ExtraCopy1Price, ExtraCopy2Price, ExtraCopy4BasePrice, ExtraCopyAdditionalPrice, StripsExtraCopyPrice, Photo4x6ExtraCopyPrice, SmartphoneExtraCopyPrice) VALUES
+    (1, 'Photo Strip', '4 photos in classic strip format', 6.00, 4, 'PhotoStrips', 0, NULL, NULL, NULL, NULL, 6.00, NULL, NULL),
+    (2, '4x6 Photo', 'Single high-quality 4x6 print', 6.00, 1, 'Photo4x6', 0, NULL, NULL, NULL, NULL, NULL, 6.00, NULL),
+    (3, 'Phone Print', 'Print photos from your phone', 6.00, 1, 'SmartphonePrint', 0, NULL, NULL, NULL, NULL, NULL, NULL, 6.00);
 
 -- Insert default template categories
 INSERT INTO TemplateCategories (Name, Description, SortOrder, IsSeasonalCategory, SeasonStartDate, SeasonEndDate, SeasonalPriority) VALUES

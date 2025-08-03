@@ -118,6 +118,17 @@
             </Setter>
         </Style>
 
+        <!-- Credits Display Style -->
+        <Style x:Key="CreditsStyle" TargetType="Border">
+            <Setter Property="Background">
+                <Setter.Value>
+                    <SolidColorBrush Color="White" Opacity="0.15"/>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="CornerRadius" Value="20"/>
+            <Setter Property="Padding" Value="16,8"/>
+        </Style>
+
     </UserControl.Resources>
 
     <!-- Main Container -->
@@ -136,11 +147,21 @@
 
         <!-- Header Row - Styled -->
         <Grid Grid.Row="0" Margin="30,30,30,20">
-            <Button Style="{StaticResource BackButtonStyle}"
-                    HorizontalAlignment="Left"
-                    Click="BackButton_Click"/>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            
+            <!-- Back Button -->
+            <Button Grid.Column="0" 
+                    Style="{StaticResource BackButtonStyle}"
+                    Click="BackButton_Click"
+                    VerticalAlignment="Center"/>
+            
             <!-- Styled gradient title -->
-            <TextBlock Text="Choose your experience!" 
+            <TextBlock Grid.Column="1"
+                       Text="Choose your experience!" 
                        FontSize="36" 
                        FontWeight="Bold" 
                        HorizontalAlignment="Center"
@@ -164,6 +185,16 @@
                                       Color="Black"/>
                 </TextBlock.Effect>
             </TextBlock>
+            
+            <!-- Credits Display -->
+            <Border Grid.Column="2" 
+                    Style="{StaticResource CreditsStyle}"
+                    VerticalAlignment="Center">
+                <TextBlock Text="Credits: $0" 
+                           Foreground="White" 
+                           FontSize="16"
+                           Name="CreditsDisplay"/>
+            </Border>
         </Grid>
 
         <!-- Templates Content - Direct on Background (No White Container) -->

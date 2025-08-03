@@ -120,37 +120,9 @@
                     </StackPanel>
                 </Button>
 
-                <!-- Duplicate Template -->
-                <Button Style="{StaticResource ActionButtonStyle}"
-                        Click="DuplicateTemplate_Click">
-                    <StackPanel VerticalAlignment="Center">
-                        <TextBlock Text="Duplicate Template"
-                                 FontSize="14"
-                                 FontWeight="Medium"
-                                 Foreground="#111827"/>
-                        <TextBlock Text="Create a copy of this template"
-                                 FontSize="12"
-                                 Foreground="#6B7280"
-                                 Margin="0,2,0,0"
-                                 TextWrapping="Wrap"/>
-                    </StackPanel>
-                </Button>
 
-                <!-- Rename Template -->
-                <Button Style="{StaticResource ActionButtonStyle}"
-                        Click="RenameTemplate_Click">
-                    <StackPanel VerticalAlignment="Center">
-                        <TextBlock Text="Rename Template"
-                                 FontSize="14"
-                                 FontWeight="Medium"
-                                 Foreground="#111827"/>
-                        <TextBlock Text="Change the template name"
-                                 FontSize="12"
-                                 Foreground="#6B7280"
-                                 Margin="0,2,0,0"
-                                 TextWrapping="Wrap"/>
-                    </StackPanel>
-                </Button>
+
+
 
                 <!-- Toggle Template -->
                 <Button x:Name="ToggleButton"

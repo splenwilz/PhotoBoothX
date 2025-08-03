@@ -39,6 +39,7 @@ namespace Photobooth
         private TemplateCategory? currentCategory;
         private TemplateInfo? currentTemplate;
         private AdminAccessLevel currentAdminAccess = AdminAccessLevel.None;
+        private string currentOperationMode = "Coin"; // Default to Coin Operated
 
         // Upsell timeout context - stored to handle timeouts gracefully
         private Template? _currentUpsellTemplate;
@@ -56,6 +57,9 @@ namespace Photobooth
         
         // Image composition service
         private readonly IImageCompositionService _imageCompositionService;
+        
+        // Pricing service
+        private readonly IPricingService _pricingService;
 
         #endregion
 
@@ -90,6 +94,9 @@ namespace Photobooth
             // Initialize image composition service
             _imageCompositionService = new ImageCompositionService(_databaseService);
             
+            // Initialize pricing service
+            _pricingService = new PricingService(_databaseService);
+            
             InitializeComponent();
             
             // Initialize notification service with the notification container
@@ -99,7 +106,33 @@ namespace Photobooth
             ModalService.Instance.Initialize(ModalOverlayContainer, ModalContentContainer, ModalBackdrop);
 
             InitializeDatabaseAsync();
-            InitializeApplication();
+            // Application initialization moved to MainWindow_Loaded event for proper async handling
+        }
+
+        /// <summary>
+        /// Window loaded event handler - performs async initialization after window is fully loaded
+        /// </summary>
+        private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                LoggingService.Application.Information("MainWindow loaded, starting application initialization");
+                
+                // Initialize the application with proper async/await handling
+                await InitializeApplication();
+                
+                LoggingService.Application.Information("Application initialization completed successfully");
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Application initialization failed", ex);
+                
+                // Show error to user
+                NotificationService.Quick.Error("Failed to initialize application. Please restart the application.");
+                
+                // Optionally, you could close the window or show an error dialog
+                // this.Close();
+            }
         }
 
 
@@ -162,10 +195,113 @@ namespace Photobooth
         /// <summary>
         /// Sets up the application and navigates to the welcome screen
         /// </summary>
-        private void InitializeApplication()
+        private async Task InitializeApplication()
         {
+            // Load operation mode from settings
+            await LoadOperationModeAsync();
+            
+            // Initialize admin dashboard screen for credit management (even for regular users)
+            await InitializeAdminDashboardForCreditsAsync();
+            
             // Start with the welcome screen
             NavigateToWelcome();
+        }
+
+        /// <summary>
+        /// Load the current operation mode from database settings
+        /// </summary>
+        private async Task LoadOperationModeAsync()
+        {
+            try
+            {
+                var result = await _databaseService.GetSettingValueAsync<string>("System", "Mode");
+                
+                if (result.Success && !string.IsNullOrEmpty(result.Data))
+                {
+                    currentOperationMode = result.Data;
+                    LoggingService.Application.Information("Operation mode loaded", ("Mode", currentOperationMode));
+                }
+                else
+                {
+                    LoggingService.Application.Warning("Failed to load operation mode, using default", ("DefaultMode", currentOperationMode));
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Error loading operation mode", ex);
+            }
+        }
+
+        /// <summary>
+        /// Check if the application is in free play mode
+        /// </summary>
+        public bool IsFreePlayMode 
+        { 
+            get 
+            {
+                var isFree = currentOperationMode.Equals("Free", StringComparison.OrdinalIgnoreCase);
+                Console.WriteLine($"=== IS_FREE_PLAY_MODE CHECK === Current Mode: '{currentOperationMode}', IsFree: {isFree}");
+                return isFree;
+            }
+        }
+
+        /// <summary>
+        /// Get the current operation mode
+        /// </summary>
+        public string CurrentOperationMode => currentOperationMode;
+
+        /// <summary>
+        /// Refresh the operation mode from database settings
+        /// </summary>
+        public async Task RefreshOperationModeAsync()
+        {
+            await LoadOperationModeAsync();
+            
+            // Refresh all credit displays to update the text based on the new operation mode
+            RefreshAllCreditDisplays();
+            
+            LoggingService.Application.Information("Operation mode refreshed and credit displays updated",
+                ("NewMode", currentOperationMode),
+                ("IsFreePlayMode", IsFreePlayMode));
+        }
+        
+        /// <summary>
+        /// Initialize admin dashboard for credit management (used by all users)
+        /// </summary>
+        private async Task InitializeAdminDashboardForCreditsAsync()
+        {
+            try
+            {
+                LoggingService.Application.Debug("Initializing admin dashboard for credit management");
+                if (adminDashboardScreen == null)
+                {
+                    adminDashboardScreen = new AdminDashboardScreen(_databaseService, this);
+                    LoggingService.Application.Debug("Admin Dashboard created for credit management");
+                    
+                    // Subscribe to admin dashboard events
+                    adminDashboardScreen.ExitAdminRequested += AdminDashboardScreen_ExitAdminRequested;
+                    LoggingService.Application.Debug("Admin Dashboard event handlers attached");
+                    
+                    // CRITICAL: Initialize admin dashboard with minimal access to load credits
+                    LoggingService.Application.Debug("Initializing admin dashboard to load credits...");
+                    await adminDashboardScreen.SetAccessLevel(AdminAccessLevel.None, "SYSTEM_CREDIT_MANAGER");
+                    
+                    // Add null check to prevent potential null reference
+                    if (adminDashboardScreen != null)
+                    {
+                        var currentCredits = adminDashboardScreen.GetCurrentCredits();
+                        LoggingService.Application.Information("Credits loaded from admin dashboard", ("Credits", currentCredits));
+                    }
+                }
+                else
+                {
+                    LoggingService.Application.Debug("Admin Dashboard already exists");
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to initialize admin dashboard for credit management", ex);
+            }
         }
 
         #endregion
@@ -180,11 +316,13 @@ namespace Photobooth
         {
             try
             {
-                System.Diagnostics.Debug.WriteLine("=== NAVIGATING TO WELCOME ===");
+                System.Diagnostics.Debug.WriteLine("=== NavigateToWelcome CALLED ===");
                 LoggingService.Application.Information("Navigating to welcome screen");
                 
-                // Hide virtual keyboard when navigating away from admin screens
-                VirtualKeyboardService.Instance.HideKeyboard();
+                // Reset virtual keyboard state when navigating away from admin screens
+                System.Diagnostics.Debug.WriteLine("Calling VirtualKeyboardService.Instance.ResetState()...");
+                VirtualKeyboardService.Instance.ResetState();
+                System.Diagnostics.Debug.WriteLine("VirtualKeyboardService.Instance.ResetState() completed");
 
                 // Clear all notifications when returning to welcome screen
                 NotificationService.Instance.ClearAll();
@@ -194,13 +332,19 @@ namespace Photobooth
 
                 if (welcomeScreen == null)
                 {
+                    System.Diagnostics.Debug.WriteLine("Creating new WelcomeScreen instance");
                     welcomeScreen = new WelcomeScreen();
                     // Subscribe to the welcome screen's navigation event
                     welcomeScreen.StartButtonClicked += WelcomeScreen_StartButtonClicked;
                     welcomeScreen.AdminAccessRequested += WelcomeScreen_AdminAccessRequested;
                     LoggingService.Application.Debug("Welcome screen initialized and event handlers attached");
                 }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine("WelcomeScreen already exists, reusing");
+                }
 
+                System.Diagnostics.Debug.WriteLine("Setting CurrentScreenContainer.Content to welcomeScreen");
                 CurrentScreenContainer.Content = welcomeScreen;
 
                 // Reset state when returning to welcome
@@ -210,11 +354,13 @@ namespace Photobooth
                 ClearUpsellContext();
                 
                 LoggingService.Application.Information("Welcome screen loaded successfully");
+                System.Diagnostics.Debug.WriteLine("=== NavigateToWelcome COMPLETED ===");
             }
             catch (Exception ex)
             {
                 LoggingService.Application.Error("Navigation to welcome screen failed", ex);
-                System.Diagnostics.Debug.WriteLine($"Navigation to welcome failed: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"NavigateToWelcome failed: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"Stack trace: {ex.StackTrace}");
             }
         }
 
@@ -222,23 +368,49 @@ namespace Photobooth
         /// Navigates to the product selection screen
         /// Called when user clicks "Touch to Start" on welcome screen
         /// </summary>
-        public void NavigateToProductSelection()
+        public async Task NavigateToProductSelection()
         {
             try
             {
+                LoggingService.Application.Information("Navigating to product selection");
+                
                 if (productSelectionScreen == null)
                 {
-                    productSelectionScreen = new ProductSelectionScreen();
+                    productSelectionScreen = new ProductSelectionScreen(_databaseService, this);
                     // Subscribe to product selection events
                     productSelectionScreen.BackButtonClicked += ProductSelectionScreen_BackButtonClicked;
                     productSelectionScreen.ProductSelected += ProductSelectionScreen_ProductSelected;
+                    LoggingService.Application.Debug("ProductSelectionScreen created");
+                }
+
+                // Refresh product prices from database to ensure we have the latest values
+                LoggingService.Application.Debug("Refreshing product prices from database");
+                await productSelectionScreen.RefreshProductPricesAsync();
+                LoggingService.Application.Debug("Product prices refreshed successfully");
+
+                // Update credit display if admin dashboard is available
+                if (adminDashboardScreen != null)
+                {
+                    // Force refresh credits from database to ensure we have the latest value
+                    LoggingService.Application.Debug("Refreshing credits from database");
+                    await adminDashboardScreen.RefreshCreditsFromDatabase();
+                    
+                    var currentCredits = adminDashboardScreen.GetCurrentCredits();
+                    LoggingService.Application.Debug("Credits refreshed", ("CurrentCredits", currentCredits));
+                    productSelectionScreen.UpdateCredits(currentCredits);
+                    LoggingService.Application.Debug("Credits updated on ProductSelectionScreen");
+                }
+                else
+                {
+                    LoggingService.Application.Debug("Admin dashboard not available, skipping credit refresh");
                 }
 
                 CurrentScreenContainer.Content = productSelectionScreen;
+                LoggingService.Application.Information("Product selection navigation completed");
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Navigation to product selection failed: {ex.Message}");
+                LoggingService.Application.Error("Navigation to product selection failed", ex);
             }
         }
 
@@ -246,7 +418,7 @@ namespace Photobooth
         /// Navigates to the category selection screen
         /// Called when user selects a product type
         /// </summary>
-        public void NavigateToCategorySelection(ProductInfo product)
+        public async Task NavigateToCategorySelection(ProductInfo product)
         {
             try
             {
@@ -256,7 +428,7 @@ namespace Photobooth
 
                 if (categorySelectionScreen == null)
                 {
-                    categorySelectionScreen = new CategorySelectionScreen(_databaseService);
+                    categorySelectionScreen = new CategorySelectionScreen(_databaseService, this);
                     // Subscribe to category selection events
                     categorySelectionScreen.BackButtonClicked += CategorySelectionScreen_BackButtonClicked;
                     categorySelectionScreen.CategorySelected += CategorySelectionScreen_CategorySelected;
@@ -275,7 +447,7 @@ namespace Photobooth
                 LoggingService.Application.Error("Navigation to category selection failed", ex);
                 System.Diagnostics.Debug.WriteLine($"Navigation to category selection failed: {ex.Message}");
                 // Fallback to product selection if category navigation fails
-                NavigateToProductSelection();
+                await NavigateToProductSelection();
             }
         }
 
@@ -283,7 +455,7 @@ namespace Photobooth
         /// Navigates to the template selection screen with a pre-selected category
         /// Called when user selects a category
         /// </summary>
-        public void NavigateToTemplateSelection(ProductInfo product, TemplateCategory category)
+        public async Task NavigateToTemplateSelection(ProductInfo product, TemplateCategory category)
         {
             try
             {
@@ -294,16 +466,29 @@ namespace Photobooth
 
                 if (templateSelectionScreen == null)
                 {
-                    templateSelectionScreen = new TemplateSelectionScreen(_databaseService, _templateConversionService);
+                    templateSelectionScreen = new TemplateSelectionScreen(_databaseService, _templateConversionService, this);
                     // Subscribe to template selection events
                     templateSelectionScreen.BackButtonClicked += TemplateSelectionScreen_BackButtonClicked;
                     templateSelectionScreen.TemplateSelected += TemplateSelectionScreen_TemplateSelected;
+                    
+                    // Set admin dashboard reference for credit checking (if available)
+                    if (adminDashboardScreen != null)
+                    {
+                        templateSelectionScreen.SetAdminDashboard(adminDashboardScreen);
+                    }
                 }
 
                 // Set the product type for template filtering
                 templateSelectionScreen.SetProductType(product);
                 currentProduct = product;
                 currentCategory = category;
+
+                // Refresh credits when navigating to template selection
+                if (adminDashboardScreen != null)
+                {
+                    var currentCredits = adminDashboardScreen.GetCurrentCredits();
+                    templateSelectionScreen.UpdateCredits(currentCredits);
+                }
 
                 CurrentScreenContainer.Content = templateSelectionScreen;
                 
@@ -314,14 +499,14 @@ namespace Photobooth
                 LoggingService.Application.Error("Navigation to template selection failed", ex);
                 System.Diagnostics.Debug.WriteLine($"Navigation to template selection failed: {ex.Message}");
                 // Fallback to category selection if template navigation fails
-                NavigateToCategorySelection(product);
+                await NavigateToCategorySelection(product);
             }
         }
 
         /// <summary>
         /// Navigate to template selection screen with categorized view
         /// </summary>
-        public void NavigateToTemplateSelectionWithCategories(ProductInfo product)
+        public async Task NavigateToTemplateSelectionWithCategories(ProductInfo product)
         {
             try
             {
@@ -333,12 +518,18 @@ namespace Photobooth
                 if (templateSelectionScreen == null)
                 {
                     LoggingService.Application.Debug("Creating new TemplateSelectionScreen");
-                    templateSelectionScreen = new TemplateSelectionScreen(_databaseService, _templateConversionService);
+                    templateSelectionScreen = new TemplateSelectionScreen(_databaseService, _templateConversionService, this);
                     
                     // Subscribe to events
                     LoggingService.Application.Debug("Subscribing to TemplateSelectionScreen events");
                     templateSelectionScreen.BackButtonClicked += TemplateSelectionScreen_BackButtonClicked;
                     templateSelectionScreen.TemplateSelected += TemplateSelectionScreen_TemplateSelected;
+
+                    // Set admin dashboard reference for credit checking (if available)
+                    if (adminDashboardScreen != null)
+                    {
+                        templateSelectionScreen.SetAdminDashboard(adminDashboardScreen);
+                    }
 
                     LoggingService.Application.Debug("TemplateSelectionScreen events subscribed successfully");
                 }
@@ -349,6 +540,16 @@ namespace Photobooth
 
                 // Set the product type for template filtering
                 templateSelectionScreen.SetProductType(product);
+
+                // Refresh product prices from database to ensure we have the latest values
+                await templateSelectionScreen.RefreshProductPricesAsync();
+
+                // Refresh credits when navigating back to template selection
+                if (adminDashboardScreen != null)
+                {
+                    var currentCredits = adminDashboardScreen.GetCurrentCredits();
+                    templateSelectionScreen.UpdateCredits(currentCredits);
+                }
 
                 // Update UI
                 CurrentScreenContainer.Content = templateSelectionScreen;
@@ -361,7 +562,7 @@ namespace Photobooth
                     ("ProductType", product.Type ?? "Unknown"));
                 System.Diagnostics.Debug.WriteLine($"Template selection navigation failed: {ex.Message}");
                 // Fallback to product selection if template navigation fails
-                NavigateToProductSelection();
+                await NavigateToProductSelection();
             }
         }
 
@@ -377,7 +578,7 @@ namespace Photobooth
                 if (template == null || currentProduct == null)
                 {
                     LoggingService.Application.Warning("Attempted to navigate to template customization with null template or product");
-                        NavigateToProductSelection();
+                    await NavigateToProductSelection();
                     return;
                 }
                 
@@ -389,8 +590,8 @@ namespace Photobooth
 
                 if (templateCustomizationScreen == null)
                 {
-                    LoggingService.Application.Debug("Creating new TemplateCustomizationScreen");
-                    templateCustomizationScreen = new TemplateCustomizationScreen(_databaseService);
+                                    LoggingService.Application.Debug("Creating new TemplateCustomizationScreen");
+                templateCustomizationScreen = new TemplateCustomizationScreen(_databaseService, this);
                     
                     // Subscribe to events
                     templateCustomizationScreen.BackButtonClicked += TemplateCustomizationScreen_BackButtonClicked;
@@ -427,11 +628,11 @@ namespace Photobooth
                 // Fallback to template selection if customization navigation fails
                 if (currentProduct != null)
                 {
-                    NavigateToTemplateSelectionWithCategories(currentProduct);
+                    await NavigateToTemplateSelectionWithCategories(currentProduct);
                 }
                 else
                 {
-                    NavigateToProductSelection();
+                    await NavigateToProductSelection();
                 }
             }
         }
@@ -453,7 +654,7 @@ namespace Photobooth
 
                 if (templateCustomizationScreen == null)
                 {
-                    templateCustomizationScreen = new TemplateCustomizationScreen(_databaseService);
+                    templateCustomizationScreen = new TemplateCustomizationScreen(_databaseService, this);
                     
                     // Subscribe to events
                     templateCustomizationScreen.BackButtonClicked += TemplateCustomizationScreen_BackButtonClicked;
@@ -476,7 +677,7 @@ namespace Photobooth
                     ("CategoryId", category.Id.ToString()));
                 System.Diagnostics.Debug.WriteLine($"Template customization navigation failed: {ex.Message}");
                 // Fallback to category selection if customization navigation fails
-                NavigateToCategorySelection(product);
+                await NavigateToCategorySelection(product);
             }
         }
 
@@ -546,7 +747,7 @@ namespace Photobooth
 
                 // Create fresh camera capture screen
                 LoggingService.Application.Debug("Creating new CameraCaptureScreen");
-                cameraCaptureScreen = new CameraCaptureScreen(_databaseService);
+                cameraCaptureScreen = new CameraCaptureScreen(_databaseService, this);
                 LoggingService.Application.Debug("New CameraCaptureScreen created");
                 
                 // Subscribe to camera capture events
@@ -651,7 +852,7 @@ namespace Photobooth
 
                 if (photoPreviewScreen == null)
                 {
-                    photoPreviewScreen = new PhotoPreviewScreen(_databaseService, _imageCompositionService);
+                    photoPreviewScreen = new PhotoPreviewScreen(_databaseService, _imageCompositionService, this);
                     
                     // Subscribe to photo preview events
                     photoPreviewScreen.RetakePhotosRequested += PhotoPreviewScreen_RetakePhotosRequested;
@@ -686,7 +887,7 @@ namespace Photobooth
 
                 if (photoPreviewScreen == null)
                 {
-                    photoPreviewScreen = new PhotoPreviewScreen(_databaseService, _imageCompositionService);
+                    photoPreviewScreen = new PhotoPreviewScreen(_databaseService, _imageCompositionService, this);
                     
                     // Subscribe to photo preview events
                     photoPreviewScreen.RetakePhotosRequested += PhotoPreviewScreen_RetakePhotosRequested;
@@ -728,7 +929,7 @@ namespace Photobooth
 
                 if (upsellScreen == null)
                 {
-                    upsellScreen = new UpsellScreen();
+                    upsellScreen = new UpsellScreen(_databaseService, this);
                     // Subscribe to upsell completion events
                     upsellScreen.UpsellCompleted += UpsellScreen_UpsellCompleted;
                     upsellScreen.UpsellTimeout += UpsellScreen_UpsellTimeout;
@@ -799,7 +1000,10 @@ namespace Photobooth
             {
                 if (printingScreen == null)
                 {
-                    printingScreen = new PrintingScreen();
+                    // Pass admin dashboard screen for credit management and MainWindow for operation mode check
+                    Console.WriteLine($"=== CREATING PRINTING SCREEN ===");
+                    Console.WriteLine($"Admin Dashboard Available: {adminDashboardScreen != null}");
+                    printingScreen = new PrintingScreen(_databaseService, adminDashboardScreen, this);
                     // Subscribe to printing completion events
                     printingScreen.PrintingCompleted += PrintingScreen_PrintingCompleted;
                     printingScreen.PrintingCancelled += PrintingScreen_PrintingCancelled;
@@ -868,27 +1072,38 @@ namespace Photobooth
 
         /// <summary>
         /// Navigates to admin login screen
-        /// Called when admin access sequence is completed (5-tap detection)
+        /// Called from welcome screen's 5-tap sequence
         /// </summary>
         public void NavigateToAdminLogin()
         {
             try
             {
+                LoggingService.Application.Information("Navigating to admin login");
+                
                 if (adminLoginScreen == null)
                 {
+                    LoggingService.Application.Debug("Creating new AdminLoginScreen instance");
                     adminLoginScreen = new AdminLoginScreen();
                     // Subscribe to admin login events
                     adminLoginScreen.LoginSuccessful += AdminLoginScreen_LoginSuccessful;
                     adminLoginScreen.LoginCancelled += AdminLoginScreen_LoginCancelled;
+                    LoggingService.Application.Debug("AdminLoginScreen created and events subscribed");
+                }
+                else
+                {
+                    LoggingService.Application.Debug("AdminLoginScreen already exists, reusing");
                 }
 
                 // Reset the login screen
+                LoggingService.Application.Debug("Resetting admin login screen");
                 adminLoginScreen.Reset();
+                
                 CurrentScreenContainer.Content = adminLoginScreen;
+                LoggingService.Application.Information("Admin login navigation completed");
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Navigation to admin login failed: {ex.Message}");
+                LoggingService.Application.Error("Navigation to admin login failed", ex);
             }
         }
 
@@ -940,54 +1155,45 @@ namespace Photobooth
         {
             try
             {
-                System.Diagnostics.Debug.WriteLine($"NavigateToAdminDashboard called: AccessLevel={accessLevel}, UserId={userId}");
+                LoggingService.Application.Information("Navigating to admin dashboard", 
+                    ("AccessLevel", accessLevel.ToString()),
+                    ("UserId", userId));
                 
+                // AdminDashboardScreen should already exist from initialization
                 if (adminDashboardScreen == null)
                 {
-                    System.Diagnostics.Debug.WriteLine("Creating new AdminDashboardScreen instance...");
-                    adminDashboardScreen = new AdminDashboardScreen(_databaseService);
-                    System.Diagnostics.Debug.WriteLine("AdminDashboardScreen created successfully");
-                    
-                    // Subscribe to admin dashboard events
-                    adminDashboardScreen.ExitAdminRequested += AdminDashboardScreen_ExitAdminRequested;
-                    System.Diagnostics.Debug.WriteLine("Event handlers attached");
+                    LoggingService.Application.Warning("Admin Dashboard was null, creating new instance");
+                    await InitializeAdminDashboardForCreditsAsync();
                 }
 
                 // Set access level and configure UI accordingly
                 currentAdminAccess = accessLevel;
-                System.Diagnostics.Debug.WriteLine("Setting access level...");
-                await adminDashboardScreen.SetAccessLevel(accessLevel, userId);
-                System.Diagnostics.Debug.WriteLine("Access level set successfully");
+                LoggingService.Application.Debug("Setting admin access level");
+                await adminDashboardScreen!.SetAccessLevel(accessLevel, userId);
+                LoggingService.Application.Debug("Access level set successfully");
                 
-                System.Diagnostics.Debug.WriteLine("Refreshing sales data...");
+                LoggingService.Application.Debug("Refreshing sales data");
                 adminDashboardScreen.RefreshSalesData();
-                System.Diagnostics.Debug.WriteLine("Sales data refreshed");
+                LoggingService.Application.Debug("Sales data refreshed");
 
-                System.Diagnostics.Debug.WriteLine("Setting screen content...");
                 CurrentScreenContainer.Content = adminDashboardScreen;
-                System.Diagnostics.Debug.WriteLine("Admin dashboard navigation completed successfully");
+                LoggingService.Application.Information("Admin dashboard navigation completed");
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"CRITICAL ERROR - Navigation to admin dashboard failed:");
-                System.Diagnostics.Debug.WriteLine($"Exception Type: {ex.GetType().Name}");
-                System.Diagnostics.Debug.WriteLine($"Message: {ex.Message}");
-                System.Diagnostics.Debug.WriteLine($"Stack Trace: {ex.StackTrace}");
-                if (ex.InnerException != null)
-                {
-                    System.Diagnostics.Debug.WriteLine($"Inner Exception: {ex.InnerException.Message}");
-                    System.Diagnostics.Debug.WriteLine($"Inner Stack Trace: {ex.InnerException.StackTrace}");
-                }
+                LoggingService.Application.Error("Navigation to admin dashboard failed", ex,
+                    ("AccessLevel", accessLevel.ToString()),
+                    ("UserId", userId));
                 
                 // Show error message instead of silently falling back
                 try
                 {
-                    MessageBox.Show($"Failed to load admin dashboard: {ex.Message}\n\nPlease check the debug output for details.", 
+                    MessageBox.Show($"Failed to load admin dashboard: {ex.Message}\n\nPlease check the logs for details.", 
                                   "Admin Dashboard Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
                 catch
                 {
-                    // If MessageBox fails, at least we have debug output
+                    // If MessageBox fails, at least we have logging
                 }
                 
                 // Fallback to welcome screen
@@ -1011,7 +1217,7 @@ namespace Photobooth
         /// <summary>
         /// Handles welcome screen start button click
         /// </summary>
-        private void WelcomeScreen_StartButtonClicked(object? sender, EventArgs e)
+        private async void WelcomeScreen_StartButtonClicked(object? sender, EventArgs e)
         {
             try
             {
@@ -1019,7 +1225,7 @@ namespace Photobooth
                 LoggingService.Transaction.Information("USER_INTERACTION", "Customer session started",
                     ("Action", "TouchToStart"),
                     ("Timestamp", DateTime.Now));
-                NavigateToProductSelection();
+                await NavigateToProductSelection();
             }
             catch (Exception ex)
             {
@@ -1068,12 +1274,12 @@ namespace Photobooth
         /// <summary>
         /// Handles product selection
         /// </summary>
-        private void ProductSelectionScreen_ProductSelected(object? sender, ProductSelectedEventArgs e)
+        private async void ProductSelectionScreen_ProductSelected(object? sender, ProductSelectedEventArgs e)
         {
             try
             {
                 // Skip category selection and go directly to template selection with categorized view
-                NavigateToTemplateSelectionWithCategories(e.ProductInfo);
+                await NavigateToTemplateSelectionWithCategories(e.ProductInfo);
             }
             catch (Exception ex)
             {
@@ -1084,11 +1290,11 @@ namespace Photobooth
         /// <summary>
         /// Handles category selection back button click
         /// </summary>
-        private void CategorySelectionScreen_BackButtonClicked(object? sender, EventArgs e)
+        private async void CategorySelectionScreen_BackButtonClicked(object? sender, EventArgs e)
         {
             try
             {
-                NavigateToProductSelection();
+                await NavigateToProductSelection();
             }
             catch (Exception ex)
             {
@@ -1121,12 +1327,12 @@ namespace Photobooth
         /// <summary>
         /// Handles template selection back button click
         /// </summary>
-        private void TemplateSelectionScreen_BackButtonClicked(object? sender, EventArgs e)
+        private async void TemplateSelectionScreen_BackButtonClicked(object? sender, EventArgs e)
         {
             try
             {
                 // Navigate back to product selection since category selection is skipped
-                NavigateToProductSelection();
+                await NavigateToProductSelection();
             }
             catch (Exception ex)
             {
@@ -1137,7 +1343,7 @@ namespace Photobooth
         /// <summary>
         /// Handles template selection
         /// </summary>
-        private void TemplateSelectionScreen_TemplateSelected(object? sender, TemplateSelectedEventArgs e)
+        private async void TemplateSelectionScreen_TemplateSelected(object? sender, TemplateSelectedEventArgs e)
         {
             try
             {
@@ -1149,6 +1355,7 @@ namespace Photobooth
                 // Navigate to customization screen with the selected template
                 if (e.Template != null)
                 {
+                    // Navigate directly to template customization - credits will be deducted when printing completes
                     NavigateToTemplateCustomizationWithTemplate(e.Template);
                 }
                 else
@@ -1157,11 +1364,11 @@ namespace Photobooth
                     // Fallback to template selection if template is null
                     if (currentProduct != null)
                     {
-                        NavigateToTemplateSelectionWithCategories(currentProduct);
+                        await NavigateToTemplateSelectionWithCategories(currentProduct);
                     }
                     else
                     {
-                        NavigateToProductSelection();
+                        await NavigateToProductSelection();
                     }
                 }
                 
@@ -1170,6 +1377,23 @@ namespace Photobooth
             catch (Exception ex)
             {
                 LoggingService.Application.Error("Template selection navigation failed", ex);
+            }
+        }
+
+        /// <summary>
+        /// Get the price for a template based on product type
+        /// </summary>
+        private decimal GetTemplatePrice(TemplateInfo template)
+        {
+            try
+            {
+                // Use the centralized pricing service
+                return _pricingService.GetTemplateBasePrice(currentProduct?.Type ?? "");
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Error getting template price, using default fallback", ex);
+                return 3.00m; // Default fallback price
             }
         }
 
@@ -1363,19 +1587,19 @@ namespace Photobooth
         /// <summary>
         /// Handles template customization back button click
         /// </summary>
-        private void TemplateCustomizationScreen_BackButtonClicked(object? sender, EventArgs e)
+        private async void TemplateCustomizationScreen_BackButtonClicked(object? sender, EventArgs e)
         {
             try
             {
                 // Navigate back to template selection if we have current product
                 if (currentProduct != null)
                 {
-                    NavigateToTemplateSelectionWithCategories(currentProduct);
+                    await NavigateToTemplateSelectionWithCategories(currentProduct);
                 }
                 else
                 {
                     // Fallback to product selection if no current product
-                    NavigateToProductSelection();
+                    await NavigateToProductSelection();
                 }
             }
             catch (Exception ex)
@@ -1436,7 +1660,7 @@ namespace Photobooth
         /// <summary>
         /// Handles camera capture screen back button click
         /// </summary>
-        private void CameraCaptureScreen_BackButtonClicked(object? sender, EventArgs e)
+        private async void CameraCaptureScreen_BackButtonClicked(object? sender, EventArgs e)
         {
             try
             {
@@ -1448,7 +1672,7 @@ namespace Photobooth
                 // Navigate back to template customization
                 if (currentProduct != null && currentCategory != null)
                 {
-                    _ = NavigateToTemplateCustomization(currentProduct, currentCategory);
+                    await NavigateToTemplateCustomization(currentProduct, currentCategory);
                 }
                 else
                 {
@@ -1565,7 +1789,7 @@ namespace Photobooth
         /// <summary>
         /// Handles back button click from photo preview screen
         /// </summary>
-        private void PhotoPreviewScreen_BackButtonClicked(object? sender, EventArgs e)
+        private async void PhotoPreviewScreen_BackButtonClicked(object? sender, EventArgs e)
         {
             try
             {
@@ -1574,7 +1798,7 @@ namespace Photobooth
                 // Navigate back to template customization
                 if (currentProduct != null && currentCategory != null)
                 {
-                    _ = NavigateToTemplateCustomization(currentProduct, currentCategory);
+                    await NavigateToTemplateCustomization(currentProduct, currentCategory);
                 }
                 else
                 {
@@ -1596,6 +1820,15 @@ namespace Photobooth
         {
             try
             {
+                Console.WriteLine($"=== MAINWINDOW UPSELL COMPLETED DEBUG ===");
+                Console.WriteLine($"RECEIVED UPSELL RESULT:");
+                Console.WriteLine($"  Original Product: {e.Result.OriginalProduct?.Name} (${e.Result.OriginalProduct?.Price:F2})");
+                Console.WriteLine($"  Extra Copies: {e.Result.ExtraCopies}");
+                Console.WriteLine($"  Extra Copies Price: ${e.Result.ExtraCopiesPrice:F2}");
+                Console.WriteLine($"  Cross-sell Accepted: {e.Result.CrossSellAccepted}");
+                Console.WriteLine($"  Cross-sell Price: ${e.Result.CrossSellPrice:F2}");
+                Console.WriteLine($"  Total Additional Cost: ${e.Result.TotalAdditionalCost:F2}");
+                
                 LoggingService.Application.Information("Upsell completed",
                     ("ExtraCopies", e.Result.ExtraCopies),
                     ("CrossSellAccepted", e.Result.CrossSellAccepted),
@@ -1604,7 +1837,10 @@ namespace Photobooth
                 // Clear upsell context since we're completing successfully
                 ClearUpsellContext();
 
+                Console.WriteLine("Navigating to printing...");
                 // Navigate to printing with upsell results
+                if (e.Result.OriginalProduct != null)
+                {
                 await NavigateToPrinting(
                     e.Result.OriginalTemplate,
                     e.Result.OriginalProduct,
@@ -1615,9 +1851,17 @@ namespace Photobooth
                     e.Result.TotalAdditionalCost,
                     e.Result.CrossSellAccepted
                 );
+                }
+                else
+                {
+                    LoggingService.Application.Error("Upsell result missing original product");
+                    NavigateToWelcome();
+                }
+                Console.WriteLine($"=== MAINWINDOW UPSELL PROCESSING COMPLETE ===");
             }
             catch (Exception ex)
             {
+                Console.WriteLine($"ERROR: Upsell completion handling failed: {ex.Message}");
                 LoggingService.Application.Error("Upsell completion handling failed", ex);
                 NavigateToWelcome();
             }
@@ -1689,12 +1933,50 @@ namespace Photobooth
             try
             {
                 LoggingService.Application.Information("Printing completed - returning to welcome screen");
+
+                // Refresh credit displays across all screens after successful transaction
+                RefreshAllCreditDisplays();
+
                 NavigateToWelcome();
             }
             catch (Exception ex)
             {
                 LoggingService.Application.Error("Print completion handling failed", ex);
                 NavigateToWelcome();
+            }
+        }
+
+        /// <summary>
+        /// Refresh credit displays across all active screens
+        /// </summary>
+        private void RefreshAllCreditDisplays()
+        {
+            try
+            {
+                // Get current credits from admin dashboard
+                var currentCredits = adminDashboardScreen?.GetCurrentCredits() ?? 0;
+
+                LoggingService.Application.Information("Refreshing credit displays across all screens",
+                    ("CurrentCredits", currentCredits),
+                    ("OperationMode", currentOperationMode),
+                    ("IsFreePlayMode", IsFreePlayMode));
+
+                // Update all instantiated screens that have UpdateCredits methods
+                // This will also trigger UpdateCreditsDisplay() which checks the operation mode
+                productSelectionScreen?.UpdateCredits(currentCredits);
+                templateSelectionScreen?.UpdateCredits(currentCredits);
+                categorySelectionScreen?.UpdateCredits(currentCredits);
+                templateCustomizationScreen?.UpdateCredits(currentCredits);
+                photoPreviewScreen?.UpdateCredits(currentCredits);
+                upsellScreen?.UpdateCredits(currentCredits);
+                printingScreen?.UpdateCredits(currentCredits);
+                cameraCaptureScreen?.UpdateCredits(currentCredits);
+                
+                LoggingService.Application.Information("Credit displays refreshed across all screens");
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to refresh credit displays", ex);
             }
         }
 
@@ -1882,8 +2164,8 @@ namespace Photobooth
             {
                 LoggingService.Application.Information("PhotoBoothX shutting down");
                 
-                // Hide virtual keyboard on application close
-                VirtualKeyboardService.Instance.HideKeyboard();
+                // Reset virtual keyboard state on application close
+                VirtualKeyboardService.Instance.ResetState();
                 
                 // Cleanup screens that have Cleanup methods
                 welcomeScreen?.Cleanup();

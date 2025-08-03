@@ -63,8 +63,11 @@ namespace Photobooth
         private ProductInfo? selectedProduct;
         private readonly IDatabaseService _databaseService;
         private readonly ITemplateConversionService _templateConversionService;
+        private readonly MainWindow? _mainWindow; // Reference to MainWindow for operation mode check
 
-
+        // Credit system integration
+        private AdminDashboardScreen? _adminDashboard;
+        private decimal _currentCredits = 0;
 
         // File system watcher for automatic template refresh
         private FileSystemWatcher? templateWatcher;
@@ -79,10 +82,11 @@ namespace Photobooth
         /// <summary>
         /// Constructor - initializes the template selection screen
         /// </summary>
-        public TemplateSelectionScreen(IDatabaseService databaseService, ITemplateConversionService templateConversionService)
+        public TemplateSelectionScreen(IDatabaseService databaseService, ITemplateConversionService templateConversionService, MainWindow? mainWindow = null)
         {
             _databaseService = databaseService ?? throw new ArgumentNullException(nameof(databaseService));
             _templateConversionService = templateConversionService ?? throw new ArgumentNullException(nameof(templateConversionService));
+            _mainWindow = mainWindow;
             InitializeComponent();
             this.Loaded += OnLoaded;
             InitializeTemplateWatcher();
@@ -104,6 +108,9 @@ namespace Photobooth
             {
                 LoggingService.Application.Information("Template selection screen loaded",
                     ("SelectedProductType", selectedProduct?.Type ?? "NULL"));
+                
+                _ = RefreshCurrentCredits(); // This now includes UpdateCreditsDisplay()
+                
                 LoadTemplates();
             }
             catch (Exception ex)
@@ -127,6 +134,40 @@ namespace Photobooth
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Failed to set product type: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Refresh product prices from database and update the selected product
+        /// This ensures we have the latest prices even if admin made changes
+        /// </summary>
+        public async Task RefreshProductPricesAsync()
+        {
+            try
+            {
+                LoggingService.Application.Information("Refreshing product prices in TemplateSelectionScreen");
+                
+                var result = await _databaseService.GetProductsAsync();
+                if (result.Success && result.Data != null)
+                {
+                    // Find the matching product in the database
+                    var dbProduct = result.Data.FirstOrDefault(p => 
+                        selectedProduct != null && 
+                        GetProductTypeFromName(selectedProduct.Type) == p.ProductType);
+                    
+                    if (dbProduct != null && selectedProduct != null)
+                    {
+                        // Update the selected product with the latest price from database
+                        selectedProduct.Price = dbProduct.Price;
+                        LoggingService.Application.Information("Updated product price from database", 
+                            ("ProductType", selectedProduct.Type),
+                            ("NewPrice", selectedProduct.Price));
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Error refreshing product prices in TemplateSelectionScreen", ex);
             }
         }
 
@@ -446,6 +487,20 @@ namespace Photobooth
         }
 
         /// <summary>
+        /// Maps product type name to ProductType enum
+        /// </summary>
+        private ProductType GetProductTypeFromName(string? productTypeName)
+        {
+            return productTypeName?.ToLowerInvariant() switch
+            {
+                "strips" or "photostrips" => ProductType.PhotoStrips,
+                "4x6" or "photo4x6" => ProductType.Photo4x6,
+                "phone" or "smartphoneprint" => ProductType.SmartphonePrint,
+                _ => ProductType.PhotoStrips // Default to strips
+            };
+        }
+
+        /// <summary>
         /// Gets standard display size based on aspect ratio - THREE SIZES ONLY
         /// Delegates to TemplateConversionService for consistency
         /// </summary>
@@ -730,12 +785,17 @@ namespace Photobooth
             detailsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             detailsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
+            var templatePrice = GetTemplatePrice(template);
+            var hasSufficientCredits = HasSufficientCredits(templatePrice);
+
             var priceText = new TextBlock
             {
-                Text = "$0.00", // Default price for customer display
+                Text = $"${templatePrice:F2}",
                 FontSize = 14,
                 FontWeight = FontWeights.Medium,
-                Foreground = new SolidColorBrush(Color.FromRgb(34, 197, 94)) // Green color like admin
+                Foreground = hasSufficientCredits ? 
+                    new SolidColorBrush(Color.FromRgb(34, 197, 94)) : // Green if affordable
+                    new SolidColorBrush(Color.FromRgb(239, 68, 68))   // Red if not affordable
             };
             Grid.SetColumn(priceText, 0);
 
@@ -763,13 +823,52 @@ namespace Photobooth
 
             card.Child = grid;
 
-            // Make the entire card clickable
+            // Make the entire card clickable with credit validation
             card.MouseLeftButtonDown += (s, e) =>
         {
             try
             {
                     LoggingService.Application.Information("Template card clicked", ("TemplateName", template.TemplateName));
+                    
+                    var templatePrice = GetTemplatePrice(template);
+                    var hasSufficientCredits = HasSufficientCredits(templatePrice);
+                    
+                    if (!hasSufficientCredits)
+                    {
+                        // Show insufficient credits notification using custom notification system
+                        var shortfall = templatePrice - _currentCredits;
+                        if (_mainWindow?.IsFreePlayMode == true)
+                        {
+                            // This shouldn't happen in free play mode, but if it does, show a generic error
+                            var message = "Unable to select this template.\n\nPlease contact staff for assistance.";
+                            NotificationService.Instance.ShowWarning("Selection Error", message, 8);
+                        }
+                        else
+                        {
+                            var message = $"Template price: ${templatePrice:F2}\n" +
+                                         $"Current credits: ${_currentCredits:F2}\n" +
+                                         $"Additional credits needed: ${shortfall:F2}\n\n" +
+                                         $"Please add more credits to continue.";
+                            
+                            NotificationService.Instance.ShowWarning("Insufficient Credits", message, 8);
+                        }
+                        
+                        LoggingService.Application.Warning("Template selection blocked - insufficient credits",
+                            ("TemplateName", template.TemplateName),
+                            ("RequiredPrice", templatePrice),
+                            ("CurrentCredits", _currentCredits),
+                            ("Shortfall", shortfall));
+                        
+                        return; // Don't proceed with template selection
+                    }
+                    
+                    // Proceed with template selection
                     TemplateSelected?.Invoke(this, new TemplateSelectedEventArgs(template));
+                    
+                    LoggingService.Application.Information("Template selection approved",
+                        ("TemplateName", template.TemplateName),
+                        ("Price", templatePrice),
+                        ("CreditsAfterPurchase", _currentCredits - templatePrice));
             }
             catch (Exception ex)
             {
@@ -957,12 +1056,145 @@ namespace Photobooth
         #region Public Methods
 
         /// <summary>
+        /// Set the admin dashboard reference for credit checking
+        /// </summary>
+        public void SetAdminDashboard(AdminDashboardScreen adminDashboard)
+        {
+            _adminDashboard = adminDashboard;
+            _ = RefreshCurrentCredits();
+        }
+
+        /// <summary>
+        /// Refresh current credits from admin dashboard or database
+        /// </summary>
+        private async Task RefreshCurrentCredits()
+        {
+            try
+            {
+                // Try to get credits from admin dashboard first (if available)
+                if (_adminDashboard != null)
+                {
+                    _currentCredits = _adminDashboard.GetCurrentCredits();
+                    UpdateCreditsDisplay();
+                    return;
+                }
+
+                // Fallback: Get credits directly from database asynchronously
+                var creditsResult = await _databaseService.GetSettingValueAsync<decimal>("System", "CurrentCredits");
+                
+                if (creditsResult.Success)
+                {
+                    _currentCredits = creditsResult.Data;
+                }
+                else
+                {
+                    _currentCredits = 0;
+                }
+                UpdateCreditsDisplay();
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Error refreshing credits", ex);
+                _currentCredits = 0;
+                UpdateCreditsDisplay();
+            }
+        }
+
+        /// <summary>
+        /// Check if user has sufficient credits for a template
+        /// </summary>
+        private bool HasSufficientCredits(decimal templatePrice)
+        {
+            Console.WriteLine($"=== TEMPLATE CREDIT CHECK === Price: {templatePrice}, Credits: {_currentCredits}");
+            Console.WriteLine($"=== TEMPLATE CREDIT CHECK === MainWindow: {_mainWindow != null}, IsFreePlayMode: {_mainWindow?.IsFreePlayMode}");
+            
+            // Check if we're in free play mode - if so, always return true
+            if (_mainWindow?.IsFreePlayMode == true)
+            {
+                Console.WriteLine($"=== TEMPLATE CREDIT CHECK === FREE PLAY MODE - ALLOWING SELECTION");
+                LoggingService.Application.Information("Free play mode detected - skipping credit check for template selection",
+                    ("TemplatePrice", templatePrice),
+                    ("OperationMode", _mainWindow.CurrentOperationMode));
+                return true;
+            }
+            
+            var hasSufficient = _currentCredits >= templatePrice;
+            Console.WriteLine($"=== TEMPLATE CREDIT CHECK === COIN MODE - HasSufficient: {hasSufficient}");
+            return hasSufficient;
+        }
+
+
+
+        /// <summary>
+        /// Get the price for a template based on product type
+        /// </summary>
+        private decimal GetTemplatePrice(TemplateInfo template)
+        {
+            try
+            {
+                // Use actual product price from the selected product
+                if (selectedProduct?.Price > 0)
+                {
+                    return selectedProduct.Price;
+                }
+                
+                // Fallback to default if product price not available
+                LoggingService.Application.Warning("Product price not available, using default", 
+                    ("ProductType", selectedProduct?.Type ?? "Unknown"));
+                return 3.00m;
+            }
+            catch
+            {
+                return 3.00m; // Default fallback price
+            }
+        }
+
+        /// <summary>
         /// Updates the credits display with validation
         /// </summary>
         /// <param name="credits">Current credit amount</param>
         public void UpdateCredits(decimal credits)
         {
-            // Credits display logic if needed for this screen
+            _currentCredits = credits;
+            try
+            {
+                System.Diagnostics.Debug.WriteLine($"Credits updated to: ${credits:F2}");
+                UpdateCreditsDisplay();
+                // Refresh template display to update affordability indicators
+                UpdateTemplateDisplay();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error updating credits display: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Updates the credits display text safely
+        /// </summary>
+        private void UpdateCreditsDisplay()
+        {
+            try
+            {
+                if (CreditsDisplay != null)
+                {
+                    string displayText;
+                    if (_mainWindow?.IsFreePlayMode == true)
+                    {
+                        displayText = "Free Play Mode";
+                    }
+                    else
+                    {
+                        displayText = $"Credits: ${_currentCredits:F0}";
+                    }
+                    CreditsDisplay.Text = displayText;
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to update credits display", ex);
+                System.Diagnostics.Debug.WriteLine($"Failed to update credits display: {ex.Message}");
+            }
         }
 
         #endregion

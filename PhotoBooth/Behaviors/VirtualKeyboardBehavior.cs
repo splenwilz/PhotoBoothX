@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using Photobooth.Services;
+using System;
 
 namespace Photobooth.Behaviors
 {
@@ -39,16 +40,39 @@ namespace Photobooth.Behaviors
                 if ((bool)e.NewValue)
                 {
                     // Enable virtual keyboard
-                    control.GotFocus += Control_GotFocus;
-                    control.LostFocus += Control_LostFocus;
+                    AttachEventHandlers(control);
+                    control.Loaded += Control_Loaded;
                     control.Unloaded += Control_Unloaded;
                 }
                 else
                 {
                     // Disable virtual keyboard
-                    control.GotFocus -= Control_GotFocus;
-                    control.LostFocus -= Control_LostFocus;
+                    DetachEventHandlers(control);
+                    control.Loaded -= Control_Loaded;
                     control.Unloaded -= Control_Unloaded;
+                }
+            }
+        }
+
+        private static void Control_Loaded(object sender, RoutedEventArgs e)
+        {
+            if (sender is Control control)
+            {
+                Console.WriteLine($"=== VirtualKeyboardBehavior.Control_Loaded: {control.Name} ===");
+                // Re-attach event handlers when control is loaded (after being unloaded)
+                AttachEventHandlers(control);
+                
+                // Check if control already has focus after re-attaching handlers
+                if (control.IsFocused || control.IsKeyboardFocused)
+                {
+                    Console.WriteLine($"Control {control.Name} already has focus, manually triggering keyboard logic");
+                    // Manually trigger the virtual keyboard logic since GotFocus won't fire
+                    var parentWindow = Window.GetWindow(control);
+                    if (parentWindow != null)
+                    {
+                        Console.WriteLine($"Manually calling VirtualKeyboardService.ShowKeyboardAsync for {control.Name}");
+                        _ = VirtualKeyboardService.Instance.ShowKeyboardAsync(control, parentWindow);
+                    }
                 }
             }
         }
@@ -57,28 +81,50 @@ namespace Photobooth.Behaviors
         {
             if (sender is Control control)
             {
+                Console.WriteLine($"=== VirtualKeyboardBehavior.Control_Unloaded: {control.Name} ===");
+                // Detach event handlers when control is unloaded
+                DetachEventHandlers(control);
+            }
+        }
+
+        private static void AttachEventHandlers(Control control)
+        {
+            // Remove first to avoid duplicate handlers
                 control.GotFocus -= Control_GotFocus;
                 control.LostFocus -= Control_LostFocus;
-                control.Unloaded -= Control_Unloaded;
-            }
+            
+            // Attach handlers
+            control.GotFocus += Control_GotFocus;
+            control.LostFocus += Control_LostFocus;
+        }
+
+        private static void DetachEventHandlers(Control control)
+        {
+            Console.WriteLine($"=== VirtualKeyboardBehavior.DetachEventHandlers: {control.Name} ===");
+            control.GotFocus -= Control_GotFocus;
+            control.LostFocus -= Control_LostFocus;
+            Console.WriteLine($"Detached handlers for {control.Name}");
         }
 
         private static void Control_GotFocus(object sender, RoutedEventArgs e)
         {
             if (sender is Control control)
             {
+                
+                // Find the parent window
                 var parentWindow = Window.GetWindow(control);
                 if (parentWindow != null)
                 {
-                    VirtualKeyboardService.Instance.ShowKeyboard(control, parentWindow);
+                    // Show virtual keyboard for this control
+                    _ = VirtualKeyboardService.Instance.ShowKeyboardAsync(control, parentWindow);
                 }
             }
         }
 
         private static void Control_LostFocus(object sender, RoutedEventArgs e)
         {
-            // Don't hide immediately on lost focus - let user click keyboard buttons
-            // The keyboard will hide when user clicks close or outside
+            // Note: We don't hide the keyboard on LostFocus because the user might be 
+            // switching between input controls and we want to keep the keyboard visible
         }
 
         #endregion

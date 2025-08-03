@@ -9,8 +9,6 @@ namespace Photobooth.Controls
     public partial class TemplateActionsDialog : UserControl
     {
         private const string ACTION_EDIT = "Edit";
-        private const string ACTION_DUPLICATE = "Duplicate";
-        private const string ACTION_RENAME = "Rename";
         private const string ACTION_TOGGLE = "Toggle";
         private const string ACTION_DELETE = "Delete";
 
@@ -77,31 +75,9 @@ namespace Photobooth.Controls
             }
         }
 
-        private void DuplicateTemplate_Click(object sender, RoutedEventArgs e)
-        {
-            try
-            {
-                ActionSelected?.Invoke(this, ACTION_DUPLICATE);
-                CloseDialog();
-            }
-            catch (Exception ex)
-            {
-                HandleEventError("duplicating template", ex);
-            }
-        }
 
-        private void RenameTemplate_Click(object sender, RoutedEventArgs e)
-        {
-            try
-            {
-                ActionSelected?.Invoke(this, ACTION_RENAME);
-                CloseDialog();
-            }
-            catch (Exception ex)
-            {
-                HandleEventError("renaming template", ex);
-            }
-        }
+
+
 
         private void ToggleTemplate_Click(object sender, RoutedEventArgs e)
         {

@@ -103,6 +103,17 @@
             </Setter>
         </Style>
 
+        <!-- Credits Display Style -->
+        <Style x:Key="CreditsStyle" TargetType="Border">
+            <Setter Property="Background">
+                <Setter.Value>
+                    <SolidColorBrush Color="White" Opacity="0.15"/>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="CornerRadius" Value="20"/>
+            <Setter Property="Padding" Value="16,8"/>
+        </Style>
+
     </UserControl.Resources>
 
     <!-- Main Container -->
@@ -135,14 +146,31 @@
                      Canvas.Left="1200" Canvas.Top="300" Opacity="0.2"/>
         </Canvas>
 
+        <!-- Header Row -->
+        <Grid Grid.Row="0" Margin="40,40,40,20">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
         <!-- Back Button -->
-        <Button Name="BackButton" 
-                Grid.Row="0"
+            <Button Grid.Column="0"
+                    Name="BackButton" 
                 Style="{StaticResource BackButtonStyle}"
-                HorizontalAlignment="Left"
-                VerticalAlignment="Top"
-                Margin="40,40,0,0"
+                    VerticalAlignment="Center"
                 Click="BackButton_Click"/>
+
+            <!-- Credits Display -->
+            <Border Grid.Column="2" 
+                    Style="{StaticResource CreditsStyle}"
+                    VerticalAlignment="Center">
+                <TextBlock Text="Credits: $0" 
+                           Foreground="White" 
+                           FontSize="16"
+                           Name="CreditsDisplay"/>
+            </Border>
+        </Grid>
 
         <!-- Title Section -->
         <StackPanel Grid.Row="1" 

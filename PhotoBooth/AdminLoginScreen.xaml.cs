@@ -264,13 +264,13 @@ namespace Photobooth
         #region Public Methods
 
         /// <summary>
-        /// Reset the login screen state
+        /// Reset the login screen to its initial state
         /// </summary>
         public void Reset()
         {
-            // Hide virtual keyboard when resetting login screen
-            VirtualKeyboardService.Instance.HideKeyboard();
+            Console.WriteLine("=== AdminLoginScreen.Reset() called ===");
             
+            // Clear form fields
             UsernameInput.Text = "";
             ClearPassword();
             ErrorMessage.Visibility = Visibility.Collapsed;
@@ -290,8 +290,34 @@ namespace Photobooth
             LoginButton.Content = "Login";
             LoadingOverlay.Visibility = Visibility.Collapsed;
             
-            // Set focus to username input (use Dispatcher to ensure it happens after UI updates)
-            Dispatcher.BeginInvoke(new Action(() => UsernameInput.Focus()));
+            Console.WriteLine("AdminLoginScreen.Reset() - About to set focus with delay");
+            
+            // Don't immediately hide keyboard - let navigation handle it
+            // Instead, use a delayed approach to ensure UI is fully loaded before setting focus
+            Dispatcher.BeginInvoke(new Action(async () =>
+            {
+                Console.WriteLine("AdminLoginScreen.Reset() - Delay callback started");
+                
+                // Small delay to ensure the control is fully loaded and visible
+                await System.Threading.Tasks.Task.Delay(100);
+                
+                Console.WriteLine("AdminLoginScreen.Reset() - About to focus UsernameInput");
+                Console.WriteLine($"UsernameInput.IsLoaded: {UsernameInput.IsLoaded}");
+                Console.WriteLine($"UsernameInput.IsVisible: {UsernameInput.IsVisible}");
+                Console.WriteLine($"UsernameInput.Focusable: {UsernameInput.Focusable}");
+                
+                // Now set focus - this will trigger the virtual keyboard to show
+                var focusResult = UsernameInput.Focus();
+                Console.WriteLine($"UsernameInput.Focus() result: {focusResult}");
+                
+                // Also ensure keyboard focus
+                var keyboardFocusResult = System.Windows.Input.Keyboard.Focus(UsernameInput);
+                Console.WriteLine($"Keyboard.Focus() result: {keyboardFocusResult?.GetType().Name ?? "null"}");
+                
+                Console.WriteLine("AdminLoginScreen.Reset() - Focus attempt completed");
+            }));
+            
+            Console.WriteLine("=== AdminLoginScreen.Reset() completed ===");
         }
 
         #endregion

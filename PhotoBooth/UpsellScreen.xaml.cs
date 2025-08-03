@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -37,6 +38,8 @@ namespace Photobooth
 
         #region Private Fields
 
+        private readonly IDatabaseService _databaseService;
+        private readonly MainWindow? _mainWindow; // Reference to MainWindow for operation mode check
         private Template? _currentTemplate;
         private ProductInfo? _originalProduct;
         private string? _composedImagePath;
@@ -50,7 +53,7 @@ namespace Photobooth
         private decimal _originalPrice = 0;
         private decimal _extraCopiesPrice = 0;
         private decimal _crossSellPrice = 0;
-        private int _currentQuantity = 4; // For 4+ copies adjustment
+        private int _currentQuantity = 3; // For 3+ copies adjustment
 
         // Timeout and animation
         private DispatcherTimer? _timeoutTimer;
@@ -63,30 +66,43 @@ namespace Photobooth
         private readonly Random _random = new Random();
         private readonly List<Ellipse> _particles = new List<Ellipse>();
         private bool _disposed = false;
+        
+        // Credits
+        private decimal _currentCredits = 0;
 
         // Photo selection for cross-sell
         private int _selectedPhotoIndex = 0;
         private List<string> _capturedPhotos = new List<string>();
         private string? _selectedPhotoForCrossSell = null;
 
-        // Pricing configuration (should match ProductConfiguration)
+        // Pricing configuration (loaded from database)
         private const decimal STRIPS_PRICE = 5.00m;
         private const decimal PHOTO_4X6_PRICE = 3.00m;
-        private const decimal EXTRA_COPY_PRICE_1 = 3.00m;
-        private const decimal EXTRA_COPY_PRICE_2 = 5.00m;
-        private const decimal EXTRA_COPY_PRICE_4_BASE = 8.00m;
-        private const decimal EXTRA_COPY_PRICE_PER_ADDITIONAL = 1.50m;
+        
+        // Extra copy pricing (configurable via admin dashboard)
+        private bool _useCustomExtraCopyPricing = false;
+        private decimal _extraCopyPrice1 = 3.00m;
+        private decimal _extraCopyPrice2 = 5.00m;
+        private decimal _extraCopyPriceAdditional = 1.50m;
 
         #endregion
 
         #region Constructor
 
-        public UpsellScreen()
+        public UpsellScreen(IDatabaseService databaseService, MainWindow? mainWindow = null)
         {
+            _databaseService = databaseService ?? throw new ArgumentNullException(nameof(databaseService));
+            _mainWindow = mainWindow;
             InitializeComponent();
             this.Loaded += OnLoaded;
             InitializeAnimations();
+            
+            // Initialize credits display
+            _ = RefreshCreditsFromDatabase(); // Fire and forget
         }
+
+        // Parameterless constructor removed to enforce proper dependency injection
+        // Use UpsellScreen(IDatabaseService databaseService) instead
 
         #endregion
 
@@ -110,6 +126,9 @@ namespace Photobooth
                     ("OriginalPrice", originalProduct.Price),
                     ("TemplateName", template.Name ?? "Unknown"));
 
+                // Load extra copy pricing from database
+                await LoadExtraCopyPricingFromDatabase();
+
                 // Update pricing displays
                 UpdatePricingDisplays();
 
@@ -121,6 +140,131 @@ namespace Photobooth
                 LoggingService.Application.Error("Upsell screen initialization failed", ex);
                 throw;
             }
+        }
+
+        #endregion
+
+        #region Database Operations
+
+        /// <summary>
+        /// Load extra copy pricing configuration from database
+        /// </summary>
+        private async Task LoadExtraCopyPricingFromDatabase()
+        {
+            try
+            {
+                // Get the selected product's pricing configuration from database
+                var productsResult = await _databaseService.GetAllAsync<Product>();
+                
+                if (productsResult.Success && productsResult.Data?.Count > 0)
+                {
+                    // Find the product that matches our selected product type, or use first as fallback
+                    var product = productsResult.Data.FirstOrDefault(p => 
+                        _originalProduct != null && 
+                        GetProductTypeFromName(_originalProduct.Type) == p.ProductType) 
+                        ?? productsResult.Data[0];
+                    
+                    _useCustomExtraCopyPricing = product.UseCustomExtraCopyPricing;
+                    
+                    // Use the selected product's price as the base price for calculations
+                    var basePrice = _originalProduct?.Price ?? product.Price;
+                    
+                    if (_useCustomExtraCopyPricing)
+                    {
+                        // Use product-specific pricing if available, otherwise fall back to legacy pricing
+                        var productType = GetProductTypeFromName(_originalProduct?.Type);
+                        
+                        switch (productType)
+                        {
+                            case ProductType.PhotoStrips:
+                                var stripsPrice = product.StripsExtraCopyPrice ?? product.ExtraCopy1Price ?? basePrice;
+                                var stripsDiscount = product.StripsMultipleCopyDiscount ?? 0;
+                                _extraCopyPrice1 = stripsPrice;
+                                _extraCopyPrice2 = (stripsPrice * 2) * (1 - stripsDiscount / 100);
+                                _extraCopyPriceAdditional = stripsPrice * (1 - stripsDiscount / 100);
+                                break;
+                                
+                            case ProductType.Photo4x6:
+                                var photo4x6Price = product.Photo4x6ExtraCopyPrice ?? product.ExtraCopy1Price ?? basePrice;
+                                var photo4x6Discount = product.Photo4x6MultipleCopyDiscount ?? 0;
+                                _extraCopyPrice1 = photo4x6Price;
+                                _extraCopyPrice2 = (photo4x6Price * 2) * (1 - photo4x6Discount / 100);
+                                _extraCopyPriceAdditional = photo4x6Price * (1 - photo4x6Discount / 100);
+                                break;
+                                
+                            case ProductType.SmartphonePrint:
+                                var smartphonePrice = product.SmartphoneExtraCopyPrice ?? product.ExtraCopy1Price ?? basePrice;
+                                var smartphoneDiscount = product.SmartphoneMultipleCopyDiscount ?? 0;
+                                _extraCopyPrice1 = smartphonePrice;
+                                _extraCopyPrice2 = (smartphonePrice * 2) * (1 - smartphoneDiscount / 100);
+                                _extraCopyPriceAdditional = smartphonePrice * (1 - smartphoneDiscount / 100);
+                                break;
+                                
+                            default:
+                                _extraCopyPrice1 = product.ExtraCopy1Price ?? basePrice;
+                                _extraCopyPrice2 = product.ExtraCopy2Price ?? (basePrice * 2);
+                                _extraCopyPriceAdditional = product.ExtraCopyAdditionalPrice ?? basePrice;
+                                break;
+                        }
+                    }
+                    else
+                    {
+                        // Use base product price for all extra copies (no discount)
+                        _extraCopyPrice1 = basePrice;
+                        _extraCopyPrice2 = basePrice * 2;
+                        _extraCopyPriceAdditional = basePrice;
+                    }
+
+                    LoggingService.Application.Information("Extra copy pricing loaded from database",
+                        ("UseCustomPricing", _useCustomExtraCopyPricing),
+                        ("SelectedProductType", _originalProduct?.Type ?? "Unknown"),
+                        ("BasePrice", basePrice),
+                        ("ExtraCopy1Price", _extraCopyPrice1),
+                        ("ExtraCopy2Price", _extraCopyPrice2),
+                        ("ExtraCopyAdditionalPrice", _extraCopyPriceAdditional));
+                    
+
+                }
+                else
+                {
+                    LoggingService.Application.Warning("Failed to load extra copy pricing from database, using defaults",
+                        ("Error", productsResult.ErrorMessage ?? "No products found"));
+                    
+                    // Use the selected product's price as fallback
+                    if (_originalProduct != null)
+                    {
+                        _extraCopyPrice1 = _originalProduct.Price;
+                        _extraCopyPrice2 = _originalProduct.Price * 2;
+                        _extraCopyPriceAdditional = _originalProduct.Price;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Error loading extra copy pricing from database, using defaults", ex);
+                
+                // Use the selected product's price as fallback
+                if (_originalProduct != null)
+                {
+                    _extraCopyPrice1 = _originalProduct.Price;
+                    _extraCopyPrice2 = _originalProduct.Price * 2;
+                    _extraCopyPriceAdditional = _originalProduct.Price;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Convert product type name to ProductType enum
+        /// </summary>
+        private ProductType GetProductTypeFromName(string? productTypeName)
+        {
+            return productTypeName?.ToLower() switch
+            {
+                "strips" => ProductType.PhotoStrips,
+                "4x6" => ProductType.Photo4x6,
+                "phone" => ProductType.SmartphonePrint,
+                _ => ProductType.PhotoStrips // Default fallback
+            };
         }
 
         #endregion
@@ -178,7 +322,7 @@ namespace Photobooth
                 ContinueButton.Visibility = Visibility.Visible;
 
                 // Determine cross-sell product
-                _crossSellProduct = GetCrossSellProduct();
+                _crossSellProduct = await GetCrossSellProductAsync();
                 if (_crossSellProduct == null)
                 {
                     // No cross-sell available, proceed to completion
@@ -208,20 +352,32 @@ namespace Photobooth
         /// <summary>
         /// Complete the upselling process
         /// </summary>
-        private void CompleteUpselling()
+        private async void CompleteUpselling()
         {
             try
             {
                 StopTimeoutTimer();
 
                 var totalAdditionalCost = _extraCopiesPrice + (_crossSellAccepted ? _crossSellPrice : 0);
+                
+                // Calculate total order cost (original + additional)
+                var originalPrice = _originalProduct?.Price ?? 0;
+                var totalOrderCost = originalPrice + totalAdditionalCost;
 
                 LoggingService.Application.Information("Upselling completed",
                     ("ExtraCopies", _selectedExtraCopies),
                     ("CrossSellAccepted", _crossSellAccepted),
                     ("ExtraCopiesPrice", _extraCopiesPrice),
                     ("CrossSellPrice", _crossSellPrice),
-                    ("TotalAdditionalCost", totalAdditionalCost));
+                    ("TotalAdditionalCost", totalAdditionalCost),
+                    ("OriginalPrice", originalPrice),
+                    ("TotalOrderCost", totalOrderCost));
+
+                // CRITICAL: Validate credits before proceeding
+                if (!await ValidateCreditsForTotalOrderAsync(totalOrderCost))
+                {
+                    return; // Validation failed, error message already shown
+                }
 
                 // Create upsell result
                 var upsellResult = new UpsellResult
@@ -233,7 +389,7 @@ namespace Photobooth
                     ExtraCopies = _selectedExtraCopies,
                     ExtraCopiesPrice = _extraCopiesPrice,
                     CrossSellAccepted = _crossSellAccepted,
-                    CrossSellProduct = _crossSellProduct,
+                    CrossSellProduct = _crossSellAccepted ? _crossSellProduct : null, // Only pass if accepted
                     CrossSellPrice = _crossSellPrice,
                     TotalAdditionalCost = totalAdditionalCost,
                     SelectedPhotoForCrossSell = _selectedPhotoForCrossSell
@@ -260,23 +416,19 @@ namespace Photobooth
         {
             try
             {
-                Console.WriteLine($"[DEBUG] CopyButton_Click triggered");
                 if (sender is Button button && button.Tag is string tagValue && int.TryParse(tagValue, out int copies))
                 {
-                    Console.WriteLine($"[DEBUG] Button tag parsed - copies: {copies}");
-                    if (copies == 4)
+                    if (copies == 3)
                     {
-                        // Show quantity selector for 4+ copies
-                        Console.WriteLine("[DEBUG] 4+ copies selected - showing quantity selector");
-                        _currentQuantity = 4;
+                        // Show quantity selector for 3+ copies
+                        _currentQuantity = 3;
                         ShowQuantitySelector();
                     }
                     else
                     {
                         // Direct selection for 1 or 2 copies
-                        Console.WriteLine($"[DEBUG] Direct selection - {copies} copies");
                         _selectedExtraCopies = copies;
-                        _extraCopiesPrice = copies == 1 ? EXTRA_COPY_PRICE_1 : EXTRA_COPY_PRICE_2;
+                        _extraCopiesPrice = CalculateExtraCopyPrice(copies);
                         
                         LoggingService.Application.Information("Extra copies selected",
                             ("Copies", copies),
@@ -285,14 +437,9 @@ namespace Photobooth
                         await StartCrossSellStage();
                     }
                 }
-                else
-                {
-                    Console.WriteLine("[DEBUG] Failed to parse button tag or sender is not a button");
-                }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[DEBUG] CopyButton_Click exception: {ex.Message}");
                 LoggingService.Application.Error("Copy button click failed", ex);
             }
         }
@@ -302,35 +449,23 @@ namespace Photobooth
         /// </summary>
         private void PlusButton_Click(object sender, RoutedEventArgs e)
         {
-            Console.WriteLine($"[DEBUG] PlusButton_Click triggered - Current quantity: {_currentQuantity}");
             e.Handled = true; // Prevent event bubbling to parent card button
             
             if (_currentQuantity < 10)
             {
                 _currentQuantity++;
-                Console.WriteLine($"[DEBUG] Quantity increased to: {_currentQuantity}");
                 UpdateQuantityDisplay();
-            }
-            else
-            {
-                Console.WriteLine("[DEBUG] Quantity already at max (10)");
             }
         }
 
         private void MinusButton_Click(object sender, RoutedEventArgs e)
         {
-            Console.WriteLine($"[DEBUG] MinusButton_Click triggered - Current quantity: {_currentQuantity}");
             e.Handled = true; // Prevent event bubbling to parent card button
             
-            if (_currentQuantity > 4)
+            if (_currentQuantity > 3)
             {
                 _currentQuantity--;
-                Console.WriteLine($"[DEBUG] Quantity decreased to: {_currentQuantity}");
                 UpdateQuantityDisplay();
-            }
-            else
-            {
-                Console.WriteLine("[DEBUG] Quantity already at min (4)");
             }
         }
 
@@ -342,7 +477,7 @@ namespace Photobooth
             try
             {
                 _selectedExtraCopies = _currentQuantity;
-                _extraCopiesPrice = EXTRA_COPY_PRICE_4_BASE + ((_currentQuantity - 4) * EXTRA_COPY_PRICE_PER_ADDITIONAL);
+                _extraCopiesPrice = CalculateExtraCopyPrice(_currentQuantity);
                 
                 LoggingService.Application.Information("Extra copies quantity confirmed",
                     ("Copies", _currentQuantity),
@@ -359,12 +494,21 @@ namespace Photobooth
         /// <summary>
         /// Handle "Continue" button click for cross-sell acceptance
         /// </summary>
-        private void Continue_Click(object sender, RoutedEventArgs e)
+        private async void Continue_Click(object sender, RoutedEventArgs e)
         {
             try
             {
                 _crossSellAccepted = true;
                 _crossSellPrice = _crossSellProduct?.Price ?? 0;
+                
+                // Validate credits before proceeding
+                var totalOrderCost = (_originalProduct?.Price ?? 0) + _extraCopiesPrice + _crossSellPrice;
+                if (!await ValidateCreditsForTotalOrderAsync(totalOrderCost))
+                {
+                    _crossSellAccepted = false; // Reset if validation fails
+                    _crossSellPrice = 0;
+                    return;
+                }
                 
                 // Get the selected photo for the cross-sell
                 if (_capturedPhotos.Count > 0 && 
@@ -409,8 +553,17 @@ namespace Photobooth
                 }
                 else if (_currentStage == UpsellStage.CrossSell)
                 {
-                    // Decline cross-sell, complete upselling
+                    // Decline cross-sell, validate credits for order without cross-sell
                     _crossSellAccepted = false;
+                    _crossSellPrice = 0;
+                    
+                    // Validate credits for order without cross-sell
+                    var totalOrderCost = (_originalProduct?.Price ?? 0) + _extraCopiesPrice;
+                    if (!await ValidateCreditsForTotalOrderAsync(totalOrderCost))
+                    {
+                        return; // Validation failed, don't proceed
+                    }
+                    
                     CompleteUpselling();
                 }
             }
@@ -455,16 +608,20 @@ namespace Photobooth
         /// </summary>
         private void UpdatePricingDisplays()
         {
-            // Update copy pricing based on original product type (simplified pricing for cards)
-            OneCopyPrice.Text = $"${EXTRA_COPY_PRICE_1:F0}";
-            TwoCopyPrice.Text = $"${EXTRA_COPY_PRICE_2:F0}";
-            FourCopyPrice.Text = $"${EXTRA_COPY_PRICE_4_BASE:F0}";
+            // Update copy pricing using configurable values from admin dashboard
+            // Round UP to nearest dollar for display (no decimals in photo booth pricing)
+            OneCopyPrice.Text = $"${Math.Ceiling(_extraCopyPrice1)}";
+            TwoCopyPrice.Text = $"${Math.Ceiling(_extraCopyPrice2)}";
+            
+            // Calculate 3+ copy price using simplified pricing model
+            decimal threeCopyPrice = CalculateExtraCopyPrice(3);
+            ThreeCopyPrice.Text = $"${Math.Ceiling(threeCopyPrice)}";
         }
 
         /// <summary>
         /// Get the appropriate cross-sell product
         /// </summary>
-        public ProductInfo? GetCrossSellProduct()
+        public async Task<ProductInfo?> GetCrossSellProductAsync()
         {
             if (_originalProduct == null) return null;
 
@@ -476,31 +633,73 @@ namespace Photobooth
                     Type = "4x6", 
                     Name = "4x6 Photos", 
                     Description = "High-quality print",
-                    Price = PHOTO_4X6_PRICE 
+                    Price = await GetDatabasePriceForProductTypeAsync("Photo4x6") ?? PHOTO_4X6_PRICE 
                 },
                 "4x6" or "photo4x6" => new ProductInfo 
                 { 
                     Type = "strips", 
                     Name = "Photo Strips", 
                     Description = "Classic 4-photo strip",
-                    Price = STRIPS_PRICE 
+                    Price = await GetDatabasePriceForProductTypeAsync("PhotoStrips") ?? STRIPS_PRICE 
                 },
                 _ => null // No cross-sell for phone prints or unknown types
             };
         }
 
         /// <summary>
-        /// Calculate extra copy pricing based on quantity
+        /// Get product price from database by product type
+        /// </summary>
+        private async Task<decimal?> GetDatabasePriceForProductTypeAsync(string productType)
+        {
+            try
+            {
+                var productsResult = await _databaseService.GetAllAsync<Product>();
+                if (productsResult.Success && productsResult.Data?.Count > 0)
+                {
+                    var product = productsResult.Data.FirstOrDefault(p => p.ProductType.ToString() == productType);
+                    if (product != null)
+                    {
+                        LoggingService.Application.Debug("Retrieved product price from database", 
+                            ("ProductType", productType),
+                            ("Price", product.Price));
+                        return product.Price;
+                    }
+                    else
+                    {
+                        LoggingService.Application.Warning("Product not found in database, using fallback price", 
+                            ("ProductType", productType));
+                    }
+                }
+                else
+                {
+                    LoggingService.Application.Warning("Failed to retrieve products from database, using fallback price", 
+                        ("ProductType", productType),
+                        ("Success", productsResult.Success),
+                        ("DataCount", productsResult.Data?.Count ?? 0));
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to get database price for cross-sell product", ex,
+                    ("ProductType", productType));
+            }
+            return null; // Fallback to hardcoded constant
+        }
+
+        /// <summary>
+        /// Calculate extra copy pricing based on quantity using configurable pricing
         /// </summary>
         public decimal CalculateExtraCopyPrice(int copies)
         {
-            return copies switch
+            decimal result = copies switch
             {
-                1 => EXTRA_COPY_PRICE_1,
-                2 => EXTRA_COPY_PRICE_2,
-                >= 4 => EXTRA_COPY_PRICE_4_BASE + ((copies - 4) * EXTRA_COPY_PRICE_PER_ADDITIONAL),
+                1 => _extraCopyPrice1,
+                2 => _extraCopyPrice2,
+                >= 3 => _extraCopyPrice2 + ((copies - 2) * _extraCopyPriceAdditional),
                 _ => 0
             };
+            
+            return result;
         }
 
         /// <summary>
@@ -512,6 +711,28 @@ namespace Photobooth
         }
 
         /// <summary>
+        /// Set extra copy pricing configuration for testing purposes
+        /// </summary>
+        public void SetExtraCopyPricingForTesting(bool useCustomPricing, decimal basePrice, decimal? extraCopy1Price = null, decimal? extraCopy2Price = null, decimal? extraCopyAdditionalPrice = null)
+        {
+            _useCustomExtraCopyPricing = useCustomPricing;
+            
+            if (useCustomPricing)
+            {
+                _extraCopyPrice1 = extraCopy1Price ?? basePrice;
+                _extraCopyPrice2 = extraCopy2Price ?? (basePrice * 2);
+                _extraCopyPriceAdditional = extraCopyAdditionalPrice ?? basePrice;
+            }
+            else
+            {
+                // Use base product price for all extra copies (no discount)
+                _extraCopyPrice1 = basePrice;
+                _extraCopyPrice2 = basePrice * 2;
+                _extraCopyPriceAdditional = basePrice;
+            }
+        }
+
+        /// <summary>
         /// Update the cross-sell display
         /// </summary>
         private void UpdateCrossSellDisplay()
@@ -519,6 +740,9 @@ namespace Photobooth
             if (_crossSellProduct == null) return;
 
             var isStrips = _crossSellProduct.Type?.ToLower() == "strips";
+            
+            // Update the cross-sell button text based on the product type
+            ContinueButton.Content = isStrips ? "Yes! Add Photo Strips" : "Yes! Add 4x6 Photos";
             
             // Initialize the photo carousel
             try
@@ -540,23 +764,19 @@ namespace Photobooth
                         _selectedPhotoIndex = 0;
                         UpdatePhotoDisplay();
                         UpdateNavigationButtons();
-                        Console.WriteLine($"[DEBUG] Photo carousel initialized with {_capturedPhotos.Count} photos");
                     }
                     else
                     {
-                        Console.WriteLine("[DEBUG] No valid captured photos found");
                         SetCrossSellFallbackPreview(isStrips);
                     }
                 }
                 else
                 {
-                    Console.WriteLine("[DEBUG] No captured photos available for cross-sell preview");
                     SetCrossSellFallbackPreview(isStrips);
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[DEBUG] Error initializing photo carousel: {ex.Message}");
                 LoggingService.Application.Error("Failed to initialize photo carousel", ex);
                 SetCrossSellFallbackPreview(isStrips);
             }
@@ -575,7 +795,6 @@ namespace Photobooth
                 }
 
                 var photoPath = _capturedPhotos[_selectedPhotoIndex];
-                Console.WriteLine($"[DEBUG] Displaying photo {_selectedPhotoIndex + 1}/{_capturedPhotos.Count}: {photoPath}");
 
                 // Dispose previous image if exists
                 if (CrossSellPreview.Child is Image oldImage)
@@ -600,7 +819,6 @@ namespace Photobooth
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[DEBUG] Error updating photo display: {ex.Message}");
                 LoggingService.Application.Error("Failed to update photo display", ex);
             }
         }
@@ -642,7 +860,6 @@ namespace Photobooth
         /// </summary>
         private void ShowQuantitySelector()
         {
-            Console.WriteLine("[DEBUG] ShowQuantitySelector called");
             // Since the quantity selector is now integrated in the 4+ card, we just update the display
             UpdateQuantityDisplay();
         }
@@ -652,18 +869,17 @@ namespace Photobooth
         /// </summary>
         private void UpdateQuantityDisplay()
         {
-            Console.WriteLine($"[DEBUG] UpdateQuantityDisplay called - Quantity: {_currentQuantity}");
             try
             {
                 CardQuantityDisplay.Text = _currentQuantity.ToString();
-                var price = EXTRA_COPY_PRICE_4_BASE + ((_currentQuantity - 4) * EXTRA_COPY_PRICE_PER_ADDITIONAL);
-                FourCopyPrice.Text = $"${price:F0}";
+                var price = CalculateExtraCopyPrice(_currentQuantity);
+                // Round UP to nearest dollar for display (no decimals in photo booth pricing)
+                ThreeCopyPrice.Text = $"${Math.Ceiling(price)}";
                 ConfirmQuantityButton.Content = $"Select {_currentQuantity} Copies";
-                Console.WriteLine($"[DEBUG] Display updated - Price: ${price:F0}, Button text: Select {_currentQuantity} Copies");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[DEBUG] UpdateQuantityDisplay failed: {ex.Message}");
+                LoggingService.Application.Error("UpdateQuantityDisplay failed", ex);
             }
         }
 
@@ -681,9 +897,10 @@ namespace Photobooth
                 ExtraCopies = 0,
                 ExtraCopiesPrice = 0,
                 CrossSellAccepted = false,
-                CrossSellProduct = null,
+                CrossSellProduct = null, // Always null for fallback
                 CrossSellPrice = 0,
-                TotalAdditionalCost = 0
+                TotalAdditionalCost = 0,
+                SelectedPhotoForCrossSell = null
             };
         }
 
@@ -758,6 +975,7 @@ namespace Photobooth
                 {
                     // Timeout on cross-sell, complete upselling
                     _crossSellAccepted = false;
+                    _crossSellPrice = 0; // Reset cross-sell price on timeout
                     CompleteUpselling();
                 }
             }
@@ -929,6 +1147,137 @@ namespace Photobooth
                 }
 
                 Canvas.SetTop(particle, newTop);
+            }
+        }
+
+        #endregion
+
+        #region Credits Management
+
+        /// <summary>
+        /// Refresh credits from database
+        /// </summary>
+        private async Task RefreshCreditsFromDatabase()
+        {
+            try
+            {
+                var creditsResult = await _databaseService.GetSettingValueAsync<decimal>("System", "CurrentCredits");
+                if (creditsResult.Success)
+                {
+                    _currentCredits = creditsResult.Data;
+                }
+                else
+                {
+                    _currentCredits = 0;
+                }
+                UpdateCreditsDisplay();
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Error refreshing credits from database", ex);
+                _currentCredits = 0;
+                UpdateCreditsDisplay();
+            }
+        }
+
+        /// <summary>
+        /// Updates the credits display with validation
+        /// </summary>
+        /// <param name="credits">Current credit amount</param>
+        public void UpdateCredits(decimal credits)
+        {
+            if (credits < 0)
+            {
+                credits = 0;
+            }
+
+            _currentCredits = credits;
+            UpdateCreditsDisplay();
+        }
+
+        /// <summary>
+        /// Update credits display
+        /// </summary>
+        private void UpdateCreditsDisplay()
+        {
+            try
+            {
+                if (CreditsDisplay != null)
+                {
+                    string displayText;
+                    if (_mainWindow?.IsFreePlayMode == true)
+                    {
+                        displayText = "Free Play Mode";
+                    }
+                    else
+                    {
+                        displayText = $"Credits: ${_currentCredits:F0}";
+                    }
+                    CreditsDisplay.Text = displayText;
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to update credits display", ex);
+            }
+        }
+
+        /// <summary>
+        /// Validate that user has sufficient credits for the total order
+        /// </summary>
+        private async Task<bool> ValidateCreditsForTotalOrderAsync(decimal totalOrderCost)
+        {
+            try
+            {
+                Console.WriteLine($"=== UPSELL CREDIT VALIDATION === TotalOrderCost: {totalOrderCost}");
+                Console.WriteLine($"=== UPSELL CREDIT VALIDATION === MainWindow: {_mainWindow != null}, IsFreePlayMode: {_mainWindow?.IsFreePlayMode}");
+                
+                // Check if we're in free play mode - if so, skip credit validation
+                if (_mainWindow?.IsFreePlayMode == true)
+                {
+                    Console.WriteLine($"=== UPSELL CREDIT VALIDATION === FREE PLAY MODE - SKIPPING VALIDATION");
+                    LoggingService.Application.Information("Free play mode detected - skipping credit validation",
+                        ("TotalOrderCost", totalOrderCost),
+                        ("OperationMode", _mainWindow.CurrentOperationMode));
+                    return true;
+                }
+
+                // Refresh credits to get most up-to-date balance
+                await RefreshCreditsFromDatabase();
+
+                if (_currentCredits < totalOrderCost)
+                {
+                    var shortfall = totalOrderCost - _currentCredits;
+                    
+                    LoggingService.Application.Warning("Insufficient credits for total order",
+                        ("TotalOrderCost", totalOrderCost),
+                        ("CurrentCredits", _currentCredits),
+                        ("Shortfall", shortfall));
+
+                    // Show error message to user - simplified to avoid information disclosure
+                    if (_mainWindow?.IsFreePlayMode == true)
+                    {
+                        // This shouldn't happen in free play mode, but if it does, show a generic error
+                        var message = "Unable to process your order.\n\nPlease contact staff for assistance.";
+                        NotificationService.Instance.ShowError("Order Error", message, 10);
+                    }
+                    else
+                    {
+                        var message = "Insufficient credits for this order.\n\nPlease contact staff to add more credits or modify your order.";
+                        NotificationService.Instance.ShowError("Insufficient Credits", message, 10);
+                    }
+                    
+                    return false;
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Credit validation failed", ex);
+                NotificationService.Instance.ShowError("Credit Validation Error", 
+                    "Unable to validate credits. Please try again or contact support.");
+                return false;
             }
         }
 

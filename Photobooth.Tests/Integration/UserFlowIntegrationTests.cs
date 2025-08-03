@@ -41,6 +41,10 @@ namespace Photobooth.Tests.Integration
             // Arrange
             TestContext?.WriteLine("Testing database integration for template loading...");
 
+            // Initialize the database first
+            var initResult = await _databaseService!.InitializeAsync();
+            initResult.Success.Should().BeTrue($"Database initialization should succeed: {initResult.ErrorMessage}");
+
             // Act
             var templatesResult = await _databaseService!.GetAllTemplatesAsync();
 
@@ -66,14 +70,14 @@ namespace Photobooth.Tests.Integration
             {
                 Name = "Test Product",
                 Type = "strips",
-                Price = 5.00m,
+                Price = 6.00m,
                 Description = "Test description"
             };
 
             // Act & Assert
             product.Name.Should().Be("Test Product");
             product.Type.Should().Be("strips");
-            product.Price.Should().Be(5.00m);
+            product.Price.Should().Be(6.00m);
             product.Description.Should().Be("Test description");
             TestContext?.WriteLine("✓ ProductInfo model works correctly");
         }

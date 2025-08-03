@@ -2,6 +2,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using FluentAssertions;
 using Photobooth;
 using Photobooth.Models;
+using Photobooth.Services;
 using Photobooth.Tests.Mocks;
 using System;
 using System.Collections.Generic;
@@ -74,7 +75,7 @@ namespace Photobooth.Tests.Screens
             // Initialize UpsellScreen on UI thread
             Application.Current.Dispatcher.Invoke(() =>
             {
-                _upsellScreen = new UpsellScreen();
+                _upsellScreen = new UpsellScreen(new DatabaseService());
             });
         }
 
@@ -222,18 +223,18 @@ namespace Photobooth.Tests.Screens
         public async Task CrossSellProduct_StripsToPhoto4x6_ReturnsCorrectProduct()
         {
             // Arrange & Act
-            await Application.Current.Dispatcher.InvokeAsync(() =>
+            await Application.Current.Dispatcher.InvokeAsync(async () =>
             {
                 var stripsProduct = new ProductInfo { Type = "strips" };
                 _upsellScreen.SetOriginalProductForTesting(stripsProduct);
 
-                var crossSellProduct = _upsellScreen.GetCrossSellProduct();
+                var crossSellProduct = await _upsellScreen.GetCrossSellProductAsync();
 
                 // Assert
                 crossSellProduct.Should().NotBeNull();
                 crossSellProduct!.Type.Should().Be("4x6");
                 crossSellProduct.Name.Should().Be("4x6 Photos");
-                crossSellProduct.Price.Should().Be(3.00m);
+                crossSellProduct.Price.Should().Be(7.00m); // Updated to use actual database price
             });
         }
 
@@ -241,18 +242,18 @@ namespace Photobooth.Tests.Screens
         public async Task CrossSellProduct_Photo4x6ToStrips_ReturnsCorrectProduct()
         {
             // Arrange & Act
-            await Application.Current.Dispatcher.InvokeAsync(() =>
+            await Application.Current.Dispatcher.InvokeAsync(async () =>
             {
                 var photo4x6Product = new ProductInfo { Type = "4x6" };
                 _upsellScreen.SetOriginalProductForTesting(photo4x6Product);
 
-                var crossSellProduct = _upsellScreen.GetCrossSellProduct();
+                var crossSellProduct = await _upsellScreen.GetCrossSellProductAsync();
 
                 // Assert
                 crossSellProduct.Should().NotBeNull();
                 crossSellProduct!.Type.Should().Be("strips");
                 crossSellProduct.Name.Should().Be("Photo Strips");
-                crossSellProduct.Price.Should().Be(5.00m);
+                crossSellProduct.Price.Should().Be(8.00m); // Updated to use actual database price
             });
         }
 
@@ -260,12 +261,12 @@ namespace Photobooth.Tests.Screens
         public async Task CrossSellProduct_PhoneProduct_ReturnsNull()
         {
             // Arrange & Act
-            await Application.Current.Dispatcher.InvokeAsync(() =>
+            await Application.Current.Dispatcher.InvokeAsync(async () =>
             {
                 var phoneProduct = new ProductInfo { Type = "phone" };
                 _upsellScreen.SetOriginalProductForTesting(phoneProduct);
 
-                var crossSellProduct = _upsellScreen.GetCrossSellProduct();
+                var crossSellProduct = await _upsellScreen.GetCrossSellProductAsync();
 
                 // Assert
                 crossSellProduct.Should().BeNull();
@@ -276,12 +277,12 @@ namespace Photobooth.Tests.Screens
         public async Task CrossSellProduct_PhotoStripsVariant_ReturnsCorrectProduct()
         {
             // Arrange & Act
-            await Application.Current.Dispatcher.InvokeAsync(() =>
+            await Application.Current.Dispatcher.InvokeAsync(async () =>
             {
                 var photoStripsProduct = new ProductInfo { Type = "photostrips" };
                 _upsellScreen.SetOriginalProductForTesting(photoStripsProduct);
 
-                var crossSellProduct = _upsellScreen.GetCrossSellProduct();
+                var crossSellProduct = await _upsellScreen.GetCrossSellProductAsync();
 
                 // Assert
                 crossSellProduct.Should().NotBeNull();
@@ -294,12 +295,12 @@ namespace Photobooth.Tests.Screens
         public async Task CrossSellProduct_Photo4x6Variant_ReturnsCorrectProduct()
         {
             // Arrange & Act
-            await Application.Current.Dispatcher.InvokeAsync(() =>
+            await Application.Current.Dispatcher.InvokeAsync(async () =>
             {
                 var photo4x6Product = new ProductInfo { Type = "photo4x6" };
                 _upsellScreen.SetOriginalProductForTesting(photo4x6Product);
 
-                var crossSellProduct = _upsellScreen.GetCrossSellProduct();
+                var crossSellProduct = await _upsellScreen.GetCrossSellProductAsync();
 
                 // Assert
                 crossSellProduct.Should().NotBeNull();
@@ -311,12 +312,12 @@ namespace Photobooth.Tests.Screens
         public async Task CrossSellProduct_UnknownProductType_ReturnsNull()
         {
             // Arrange & Act
-            await Application.Current.Dispatcher.InvokeAsync(() =>
+            await Application.Current.Dispatcher.InvokeAsync(async () =>
             {
                 var unknownProduct = new ProductInfo { Type = "unknown" };
                 _upsellScreen.SetOriginalProductForTesting(unknownProduct);
 
-                var crossSellProduct = _upsellScreen.GetCrossSellProduct();
+                var crossSellProduct = await _upsellScreen.GetCrossSellProductAsync();
 
                 // Assert
                 crossSellProduct.Should().BeNull();
@@ -337,15 +338,155 @@ namespace Photobooth.Tests.Screens
         }
 
         [TestMethod]
-        public async Task CalculateExtraCopyPrice_ThreeCopies_ReturnsZero()
+        public async Task UpsellScreen_WithCustomPricing_CalculatesCorrectly()
+        {
+            await Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                // Test scenario: Database has custom pricing enabled with the default hardcoded values
+                // This might explain why the user sees $20 instead of $15
+                
+                // Default field values from UpsellScreen:
+                // _extraCopyPrice1 = 3.00m;
+                // _extraCopyPrice2 = 5.00m; 
+                // _extraCopyPriceAdditional = 1.50m;
+                
+                _upsellScreen.SetExtraCopyPricingForTesting(
+                    useCustomPricing: true, 
+                    basePrice: 5.00m,
+                    extraCopy1Price: 3.00m,
+                    extraCopy2Price: 5.00m,
+                    extraCopyAdditionalPrice: 1.50m
+                );
+                
+                var oneCopyPrice = _upsellScreen.CalculateExtraCopyPrice(1);
+                var twoCopyPrice = _upsellScreen.CalculateExtraCopyPrice(2);
+                var threeCopyPrice = _upsellScreen.CalculateExtraCopyPrice(3);
+                var fourCopyPrice = _upsellScreen.CalculateExtraCopyPrice(4);
+                
+                // With custom pricing enabled using default values:
+                oneCopyPrice.Should().Be(3.00m, "1 copy with custom pricing");
+                twoCopyPrice.Should().Be(5.00m, "2 copies with custom pricing");
+                threeCopyPrice.Should().Be(6.50m, "3 copies = $5.00 + (1 × $1.50) = $6.50");
+                fourCopyPrice.Should().Be(8.00m, "4 copies = $5.00 + (2 × $1.50) = $8.00");
+                
+                // None of these would give $20, so the issue must be elsewhere
+                Console.WriteLine($"Custom pricing test - 3 copies: ${threeCopyPrice}, 4 copies: ${fourCopyPrice}");
+            });
+        }
+
+        [TestMethod]
+        public async Task UpsellScreen_WithHighAdditionalPrice_CalculatesCorrectly()
+        {
+            await Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                // Test with high additional price that might explain $20 result
+                // If _extraCopyPriceAdditional was $5 instead of $1.50:
+                
+                _upsellScreen.SetExtraCopyPricingForTesting(
+                    useCustomPricing: true, 
+                    basePrice: 5.00m,
+                    extraCopy1Price: 5.00m,
+                    extraCopy2Price: 10.00m,
+                    extraCopyAdditionalPrice: 5.00m
+                );
+                
+                var threeCopyPrice = _upsellScreen.CalculateExtraCopyPrice(3);
+                var fourCopyPrice = _upsellScreen.CalculateExtraCopyPrice(4);
+                
+                // With high additional price:
+                threeCopyPrice.Should().Be(15.00m, "3 copies = $10.00 + (1 × $5.00) = $15.00");
+                fourCopyPrice.Should().Be(20.00m, "4 copies = $10.00 + (2 × $5.00) = $20.00");
+                
+                Console.WriteLine($"High additional price test - 3 copies: ${threeCopyPrice}, 4 copies: ${fourCopyPrice}");
+                
+                // This could explain the $20 if calculation is using 4 instead of 3
+            });
+        }
+
+        [TestMethod]
+        public async Task UpsellScreen_StripsProduct_ThreeCopies_ShowsCorrectPricing()
+        {
+            await Application.Current.Dispatcher.InvokeAsync(async () =>
+            {
+                // Arrange - Create strips product with $5 price (typical scenario from user's screenshot)
+                var stripsProduct = new ProductInfo
+                {
+                    Type = "strips",
+                    Name = "Photo Strips",
+                    Price = 5.00m
+                };
+                
+                // Initialize UpsellScreen with strips product
+                await _upsellScreen.InitializeAsync(_mockTemplate, stripsProduct, _mockComposedImagePath, _mockCapturedPhotos);
+                
+                // Set pricing to use base product price (no custom discount)
+                _upsellScreen.SetExtraCopyPricingForTesting(useCustomPricing: false, basePrice: 5.00m);
+                
+                // Act - Calculate price for 3 copies
+                var threeCopyPrice = _upsellScreen.CalculateExtraCopyPrice(3);
+                
+                // Assert - Should be 3 × $5.00 = $15.00, not $20.00
+                threeCopyPrice.Should().Be(15.00m, "3 copies of a $5 product should cost $15, not $20");
+                
+                // Additional checks
+                var oneCopyPrice = _upsellScreen.CalculateExtraCopyPrice(1);
+                var twoCopyPrice = _upsellScreen.CalculateExtraCopyPrice(2);
+                
+                oneCopyPrice.Should().Be(5.00m, "1 copy should cost $5");
+                twoCopyPrice.Should().Be(10.00m, "2 copies should cost $10");
+                
+                // Verify the progression is correct
+                (threeCopyPrice - twoCopyPrice).Should().Be(5.00m, "Adding one more copy should add exactly $5");
+            });
+        }
+
+        [TestMethod]
+        public async Task CalculateExtraCopyPrice_UsesCorrectProductPrice_ForDifferentProductTypes()
+        {
+            await Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                // Test with strips product ($5.00)
+                var stripsProduct = new ProductInfo
+                {
+                    Type = "strips",
+                    Name = "Photo Strips",
+                    Price = 5.00m
+                };
+                
+                _upsellScreen.SetExtraCopyPricingForTesting(useCustomPricing: false, basePrice: stripsProduct.Price);
+                var stripsPrice = _upsellScreen.CalculateExtraCopyPrice(2);
+                stripsPrice.Should().Be(10.00m); // 2 × $5.00 = $10.00
+                
+                // Test with 4x6 product ($3.00)
+                var photo4x6Product = new ProductInfo
+                {
+                    Type = "4x6",
+                    Name = "4x6 Photos",
+                    Price = 3.00m
+                };
+                
+                _upsellScreen.SetExtraCopyPricingForTesting(useCustomPricing: false, basePrice: photo4x6Product.Price);
+                var photo4x6Price = _upsellScreen.CalculateExtraCopyPrice(2);
+                photo4x6Price.Should().Be(6.00m); // 2 × $3.00 = $6.00
+                
+                // Verify different products result in different pricing
+                stripsPrice.Should().NotBe(photo4x6Price);
+            });
+        }
+
+        [TestMethod]
+        public async Task CalculateExtraCopyPrice_ThreeCopies_CalculatesCorrectly()
         {
             // Arrange & Act
             await Application.Current.Dispatcher.InvokeAsync(() =>
             {
+                // Configure simplified pricing model (no custom pricing, use base price)
+                _upsellScreen.SetExtraCopyPricingForTesting(useCustomPricing: false, basePrice: 5.00m);
+                
                 var price = _upsellScreen.CalculateExtraCopyPrice(3);
 
-                // Assert
-                price.Should().Be(0); // Invalid quantity
+                // Assert - with default pricing (no custom discount), 3 copies = 3 × base price
+                price.Should().Be(15.00m); // 3 × $5.00 base price = $15.00
             });
         }
 
