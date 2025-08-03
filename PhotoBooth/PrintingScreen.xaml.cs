@@ -28,6 +28,7 @@ namespace Photobooth
 
         #region Private Fields
         private readonly IDatabaseService _databaseService;
+        private readonly MainWindow? _mainWindow; // Reference to MainWindow for operation mode check
         private AdminDashboardScreen? _adminDashboardScreen; // For credit management
         private DispatcherTimer? _progressTimer;
         private DispatcherTimer? _countdownTimer;
@@ -47,10 +48,11 @@ namespace Photobooth
         #endregion
 
         #region Constructor
-        public PrintingScreen(IDatabaseService databaseService, AdminDashboardScreen? adminDashboardScreen = null)
+        public PrintingScreen(IDatabaseService databaseService, AdminDashboardScreen? adminDashboardScreen = null, MainWindow? mainWindow = null)
         {
             _databaseService = databaseService ?? throw new ArgumentNullException(nameof(databaseService));
             _adminDashboardScreen = adminDashboardScreen;
+            _mainWindow = mainWindow;
             InitializeComponent();
             Loaded += PrintingScreen_Loaded;
         }
@@ -410,10 +412,19 @@ namespace Photobooth
                     // Immediately refresh credits display to show updated balance
                     _ = RefreshCreditsFromDatabase();
                     
-                    // Show updated credit balance notification
-                    var newBalance = _adminDashboardScreen?.GetCurrentCredits() ?? 0;
-                    NotificationService.Instance.ShowSuccess("Payment Processed", 
-                        $"${_totalOrderCost:F2} deducted successfully.\nRemaining credits: ${newBalance:F2}", 5);
+                    // Show appropriate notification based on operation mode
+                    if (_mainWindow?.IsFreePlayMode == true)
+                    {
+                        NotificationService.Instance.ShowSuccess("Printing Complete", 
+                            $"Your photos have been printed successfully!\nFree play mode - no payment required.", 5);
+                    }
+                    else
+                    {
+                        // Show updated credit balance notification for coin mode
+                        var newBalance = _adminDashboardScreen?.GetCurrentCredits() ?? 0;
+                        NotificationService.Instance.ShowSuccess("Payment Processed", 
+                            $"${_totalOrderCost:F2} deducted successfully.\nRemaining credits: ${newBalance:F2}", 5);
+                    }
 
                 // Start countdown timer
                 StartCountdownTimer();
@@ -421,13 +432,26 @@ namespace Photobooth
                 else
                 {
                     // Credit deduction failed - show error state
-                    HeaderText.Text = "Payment Required";
-                    SubHeaderText.Text = "Please contact staff to add credits";
-                    StatusText.Text = "Payment Failed";
-                    
-                    // Show error card instead of completion
-                    ErrorMessageText.Text = "Your photos were printed but payment could not be processed. Please contact staff to resolve the payment issue.";
-                    ErrorCard.Visibility = Visibility.Visible;
+                    if (_mainWindow?.IsFreePlayMode == true)
+                    {
+                        // In free play mode, this shouldn't happen, but if it does, show a generic error
+                        HeaderText.Text = "Printing Error";
+                        SubHeaderText.Text = "Please contact staff for assistance";
+                        StatusText.Text = "Error";
+                        
+                        ErrorMessageText.Text = "An unexpected error occurred during printing. Please contact staff for assistance.";
+                        ErrorCard.Visibility = Visibility.Visible;
+                    }
+                    else
+                    {
+                        // Credit deduction failed in coin mode - show payment error
+                        HeaderText.Text = "Payment Required";
+                        SubHeaderText.Text = "Please contact staff to add credits";
+                        StatusText.Text = "Payment Failed";
+                        
+                        ErrorMessageText.Text = "Your photos were printed but payment could not be processed. Please contact staff to resolve the payment issue.";
+                        ErrorCard.Visibility = Visibility.Visible;
+                    }
                     
                     // Start countdown timer to return to welcome screen
                     StartCountdownTimer();
@@ -468,15 +492,37 @@ namespace Photobooth
                 
                 // 2. Deduct credits if admin dashboard is available and link to transaction
                 bool creditDeductionSuccess = false;
-                if (_adminDashboardScreen != null && _totalOrderCost > 0)
+                
+                // Check if we're in free play mode - if so, skip credit deduction
+                if (_mainWindow?.IsFreePlayMode == true)
+                {
+                    Console.WriteLine("--- FREE PLAY MODE DETECTED - SKIPPING CREDIT DEDUCTION ---");
+                    Console.WriteLine($"--- FREE PLAY MODE DETAILS --- TotalOrderCost: {_totalOrderCost}, OperationMode: {_mainWindow.CurrentOperationMode}");
+                    
+                    // Log current credit balance before and after (should be the same)
+                    var currentCredits = _adminDashboardScreen?.GetCurrentCredits() ?? 0;
+                    Console.WriteLine($"--- FREE PLAY MODE CREDIT BALANCE --- Before: ${currentCredits}, After: ${currentCredits} (NO CHANGE)");
+                    
+                    LoggingService.Application.Information("Free play mode detected - skipping credit deduction",
+                        ("TotalOrderCost", _totalOrderCost),
+                        ("OperationMode", _mainWindow.CurrentOperationMode));
+                    creditDeductionSuccess = true; // Mark as successful since no deduction is needed
+                }
+                else if (_adminDashboardScreen != null && _totalOrderCost > 0)
                 {
                     Console.WriteLine("--- ATTEMPTING CREDIT DEDUCTION ---");
+                    Console.WriteLine($"--- CREDIT DEDUCTION DETAILS --- MainWindow: {_mainWindow != null}, IsFreePlayMode: {_mainWindow?.IsFreePlayMode}");
                     var orderDescription = BuildOrderDescription();
                     Console.WriteLine($"Order Description: {orderDescription}");
                     Console.WriteLine($"Deducting ${_totalOrderCost} from credits...");
                     
+                    var creditsBefore = _adminDashboardScreen?.GetCurrentCredits() ?? 0;
+                    Console.WriteLine($"--- CREDIT DEDUCTION BEFORE --- Credits: ${creditsBefore}");
+                    
                     creditDeductionSuccess = await _adminDashboardScreen.DeductCreditsAsync(_totalOrderCost, orderDescription, transactionId);
                     
+                    var creditsAfter = _adminDashboardScreen?.GetCurrentCredits() ?? 0;
+                    Console.WriteLine($"--- CREDIT DEDUCTION AFTER --- Credits: ${creditsAfter}, Change: ${creditsAfter - creditsBefore}");
                     Console.WriteLine($"Credit Deduction Result: {(creditDeductionSuccess ? "SUCCESS" : "FAILED")}");
                     
                     if (!creditDeductionSuccess)
@@ -953,7 +999,16 @@ namespace Photobooth
             {
                 if (CreditsDisplay != null)
                 {
-                    CreditsDisplay.Text = $"Credits: ${_currentCredits:F0}";
+                    string displayText;
+                    if (_mainWindow?.IsFreePlayMode == true)
+                    {
+                        displayText = "Free Play Mode";
+                    }
+                    else
+                    {
+                        displayText = $"Credits: ${_currentCredits:F0}";
+                    }
+                    CreditsDisplay.Text = displayText;
                 }
             }
             catch (Exception ex)

@@ -39,6 +39,7 @@ namespace Photobooth
         #region Private Fields
 
         private readonly IDatabaseService _databaseService;
+        private readonly MainWindow? _mainWindow; // Reference to MainWindow for operation mode check
         private Template? _currentTemplate;
         private ProductInfo? _originalProduct;
         private string? _composedImagePath;
@@ -88,9 +89,10 @@ namespace Photobooth
 
         #region Constructor
 
-        public UpsellScreen(IDatabaseService databaseService)
+        public UpsellScreen(IDatabaseService databaseService, MainWindow? mainWindow = null)
         {
             _databaseService = databaseService ?? throw new ArgumentNullException(nameof(databaseService));
+            _mainWindow = mainWindow;
             InitializeComponent();
             this.Loaded += OnLoaded;
             InitializeAnimations();
@@ -1202,7 +1204,16 @@ namespace Photobooth
             {
                 if (CreditsDisplay != null)
                 {
-                    CreditsDisplay.Text = $"Credits: ${_currentCredits:F0}";
+                    string displayText;
+                    if (_mainWindow?.IsFreePlayMode == true)
+                    {
+                        displayText = "Free Play Mode";
+                    }
+                    else
+                    {
+                        displayText = $"Credits: ${_currentCredits:F0}";
+                    }
+                    CreditsDisplay.Text = displayText;
                 }
             }
             catch (Exception ex)
@@ -1218,6 +1229,19 @@ namespace Photobooth
         {
             try
             {
+                Console.WriteLine($"=== UPSELL CREDIT VALIDATION === TotalOrderCost: {totalOrderCost}");
+                Console.WriteLine($"=== UPSELL CREDIT VALIDATION === MainWindow: {_mainWindow != null}, IsFreePlayMode: {_mainWindow?.IsFreePlayMode}");
+                
+                // Check if we're in free play mode - if so, skip credit validation
+                if (_mainWindow?.IsFreePlayMode == true)
+                {
+                    Console.WriteLine($"=== UPSELL CREDIT VALIDATION === FREE PLAY MODE - SKIPPING VALIDATION");
+                    LoggingService.Application.Information("Free play mode detected - skipping credit validation",
+                        ("TotalOrderCost", totalOrderCost),
+                        ("OperationMode", _mainWindow.CurrentOperationMode));
+                    return true;
+                }
+
                 // Refresh credits to get most up-to-date balance
                 await RefreshCreditsFromDatabase();
 
@@ -1231,9 +1255,17 @@ namespace Photobooth
                         ("Shortfall", shortfall));
 
                     // Show error message to user - simplified to avoid information disclosure
-                    var message = "Insufficient credits for this order.\n\nPlease contact staff to add more credits or modify your order.";
-
-                    NotificationService.Instance.ShowError("Insufficient Credits", message, 10);
+                    if (_mainWindow?.IsFreePlayMode == true)
+                    {
+                        // This shouldn't happen in free play mode, but if it does, show a generic error
+                        var message = "Unable to process your order.\n\nPlease contact staff for assistance.";
+                        NotificationService.Instance.ShowError("Order Error", message, 10);
+                    }
+                    else
+                    {
+                        var message = "Insufficient credits for this order.\n\nPlease contact staff to add more credits or modify your order.";
+                        NotificationService.Instance.ShowError("Insufficient Credits", message, 10);
+                    }
                     
                     return false;
                 }

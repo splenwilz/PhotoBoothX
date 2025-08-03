@@ -63,6 +63,7 @@ namespace Photobooth
         private ProductInfo? selectedProduct;
         private readonly IDatabaseService _databaseService;
         private readonly ITemplateConversionService _templateConversionService;
+        private readonly MainWindow? _mainWindow; // Reference to MainWindow for operation mode check
 
         // Credit system integration
         private AdminDashboardScreen? _adminDashboard;
@@ -81,10 +82,11 @@ namespace Photobooth
         /// <summary>
         /// Constructor - initializes the template selection screen
         /// </summary>
-        public TemplateSelectionScreen(IDatabaseService databaseService, ITemplateConversionService templateConversionService)
+        public TemplateSelectionScreen(IDatabaseService databaseService, ITemplateConversionService templateConversionService, MainWindow? mainWindow = null)
         {
             _databaseService = databaseService ?? throw new ArgumentNullException(nameof(databaseService));
             _templateConversionService = templateConversionService ?? throw new ArgumentNullException(nameof(templateConversionService));
+            _mainWindow = mainWindow;
             InitializeComponent();
             this.Loaded += OnLoaded;
             InitializeTemplateWatcher();
@@ -835,12 +837,21 @@ namespace Photobooth
                     {
                         // Show insufficient credits notification using custom notification system
                         var shortfall = templatePrice - _currentCredits;
-                        var message = $"Template price: ${templatePrice:F2}\n" +
-                                     $"Current credits: ${_currentCredits:F2}\n" +
-                                     $"Additional credits needed: ${shortfall:F2}\n\n" +
-                                     $"Please add more credits to continue.";
-                        
-                        NotificationService.Instance.ShowWarning("Insufficient Credits", message, 8);
+                        if (_mainWindow?.IsFreePlayMode == true)
+                        {
+                            // This shouldn't happen in free play mode, but if it does, show a generic error
+                            var message = "Unable to select this template.\n\nPlease contact staff for assistance.";
+                            NotificationService.Instance.ShowWarning("Selection Error", message, 8);
+                        }
+                        else
+                        {
+                            var message = $"Template price: ${templatePrice:F2}\n" +
+                                         $"Current credits: ${_currentCredits:F2}\n" +
+                                         $"Additional credits needed: ${shortfall:F2}\n\n" +
+                                         $"Please add more credits to continue.";
+                            
+                            NotificationService.Instance.ShowWarning("Insufficient Credits", message, 8);
+                        }
                         
                         LoggingService.Application.Warning("Template selection blocked - insufficient credits",
                             ("TemplateName", template.TemplateName),
@@ -1094,7 +1105,22 @@ namespace Photobooth
         /// </summary>
         private bool HasSufficientCredits(decimal templatePrice)
         {
-            return _currentCredits >= templatePrice;
+            Console.WriteLine($"=== TEMPLATE CREDIT CHECK === Price: {templatePrice}, Credits: {_currentCredits}");
+            Console.WriteLine($"=== TEMPLATE CREDIT CHECK === MainWindow: {_mainWindow != null}, IsFreePlayMode: {_mainWindow?.IsFreePlayMode}");
+            
+            // Check if we're in free play mode - if so, always return true
+            if (_mainWindow?.IsFreePlayMode == true)
+            {
+                Console.WriteLine($"=== TEMPLATE CREDIT CHECK === FREE PLAY MODE - ALLOWING SELECTION");
+                LoggingService.Application.Information("Free play mode detected - skipping credit check for template selection",
+                    ("TemplatePrice", templatePrice),
+                    ("OperationMode", _mainWindow.CurrentOperationMode));
+                return true;
+            }
+            
+            var hasSufficient = _currentCredits >= templatePrice;
+            Console.WriteLine($"=== TEMPLATE CREDIT CHECK === COIN MODE - HasSufficient: {hasSufficient}");
+            return hasSufficient;
         }
 
 
@@ -1152,7 +1178,15 @@ namespace Photobooth
             {
                 if (CreditsDisplay != null)
                 {
-                    var displayText = $"Credits: ${_currentCredits:F0}";
+                    string displayText;
+                    if (_mainWindow?.IsFreePlayMode == true)
+                    {
+                        displayText = "Free Play Mode";
+                    }
+                    else
+                    {
+                        displayText = $"Credits: ${_currentCredits:F0}";
+                    }
                     CreditsDisplay.Text = displayText;
                 }
             }

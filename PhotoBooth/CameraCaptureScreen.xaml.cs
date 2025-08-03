@@ -40,6 +40,7 @@ namespace Photobooth
 
         private readonly CameraService _cameraService;
         private readonly IDatabaseService _databaseService;
+        private readonly MainWindow? _mainWindow; // Reference to MainWindow for operation mode check
         private Template? _currentTemplate;
         private DispatcherTimer? _countdownTimer;
         private DispatcherTimer? _previewTimer;
@@ -58,10 +59,11 @@ namespace Photobooth
 
         #region Constructor
 
-        public CameraCaptureScreen(IDatabaseService databaseService)
+        public CameraCaptureScreen(IDatabaseService databaseService, MainWindow? mainWindow = null)
         {
             InitializeComponent();
             _databaseService = databaseService;
+            _mainWindow = mainWindow;
             _cameraService = new CameraService();
             _capturedPhotos = new List<string>();
 
@@ -953,7 +955,16 @@ namespace Photobooth
             {
                 if (CreditsDisplay != null)
                 {
-                    CreditsDisplay.Text = $"Credits: ${_currentCredits:F0}";
+                    string displayText;
+                    if (_mainWindow?.IsFreePlayMode == true)
+                    {
+                        displayText = "Free Play Mode";
+                    }
+                    else
+                    {
+                        displayText = $"Credits: ${_currentCredits:F0}";
+                    }
+                    CreditsDisplay.Text = displayText;
                 }
             }
             catch (Exception ex)

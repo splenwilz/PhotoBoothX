@@ -212,6 +212,7 @@ namespace Photobooth
         private Dictionary<string, Grid> _tabContentPanels = new();
         private Dictionary<string, Button> _tabButtons = new();
         private readonly IDatabaseService _databaseService;
+        private readonly MainWindow? _mainWindow; // Reference to MainWindow for operation mode refresh
 
         // Sample sales data - in real implementation, this would come from database
         private SalesData _salesData = new();
@@ -229,6 +230,7 @@ namespace Photobooth
         private List<Product> _products = new();
         private bool _isLoadingProducts = false;
         private bool _isSaving = false;
+        private bool _isValidatingInput = false;
 
         // Product ViewModels for new templated approach
         public ObservableCollection<ProductViewModel> ProductViewModels { get; set; } = new();
@@ -250,7 +252,7 @@ namespace Photobooth
         /// <summary>
         /// Initialize the admin dashboard screen
         /// </summary>
-        public AdminDashboardScreen(IDatabaseService databaseService)
+        public AdminDashboardScreen(IDatabaseService databaseService, MainWindow? mainWindow = null)
         {
 
             try
@@ -261,6 +263,7 @@ namespace Photobooth
 
 
                 _databaseService = databaseService;
+                _mainWindow = mainWindow;
 
 
                 InitializeTabMapping();
@@ -879,9 +882,24 @@ namespace Photobooth
             try
             {
 
+                Console.WriteLine($"=== SAVING OPERATION MODE === Mode: '{_currentOperationMode}', UserId: '{_currentUserId}'");
+
                 // NOTE: Product pricing and enabled states are now managed in the Products tab
                 // Only save operation mode here (Coin vs Free) - this is system-wide setting
                 var result = await _databaseService.SetSettingValueAsync("System", "Mode", _currentOperationMode, _currentUserId);
+                Console.WriteLine($"=== SAVE OPERATION MODE RESULT === Success: {result.Success}");
+
+                // Refresh the MainWindow's operation mode to immediately reflect the change
+                if (_mainWindow != null)
+                {
+                    Console.WriteLine("=== REFRESHING MAINWINDOW OPERATION MODE ===");
+                    await _mainWindow.RefreshOperationModeAsync();
+                    LoggingService.Application.Information("Operation mode refreshed in MainWindow", ("NewMode", _currentOperationMode));
+                }
+                else
+                {
+                    Console.WriteLine("=== MAINWINDOW IS NULL - CANNOT REFRESH OPERATION MODE ===");
+                }
 
             }
             catch (Exception ex)
@@ -2168,6 +2186,9 @@ namespace Photobooth
                     LoadExtraCopyPricingUI(photoStrips);
                 }
 
+                // Update base price displays to show current database values
+                UpdateBasePriceDisplays();
+
                 UpdateSaveButtonState();
             }
             catch (Exception ex)
@@ -2606,8 +2627,8 @@ namespace Photobooth
 #endif
                 }
 
-                // Save operation mode
-                await _databaseService.SetSettingValueAsync("System", "Mode", _currentOperationMode, _currentUserId);
+                // Save operation mode and refresh MainWindow
+                await SaveOperationModeSettings();
 
             }
             catch
@@ -2638,31 +2659,31 @@ namespace Photobooth
                 if (useCustomPricing)
                 {
                     // Get Photo Strips pricing from UI
-                    if (StripsExtraCopyPriceInput != null && decimal.TryParse(StripsExtraCopyPriceInput.Text, out decimal stripsPrice))
+                    if (StripsExtraCopyPriceInput != null && int.TryParse(StripsExtraCopyPriceInput.Text, out int stripsPrice))
                     {
                         stripsExtraCopyPrice = stripsPrice;
                     }
-                    if (StripsMultipleCopyDiscountInput != null && decimal.TryParse(StripsMultipleCopyDiscountInput.Text, out decimal stripsDiscount))
+                    if (StripsMultipleCopyDiscountInput != null && int.TryParse(StripsMultipleCopyDiscountInput.Text, out int stripsDiscount))
                     {
                         stripsMultipleCopyDiscount = stripsDiscount;
                     }
 
                     // Get 4x6 Photos pricing from UI
-                    if (Photo4x6ExtraCopyPriceInput != null && decimal.TryParse(Photo4x6ExtraCopyPriceInput.Text, out decimal photo4x6Price))
+                    if (Photo4x6ExtraCopyPriceInput != null && int.TryParse(Photo4x6ExtraCopyPriceInput.Text, out int photo4x6Price))
                     {
                         photo4x6ExtraCopyPrice = photo4x6Price;
                     }
-                    if (Photo4x6MultipleCopyDiscountInput != null && decimal.TryParse(Photo4x6MultipleCopyDiscountInput.Text, out decimal photo4x6Discount))
+                    if (Photo4x6MultipleCopyDiscountInput != null && int.TryParse(Photo4x6MultipleCopyDiscountInput.Text, out int photo4x6Discount))
                     {
                         photo4x6MultipleCopyDiscount = photo4x6Discount;
                     }
 
                     // Get Smartphone Print pricing from UI
-                    if (SmartphoneExtraCopyPriceInput != null && decimal.TryParse(SmartphoneExtraCopyPriceInput.Text, out decimal smartphonePrice))
+                    if (SmartphoneExtraCopyPriceInput != null && int.TryParse(SmartphoneExtraCopyPriceInput.Text, out int smartphonePrice))
                     {
                         smartphoneExtraCopyPrice = smartphonePrice;
                     }
-                    if (SmartphoneMultipleCopyDiscountInput != null && decimal.TryParse(SmartphoneMultipleCopyDiscountInput.Text, out decimal smartphoneDiscount))
+                    if (SmartphoneMultipleCopyDiscountInput != null && int.TryParse(SmartphoneMultipleCopyDiscountInput.Text, out int smartphoneDiscount))
                     {
                         smartphoneMultipleCopyDiscount = smartphoneDiscount;
                     }
@@ -2725,7 +2746,11 @@ namespace Photobooth
         {
             if (sender is TextBox textBox)
             {
-                ValidatePricingInput(textBox);
+                // Only validate if we're not loading from database
+                if (!_isLoadingProducts)
+                {
+                    ValidatePricingInput(textBox);
+                }
             }
             
             UpdatePricingExamples();
@@ -2744,7 +2769,11 @@ namespace Photobooth
         {
             if (sender is TextBox textBox)
             {
-                ValidateDiscountInput(textBox);
+                // Only validate if we're not loading from database
+                if (!_isLoadingProducts)
+                {
+                    ValidateDiscountInput(textBox);
+                }
             }
             
             UpdatePricingExamples();
@@ -2753,6 +2782,51 @@ namespace Photobooth
             if (!_isLoadingProducts)
             {
                 UpdateSaveButtonState();
+            }
+        }
+
+        /// <summary>
+        /// Event handler for smartphone input focus - adds padding for virtual keyboard
+        /// </summary>
+        private void SmartphoneInput_GotFocus(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                // Add extra bottom padding to make room for virtual keyboard
+                if (MainScrollViewer != null)
+                {
+                    MainScrollViewer.Padding = new Thickness(24, 0, 24, 120);
+                    
+                    // Scroll to the bottom to ensure the input is at the bottom where there's space for the keyboard
+                    MainScrollViewer.ScrollToBottom();
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Error handling smartphone input focus", ex);
+            }
+        }
+
+        /// <summary>
+        /// Event handler for smartphone input blur - removes extra padding
+        /// </summary>
+        private void SmartphoneInput_LostFocus(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                // Check if any smartphone input still has focus
+                bool anySmartphoneInputFocused = SmartphoneExtraCopyPriceInput?.IsFocused == true || 
+                                                SmartphoneMultipleCopyDiscountInput?.IsFocused == true;
+                
+                // Only remove padding if no smartphone input has focus
+                if (!anySmartphoneInputFocused && MainScrollViewer != null)
+                {
+                    MainScrollViewer.Padding = new Thickness(24, 0, 24, 24);
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Error handling smartphone input blur", ex);
             }
         }
 
@@ -2814,8 +2888,11 @@ namespace Photobooth
         /// </summary>
         private void ValidatePricingInput(TextBox textBox)
         {
+            if (_isValidatingInput) return; // Prevent recursive validation
+            
             try
             {
+                _isValidatingInput = true;
                 var inputText = textBox.Text?.Trim() ?? "";
                 
                 // Allow empty input during typing
@@ -2825,24 +2902,23 @@ namespace Photobooth
                     return;
                 }
 
-                // Try to parse the input as decimal
-                if (decimal.TryParse(inputText, out decimal price))
+                // Try to parse the input as integer
+                if (int.TryParse(inputText, out int price))
                 {
                     // Validate price range (must be >= 0)
                     if (price < 0)
                     {
                         // Clamp negative values to 0
-                        textBox.Text = "0.00";
-                        ShowValidationError(textBox, "Price cannot be negative. Set to 0.00.");
+                        textBox.Text = "0";
+                        ShowValidationError(textBox, "Price cannot be negative. Set to 0.");
                         LoggingService.Application.Warning("Negative price input corrected", 
                             ("Field", textBox.Name),
                             ("OriginalValue", price),
-                            ("CorrectedValue", 0.00m));
+                            ("CorrectedValue", 0));
                     }
                     else
                     {
-                        // Valid price - format to 2 decimal places
-                        textBox.Text = price.ToString("F2");
+                        // Valid price - no formatting needed for integers
                         ClearValidationError(textBox);
                     }
                 }
@@ -2850,8 +2926,8 @@ namespace Photobooth
                 {
                     // Invalid numeric input - revert to previous valid value or 0
                     var previousValue = GetPreviousValidPrice(textBox);
-                    textBox.Text = previousValue.ToString("F2");
-                    ShowValidationError(textBox, "Please enter a valid price (e.g., 5.00)");
+                    textBox.Text = previousValue.ToString();
+                    ShowValidationError(textBox, "Please enter a valid whole number (e.g., 5)");
                     LoggingService.Application.Warning("Invalid price input corrected", 
                         ("Field", textBox.Name),
                         ("InvalidInput", inputText),
@@ -2864,7 +2940,11 @@ namespace Photobooth
                     ("Field", textBox.Name),
                     ("Input", textBox.Text));
                 // Fallback to safe value
-                textBox.Text = "0.00";
+                textBox.Text = "0";
+            }
+            finally
+            {
+                _isValidatingInput = false;
             }
         }
 
@@ -2873,8 +2953,11 @@ namespace Photobooth
         /// </summary>
         private void ValidateDiscountInput(TextBox textBox)
         {
+            if (_isValidatingInput) return; // Prevent recursive validation
+            
             try
             {
+                _isValidatingInput = true;
                 var inputText = textBox.Text?.Trim() ?? "";
                 
                 // Allow empty input during typing
@@ -2935,12 +3018,16 @@ namespace Photobooth
                 // Fallback to safe value
                 textBox.Text = "0";
             }
+            finally
+            {
+                _isValidatingInput = false;
+            }
         }
 
         /// <summary>
-        /// Get the previous valid price for a text box (fallback to 0.00)
+        /// Get the previous valid price for a text box (fallback to 0)
         /// </summary>
-        private decimal GetPreviousValidPrice(TextBox textBox)
+        private int GetPreviousValidPrice(TextBox textBox)
         {
             // Try to get from current product data if available
             if (_products?.Count > 0)
@@ -2949,10 +3036,10 @@ namespace Photobooth
                 var product = _products.FirstOrDefault(p => p.ProductType.ToString() == productType);
                 if (product != null)
                 {
-                    return product.Price; // Use base product price as fallback
+                    return (int)product.Price; // Use base product price as fallback
                 }
             }
-            return 0.00m; // Default fallback
+            return 0; // Default fallback
         }
 
         /// <summary>
@@ -2984,8 +3071,7 @@ namespace Photobooth
         /// </summary>
         private void ShowValidationError(TextBox textBox, string errorMessage)
         {
-            // Set error styling
-            textBox.BorderBrush = System.Windows.Media.Brushes.Red;
+            // Set error styling - since TextBoxes have BorderThickness="0", we only set the ToolTip
             textBox.ToolTip = errorMessage;
             
             // Show error indicator if available
@@ -3008,8 +3094,7 @@ namespace Photobooth
         /// </summary>
         private void ClearValidationError(TextBox textBox)
         {
-            // Clear error styling
-            textBox.BorderBrush = System.Windows.Media.Brushes.Gray;
+            // Clear error styling - since TextBoxes have BorderThickness="0", we need to clear the ToolTip
             textBox.ToolTip = null;
             
             // Hide error indicator if no other errors
@@ -3038,7 +3123,39 @@ namespace Photobooth
                 SmartphoneMultipleCopyDiscountInput
             };
 
-            return pricingInputs.Any(tb => tb?.BorderBrush == System.Windows.Media.Brushes.Red);
+            // Since TextBoxes have BorderThickness="0", we check for ToolTip instead of BorderBrush
+            return pricingInputs.Any(tb => tb?.ToolTip != null);
+        }
+
+        /// <summary>
+        /// Clear all validation errors from pricing inputs
+        /// </summary>
+        private void ClearAllValidationErrors()
+        {
+            var pricingInputs = new[]
+            {
+                StripsExtraCopyPriceInput,
+                Photo4x6ExtraCopyPriceInput,
+                SmartphoneExtraCopyPriceInput,
+                StripsMultipleCopyDiscountInput,
+                Photo4x6MultipleCopyDiscountInput,
+                SmartphoneMultipleCopyDiscountInput
+            };
+
+            foreach (var textBox in pricingInputs)
+            {
+                if (textBox != null)
+                {
+                    textBox.ToolTip = null;
+                }
+            }
+
+            // Hide error indicator
+            var errorIndicator = FindName("UnsavedChangesIndicator") as TextBlock;
+            if (errorIndicator != null)
+            {
+                errorIndicator.Visibility = Visibility.Collapsed;
+            }
         }
 
         /// <summary>
@@ -3048,6 +3165,9 @@ namespace Photobooth
         {
             try
             {
+                // Clear any existing validation errors when loading from database
+                ClearAllValidationErrors();
+
                 // Set the custom pricing toggle
                 if (UseCustomExtraCopyPricingCheckBox != null)
                 {
@@ -3077,31 +3197,31 @@ namespace Photobooth
                 // Photo Strips pricing
                 if (StripsExtraCopyPriceInput != null)
                 {
-                    StripsExtraCopyPriceInput.Text = (product.StripsExtraCopyPrice ?? 6.00m).ToString("F2");
+                    StripsExtraCopyPriceInput.Text = ((int)(product.StripsExtraCopyPrice ?? 6.00m)).ToString();
                 }
                 if (StripsMultipleCopyDiscountInput != null)
                 {
-                    StripsMultipleCopyDiscountInput.Text = (product.StripsMultipleCopyDiscount ?? 0.00m).ToString("F0");
+                    StripsMultipleCopyDiscountInput.Text = ((int)(product.StripsMultipleCopyDiscount ?? 0.00m)).ToString();
                 }
 
                 // 4x6 Photos pricing
                 if (Photo4x6ExtraCopyPriceInput != null)
                 {
-                    Photo4x6ExtraCopyPriceInput.Text = (product.Photo4x6ExtraCopyPrice ?? 5.00m).ToString("F2");
+                    Photo4x6ExtraCopyPriceInput.Text = ((int)(product.Photo4x6ExtraCopyPrice ?? 6.00m)).ToString();
                 }
                 if (Photo4x6MultipleCopyDiscountInput != null)
                 {
-                    Photo4x6MultipleCopyDiscountInput.Text = (product.Photo4x6MultipleCopyDiscount ?? 0.00m).ToString("F0");
+                    Photo4x6MultipleCopyDiscountInput.Text = ((int)(product.Photo4x6MultipleCopyDiscount ?? 0.00m)).ToString();
                 }
 
                 // Smartphone Print pricing
                 if (SmartphoneExtraCopyPriceInput != null)
                 {
-                    SmartphoneExtraCopyPriceInput.Text = (product.SmartphoneExtraCopyPrice ?? 3.00m).ToString("F2");
+                    SmartphoneExtraCopyPriceInput.Text = ((int)(product.SmartphoneExtraCopyPrice ?? 6.00m)).ToString();
                 }
                 if (SmartphoneMultipleCopyDiscountInput != null)
                 {
-                    SmartphoneMultipleCopyDiscountInput.Text = (product.SmartphoneMultipleCopyDiscount ?? 0.00m).ToString("F0");
+                    SmartphoneMultipleCopyDiscountInput.Text = ((int)(product.SmartphoneMultipleCopyDiscount ?? 0.00m)).ToString();
                 }
 
                 // Update pricing examples with loaded values
@@ -3114,6 +3234,54 @@ namespace Photobooth
         }
 
         #endregion
+
+        /// <summary>
+        /// Update the base price displays in the pricing sections to show current database values
+        /// </summary>
+        private void UpdateBasePriceDisplays()
+        {
+            try
+            {
+                // Find products by ProductType enum
+                var photoStrips = _products.FirstOrDefault(p => p.ProductType == ProductType.PhotoStrips);
+                var photo4x6 = _products.FirstOrDefault(p => p.ProductType == ProductType.Photo4x6);
+                var smartphonePrint = _products.FirstOrDefault(p => p.ProductType == ProductType.SmartphonePrint);
+
+                // Update Photo Strips base price display
+                if (photoStrips != null)
+                {
+                    var photoStripsBasePriceText = this.FindName("PhotoStripsBasePriceText") as TextBlock;
+                    if (photoStripsBasePriceText != null)
+                    {
+                        photoStripsBasePriceText.Text = $"Pricing for Photo Strips extra copies (Base: ${photoStrips.Price:F2})";
+                    }
+                }
+
+                // Update 4x6 Photos base price display
+                if (photo4x6 != null)
+                {
+                    var photo4x6BasePriceText = this.FindName("Photo4x6BasePriceText") as TextBlock;
+                    if (photo4x6BasePriceText != null)
+                    {
+                        photo4x6BasePriceText.Text = $"Pricing for 4x6 Photos extra copies (Base: ${photo4x6.Price:F2})";
+                    }
+                }
+
+                // Update Smartphone Print base price display
+                if (smartphonePrint != null)
+                {
+                    var smartphoneBasePriceText = this.FindName("SmartphoneBasePriceText") as TextBlock;
+                    if (smartphoneBasePriceText != null)
+                    {
+                        smartphoneBasePriceText.Text = $"Pricing for Smartphone Print extra copies (Base: ${smartphonePrint.Price:F2})";
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to update base price displays", ex);
+            }
+        }
 
         /// <summary>
         /// Helper method to find TemplatesTabControl in the content

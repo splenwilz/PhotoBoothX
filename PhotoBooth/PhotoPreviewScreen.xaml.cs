@@ -42,6 +42,7 @@ namespace Photobooth
 
         private readonly IImageCompositionService _compositionService;
         private readonly IDatabaseService _databaseService;
+        private readonly MainWindow? _mainWindow; // Reference to MainWindow for operation mode check
         private Template? _currentTemplate;
         private List<string>? _capturedPhotosPaths;
         private string? _composedImagePath;
@@ -59,11 +60,12 @@ namespace Photobooth
 
         #region Constructor
 
-        public PhotoPreviewScreen(IDatabaseService databaseService, IImageCompositionService compositionService)
+        public PhotoPreviewScreen(IDatabaseService databaseService, IImageCompositionService compositionService, MainWindow? mainWindow = null)
         {
             InitializeComponent();
             _databaseService = databaseService;
             _compositionService = compositionService;
+            _mainWindow = mainWindow;
             
             // Initialize animations
             InitializeAnimatedBackground();
@@ -424,7 +426,16 @@ namespace Photobooth
             {
                 if (CreditsDisplay != null)
                 {
-                    CreditsDisplay.Text = $"Credits: ${_currentCredits:F0}";
+                    string displayText;
+                    if (_mainWindow?.IsFreePlayMode == true)
+                    {
+                        displayText = "Free Play Mode";
+                    }
+                    else
+                    {
+                        displayText = $"Credits: ${_currentCredits:F0}";
+                    }
+                    CreditsDisplay.Text = displayText;
                 }
             }
             catch (Exception ex)

@@ -3552,54 +3552,62 @@ It contains no important application files.
                 await File.WriteAllTextAsync(credentialsFile, credentialsContent);
                 await File.WriteAllTextAsync(readmeFile, readmeContent);
 
+                LoggingService.Application.Information("Setup credentials folder created successfully on desktop",
+                    ("SetupDir", setupDir),
+                    ("CredentialsFile", credentialsFile),
+                    ("ReadmeFile", readmeFile));
 
             }
-            catch
+            catch (Exception ex)
             {
+                LoggingService.Application.Error("Failed to create setup credentials folder on desktop", ex,
+                    ("DesktopPath", Environment.GetFolderPath(Environment.SpecialFolder.Desktop)),
+                    ("SetupDir", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "PhotoBoothX-Setup-Credentials")));
 
-
+                // Don't throw - this is not critical for application startup
+                // The user can still access admin panel and change passwords manually
             }
         }
 
         public static void CleanupSetupCredentials()
-        {
-            try
             {
                 var desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
                 var setupDir = Path.Combine(desktopPath, "PhotoBoothX-Setup-Credentials");
 
+            try
+            {
                 if (Directory.Exists(setupDir))
                 {
                     Directory.Delete(setupDir, true);
-
+                    LoggingService.Application.Information("Setup credentials folder deleted successfully", ("SetupDir", setupDir));
                 }
             }
-            catch
+            catch (Exception ex)
             {
-
-
+                LoggingService.Application.Error("Failed to delete setup credentials folder", ex, ("SetupDir", setupDir));
+                // Don't throw - cleanup failure is not critical
             }
         }
 
         public static async Task CleanupSetupCredentialsAsync()
         {
             await Task.Run(() =>
-            {
-                try
                 {
                     var desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
                     var setupDir = Path.Combine(desktopPath, "PhotoBoothX-Setup-Credentials");
 
+                try
+                {
                     if (Directory.Exists(setupDir))
                     {
                         Directory.Delete(setupDir, true);
-
+                        LoggingService.Application.Information("Setup credentials folder deleted successfully (async)", ("SetupDir", setupDir));
                     }
                 }
-                catch
+                catch (Exception ex)
                 {
-
-
+                    LoggingService.Application.Error("Failed to delete setup credentials folder (async)", ex, ("SetupDir", setupDir));
+                    // Don't throw - cleanup failure is not critical
                 }
             });
         }

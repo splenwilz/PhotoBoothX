@@ -533,7 +533,7 @@
             </Border>
 
             <!-- Tab Content -->
-            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="24,0,24,24">
+            <ScrollViewer x:Name="MainScrollViewer" Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="24,0,24,24">
                 <Grid>
                     <!-- Sales Tab Content -->
                     <Grid Name="SalesTabContent"  Visibility="Collapsed">
@@ -1283,7 +1283,6 @@
 
                     <!-- Products Tab Content -->
                     <Grid Name="ProductsTabContent" Visibility="Collapsed">
-                        <ScrollViewer VerticalScrollBarVisibility="Auto">
                             <StackPanel Margin="0,0,0,32">
                                 
                                 <!-- Header Section -->
@@ -1496,7 +1495,7 @@
                                             <Border Background="#F8FAFC" CornerRadius="8" BorderBrush="#E2E8F0" BorderThickness="1" Padding="16" Margin="0,0,0,16">
                                                 <StackPanel>
                                                     <TextBlock Text="📸 Photo Strips Pricing" FontSize="16" FontWeight="SemiBold" Foreground="#1E293B" Margin="0,0,0,12"/>
-                                                    <TextBlock Text="Pricing for Photo Strips extra copies (Base: $8.00)" FontSize="12" Foreground="#64748B" Margin="0,0,0,16"/>
+                                                    <TextBlock x:Name="PhotoStripsBasePriceText" Text="Pricing for Photo Strips extra copies (Base: $6.00)" FontSize="12" Foreground="#64748B" Margin="0,0,0,16"/>
                                                     
                                                     <Grid>
                                                         <Grid.ColumnDefinitions>
@@ -1548,7 +1547,7 @@
                                             <Border Background="#F8FAFC" CornerRadius="8" BorderBrush="#E2E8F0" BorderThickness="1" Padding="16" Margin="0,0,0,16">
                                                 <StackPanel>
                                                     <TextBlock Text="🖼️ 4x6 Photos Pricing" FontSize="16" FontWeight="SemiBold" Foreground="#1E293B" Margin="0,0,0,12"/>
-                                                    <TextBlock Text="Pricing for 4x6 Photos extra copies (Base: $7.00)" FontSize="12" Foreground="#64748B" Margin="0,0,0,16"/>
+                                                    <TextBlock x:Name="Photo4x6BasePriceText" Text="Pricing for 4x6 Photos extra copies (Base: $6.00)" FontSize="12" Foreground="#64748B" Margin="0,0,0,36"/>
                                                     
                                                     <Grid>
                                                         <Grid.ColumnDefinitions>
@@ -1600,7 +1599,7 @@
                                             <Border Background="#F8FAFC" CornerRadius="8" BorderBrush="#E2E8F0" BorderThickness="1" Padding="16" Margin="0,0,0,16">
                                                 <StackPanel>
                                                     <TextBlock Text="📱 Smartphone Print Pricing" FontSize="16" FontWeight="SemiBold" Foreground="#1E293B" Margin="0,0,0,12"/>
-                                                    <TextBlock Text="Pricing for Smartphone Print extra copies (Base: $6.00)" FontSize="12" Foreground="#64748B" Margin="0,0,0,16"/>
+                                                    <TextBlock x:Name="SmartphoneBasePriceText" Text="Pricing for Smartphone Print extra copies (Base: $6.00)" FontSize="12" Foreground="#64748B" Margin="0,0,0,16"/>
                                                     
                                                     <Grid>
                                                         <Grid.ColumnDefinitions>
@@ -1622,7 +1621,8 @@
                                                                     <TextBlock Grid.Column="0" Text="$" FontSize="12" Foreground="#6B7280" VerticalAlignment="Center" Margin="0,0,4,0"/>
                                                                     <TextBox Grid.Column="1" Name="SmartphoneExtraCopyPriceInput" Text="3.00" 
                                                                              FontSize="12" BorderThickness="0" Background="Transparent" VerticalAlignment="Center"
-                                                                             behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True" TextChanged="ExtraCopyPrice_TextChanged"/>
+                                                                             behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True" TextChanged="ExtraCopyPrice_TextChanged"
+                                                                             GotFocus="SmartphoneInput_GotFocus" LostFocus="SmartphoneInput_LostFocus"/>
                                                                 </Grid>
                                                             </StackPanel>
                                                         </Border>
@@ -1639,7 +1639,8 @@
                                                                     </Grid.ColumnDefinitions>
                                                                     <TextBox Grid.Column="0" Name="SmartphoneMultipleCopyDiscountInput" Text="0" 
                                                                              FontSize="12" BorderThickness="0" Background="Transparent" VerticalAlignment="Center"
-                                                                             behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True" TextChanged="MultipleCopyDiscount_TextChanged"/>
+                                                                             behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True" TextChanged="MultipleCopyDiscount_TextChanged"
+                                                                             GotFocus="SmartphoneInput_GotFocus" LostFocus="SmartphoneInput_LostFocus"/>
                                                                     <TextBlock Grid.Column="1" Text="%" FontSize="12" Foreground="#6B7280" VerticalAlignment="Center" Margin="4,0,0,0"/>
                                                                 </Grid>
                                                             </StackPanel>
@@ -1669,7 +1670,6 @@
                                 </StackPanel>
 
                             </StackPanel>
-                        </ScrollViewer>
                     </Grid>
 
                     <!-- Templates Tab Content -->

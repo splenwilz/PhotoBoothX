@@ -408,10 +408,10 @@ INSERT INTO ProductCategories (Name, Description, SortOrder) VALUES
     ('Smartphone', 'Customer phone photo prints', 3);
 
 -- Insert default products only if they don't exist (by default, extra copies cost same as base price)
-INSERT OR IGNORE INTO Products (CategoryId, Name, Description, Price, PhotoCount, ProductType, UseCustomExtraCopyPricing, ExtraCopy1Price, ExtraCopy2Price, ExtraCopy4BasePrice, ExtraCopyAdditionalPrice) VALUES
-    (1, 'Photo Strip', '4 photos in classic strip format', 5.00, 4, 'PhotoStrips', 0, NULL, NULL, NULL, NULL),
-    (2, '4x6 Photo', 'Single high-quality 4x6 print', 3.00, 1, 'Photo4x6', 0, NULL, NULL, NULL, NULL),
-    (3, 'Phone Print', 'Print photos from your phone', 2.00, 1, 'SmartphonePrint', 0, NULL, NULL, NULL, NULL);
+INSERT OR IGNORE INTO Products (CategoryId, Name, Description, Price, PhotoCount, ProductType, UseCustomExtraCopyPricing, ExtraCopy1Price, ExtraCopy2Price, ExtraCopy4BasePrice, ExtraCopyAdditionalPrice, StripsExtraCopyPrice, Photo4x6ExtraCopyPrice, SmartphoneExtraCopyPrice) VALUES
+    (1, 'Photo Strip', '4 photos in classic strip format', 6.00, 4, 'PhotoStrips', 0, NULL, NULL, NULL, NULL, 6.00, NULL, NULL),
+    (2, '4x6 Photo', 'Single high-quality 4x6 print', 6.00, 1, 'Photo4x6', 0, NULL, NULL, NULL, NULL, NULL, 6.00, NULL),
+    (3, 'Phone Print', 'Print photos from your phone', 6.00, 1, 'SmartphonePrint', 0, NULL, NULL, NULL, NULL, NULL, NULL, 6.00);
 
 -- Insert default template categories
 INSERT INTO TemplateCategories (Name, Description, SortOrder, IsSeasonalCategory, SeasonStartDate, SeasonEndDate, SeasonalPriority) VALUES

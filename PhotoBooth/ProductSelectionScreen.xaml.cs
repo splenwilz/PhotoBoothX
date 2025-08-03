@@ -55,6 +55,7 @@ namespace Photobooth
         private readonly List<Ellipse> particles = new List<Ellipse>();
         private readonly List<Storyboard> activeStoryboards = new List<Storyboard>();
         private readonly IDatabaseService _databaseService;
+        private readonly MainWindow? _mainWindow; // Reference to MainWindow for operation mode check
         private bool disposed = false;
         
         // Database-loaded products
@@ -67,9 +68,10 @@ namespace Photobooth
         /// <summary>
         /// Constructor - initializes the product selection screen
         /// </summary>
-        public ProductSelectionScreen(IDatabaseService databaseService)
+        public ProductSelectionScreen(IDatabaseService databaseService, MainWindow? mainWindow = null)
         {
             _databaseService = databaseService ?? throw new ArgumentNullException(nameof(databaseService));
+            _mainWindow = mainWindow;
             InitializeComponent();
             this.Loaded += OnLoaded;
             _ = RefreshCreditsFromDatabase();
@@ -498,7 +500,15 @@ namespace Photobooth
             {
                 if (CreditsDisplay != null)
                 {
-                    var displayText = $"Credits: ${currentCredits:F0}";
+                    string displayText;
+                    if (_mainWindow?.IsFreePlayMode == true)
+                    {
+                        displayText = "Free Play Mode";
+                    }
+                    else
+                    {
+                        displayText = $"Credits: ${currentCredits:F0}";
+                    }
                     CreditsDisplay.Text = displayText;
                 }
             }

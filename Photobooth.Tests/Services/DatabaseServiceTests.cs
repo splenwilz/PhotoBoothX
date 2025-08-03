@@ -1054,15 +1054,15 @@ namespace Photobooth.Tests.Services
             // Verify each product has the correct default price
             var photoStrips = result.Data!.FirstOrDefault(p => p.ProductType == ProductType.PhotoStrips);
             photoStrips.Should().NotBeNull("Photo Strips product should exist");
-            photoStrips!.Price.Should().Be(5.00m, "Photo Strips should cost $5.00");
+            photoStrips!.Price.Should().Be(6.00m, "Photo Strips should cost $6.00");
 
             var photo4x6 = result.Data!.FirstOrDefault(p => p.ProductType == ProductType.Photo4x6);
             photo4x6.Should().NotBeNull("4x6 Photos product should exist");
-            photo4x6!.Price.Should().Be(3.00m, "4x6 Photos should cost $3.00");
+            photo4x6!.Price.Should().Be(6.00m, "4x6 Photos should cost $6.00");
 
             var smartphonePrint = result.Data!.FirstOrDefault(p => p.ProductType == ProductType.SmartphonePrint);
             smartphonePrint.Should().NotBeNull("Smartphone Print product should exist");
-            smartphonePrint!.Price.Should().Be(2.00m, "Smartphone Print should cost $2.00");
+            smartphonePrint!.Price.Should().Be(6.00m, "Smartphone Print should cost $6.00");
         }
 
         [TestMethod]

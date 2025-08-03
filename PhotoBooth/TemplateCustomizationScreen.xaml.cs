@@ -24,6 +24,7 @@ namespace Photobooth
         #region Private Fields
 
         private readonly IDatabaseService _databaseService;
+        private readonly MainWindow? _mainWindow; // Reference to MainWindow for operation mode check
         private Template? _currentTemplate;
         private TemplateCategory? _currentCategory;
         private ProductInfo? _currentProduct;
@@ -93,9 +94,10 @@ namespace Photobooth
         /// <summary>
         /// Constructor for dependency injection
         /// </summary>
-        public TemplateCustomizationScreen(IDatabaseService databaseService)
+        public TemplateCustomizationScreen(IDatabaseService databaseService, MainWindow? mainWindow = null)
         {
             _databaseService = databaseService ?? throw new ArgumentNullException(nameof(databaseService));
+            _mainWindow = mainWindow;
             _selectedCustomizations = new List<string>();
             
             InitializeComponent();
@@ -480,7 +482,16 @@ namespace Photobooth
             {
                 if (CreditsDisplay != null)
                 {
-                    CreditsDisplay.Text = $"Credits: ${_currentCredits:F0}";
+                    string displayText;
+                    if (_mainWindow?.IsFreePlayMode == true)
+                    {
+                        displayText = "Free Play Mode";
+                    }
+                    else
+                    {
+                        displayText = $"Credits: ${_currentCredits:F0}";
+                    }
+                    CreditsDisplay.Text = displayText;
                 }
             }
             catch (Exception ex)
