@@ -260,6 +260,7 @@ namespace Photobooth.Models
         public int Width { get; set; }
         public int Height { get; set; }
         public double Rotation { get; set; } = 0;
+        public int BorderRadius { get; set; } = 0; // Border radius in pixels for rounded corners
 
         // Navigation properties
         public TemplateLayout? Layout { get; set; }
@@ -273,6 +274,7 @@ namespace Photobooth.Models
         public int Width { get; set; }
         public int Height { get; set; }
         public double Rotation { get; set; } = 0;
+        public int BorderRadius { get; set; } = 0; // Border radius in pixels for rounded corners
     }
 
     public class TemplateDimensions
@@ -323,7 +325,8 @@ namespace Photobooth.Models
                 Y = pa.Y,
                 Width = pa.Width,
                 Height = pa.Height,
-                Rotation = pa.Rotation
+                Rotation = pa.Rotation,
+                BorderRadius = pa.BorderRadius
             }).ToList() ?? new List<PhotoArea>();
         }
         

@@ -144,10 +144,13 @@ namespace Photobooth
         {
             try
             {
+                Console.WriteLine("=== MAINWINDOW: DATABASE INITIALIZATION STARTING ===");
                 LoggingService.Application.Information("Database initialization starting",
                     ("ConnectionString", "Data Source=[PATH]"));
                 
+                Console.WriteLine("=== MAINWINDOW: CALLING _databaseService.InitializeAsync() ===");
                 var result = await _databaseService.InitializeAsync();
+                Console.WriteLine($"=== MAINWINDOW: InitializeAsync() returned. Success: {result.Success} ===");
                 if (!result.Success)
                 {
                     LoggingService.Application.Error("Database initialization failed", null,

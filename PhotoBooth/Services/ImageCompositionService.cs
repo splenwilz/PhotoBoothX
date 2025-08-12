@@ -211,6 +211,9 @@ namespace Photobooth.Services
                 }
                 Console.WriteLine("=== END PHOTO ANALYSIS ===\n");
 
+                // Apply template overlay for heart-shaped and other special templates
+                await ApplyTemplateOverlayAsync(graphics, template);
+
                 // Save composed image
                 var outputFileName = $"composed_{template.Name}_{DateTime.Now:yyyyMMdd_HHmmss}.jpg";
                 var outputPath = Path.Combine(_outputDirectory, outputFileName);
@@ -310,7 +313,7 @@ namespace Photobooth.Services
                 Console.WriteLine($"Target rectangle (where photo should be placed): X={targetRect.X}, Y={targetRect.Y}, W={targetRect.Width}, H={targetRect.Height}");
                 
                 // Create processed photo that fits the target area
-                using var processedPhoto = await Task.Run(() => ProcessCapturedPhoto(capturedPhoto, targetRect, photoArea.Rotation));
+                using var processedPhoto = await Task.Run(() => ProcessCapturedPhoto(capturedPhoto, targetRect, photoArea.Rotation, photoArea.BorderRadius));
                 Console.WriteLine($"Processed photo dimensions: {processedPhoto.Width}x{processedPhoto.Height}");
                 
                 // Verify the processed photo matches target dimensions
@@ -324,7 +327,8 @@ namespace Photobooth.Services
                 }
                 
                 // Draw the processed photo onto the composition
-                if (photoArea.Rotation != 0)
+                // Skip additional rotation for circular photos (360°), heart-shaped photos (720°), and petal-shaped photos (1080°) since masking is already applied
+                if (photoArea.Rotation != 0 && Math.Abs(photoArea.Rotation - 360) >= 0.1 && Math.Abs(photoArea.Rotation - 720) >= 0.1 && Math.Abs(photoArea.Rotation - 1080) >= 0.1)
                 {
                     Console.WriteLine($"Applying rotation: {photoArea.Rotation}°");
                     
@@ -346,7 +350,22 @@ namespace Photobooth.Services
                 }
                 else
                 {
-                    Console.WriteLine($"Drawing photo without rotation");
+                    if (Math.Abs(photoArea.Rotation - 360) < 0.1)
+                    {
+                        Console.WriteLine($"Drawing circular photo (no additional rotation needed)");
+                    }
+                    else if (Math.Abs(photoArea.Rotation - 720) < 0.1)
+                    {
+                        Console.WriteLine($"Drawing heart-shaped photo (no additional rotation needed)");
+                    }
+                    else if (Math.Abs(photoArea.Rotation - 1080) < 0.1)
+                    {
+                        Console.WriteLine($"Drawing petal-shaped photo (no additional rotation needed)");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"Drawing photo without rotation");
+                    }
                     graphics.DrawImage(processedPhoto, targetRect);
                     Console.WriteLine($"Photo drawn at: X={targetRect.X}, Y={targetRect.Y}, W={targetRect.Width}, H={targetRect.Height}");
                 }
@@ -373,13 +392,103 @@ namespace Photobooth.Services
         }
 
         /// <summary>
+        /// Apply template overlay for special templates (like heart shapes) by layering template.png on top
+        /// </summary>
+        private async Task ApplyTemplateOverlayAsync(Graphics graphics, Template template)
+        {
+            try
+            {
+                Console.WriteLine($"\n=== APPLYING TEMPLATE OVERLAY ===");
+                Console.WriteLine($"Template: {template.Name}");
+                Console.WriteLine($"Layout Key: {template.Layout?.LayoutKey}");
+                Console.WriteLine($"Template Folder Path: {template.FolderPath}");
+                
+                // Debug photo areas
+                if (template.PhotoAreas != null)
+                {
+                    Console.WriteLine($"Found {template.PhotoAreas.Count} photo areas:");
+                    foreach (var pa in template.PhotoAreas)
+                    {
+                        Console.WriteLine($"  Photo Area {pa.Id}: Rotation={pa.Rotation}°, Position=({pa.X},{pa.Y}), Size={pa.Width}x{pa.Height}");
+                    }
+                }
+                else
+                {
+                    Console.WriteLine($"⚠️  No photo areas found in template!");
+                }
+                
+                // Check if this template uses special shapes (rotation = 720 indicates heart shapes, 1080 indicates petal shapes)
+                bool hasHeartShapes = template.PhotoAreas?.Any(pa => Math.Abs(pa.Rotation - 720) < 0.1) == true;
+                bool hasPetalShapes = template.PhotoAreas?.Any(pa => Math.Abs(pa.Rotation - 1080) < 0.1) == true;
+                bool hasSpecialShapes = hasHeartShapes || hasPetalShapes;
+                Console.WriteLine($"Has heart shapes: {hasHeartShapes}");
+                Console.WriteLine($"Has petal shapes: {hasPetalShapes}");
+                Console.WriteLine($"Has special shapes: {hasSpecialShapes}");
+                
+                if (!hasSpecialShapes)
+                {
+                    Console.WriteLine($"Template does not use special shapes, skipping overlay");
+                    return;
+                }
+                
+                if (hasHeartShapes)
+                {
+                    Console.WriteLine($"Template uses heart shapes, applying template overlay");
+                }
+                if (hasPetalShapes)
+                {
+                    Console.WriteLine($"Template uses petal shapes, applying template overlay");
+                }
+                
+                // Find the template.png file in the template's folder
+                var templateImagePath = Path.Combine(template.FolderPath, "template.png");
+                Console.WriteLine($"Looking for template overlay at: {templateImagePath}");
+                
+                if (!File.Exists(templateImagePath))
+                {
+                    Console.WriteLine($"⚠️  Template overlay file not found: {templateImagePath}");
+                    return;
+                }
+                
+                // Load and apply the template overlay
+                using var templateOverlay = await Task.Run(() => Image.FromFile(templateImagePath));
+                Console.WriteLine($"Template overlay loaded: {templateOverlay.Width}x{templateOverlay.Height}");
+                
+                // The template overlay should match the canvas dimensions
+                var canvasWidth = template.Layout?.Width ?? 614;
+                var canvasHeight = template.Layout?.Height ?? 1864;
+                
+                Console.WriteLine($"Canvas dimensions: {canvasWidth}x{canvasHeight}");
+                Console.WriteLine($"Template overlay will be scaled to match canvas");
+                
+                // Draw the template overlay on top of all photos
+                // This will mask out areas where the template is opaque, revealing photos only in transparent areas
+                Console.WriteLine($"Drawing template overlay from ({templateOverlay.Width}x{templateOverlay.Height}) to canvas ({canvasWidth}x{canvasHeight})");
+                graphics.DrawImage(templateOverlay, 0, 0, canvasWidth, canvasHeight);
+                
+                Console.WriteLine($"✅ Template overlay applied successfully");
+                Console.WriteLine($"=== END TEMPLATE OVERLAY ===\n");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"❌ Error applying template overlay: {ex.Message}");
+                LoggingService.Application.Error("Failed to apply template overlay", ex, 
+                    ("TemplateName", template.Name),
+                    ("TemplateFolder", template.FolderPath));
+            }
+        }
+
+
+
+        /// <summary>
         /// Process captured photo to fit target area with proper cropping and scaling
         /// </summary>
-        private Bitmap ProcessCapturedPhoto(Image capturedPhoto, Rectangle targetRect, double rotation)
+        private Bitmap ProcessCapturedPhoto(Image capturedPhoto, Rectangle targetRect, double rotation, int borderRadius = 0)
         {
             Console.WriteLine($"    🔄 ProcessCapturedPhoto Details:");
             Console.WriteLine($"    📥 Input: {capturedPhoto.Width}x{capturedPhoto.Height}");
             Console.WriteLine($"    🎯 Target: {targetRect.Width}x{targetRect.Height}");
+            Console.WriteLine($"    🔄 Rotation: {rotation}°");
             
             // Calculate aspect ratios
             var sourceAspect = (double)capturedPhoto.Width / capturedPhoto.Height;
@@ -409,7 +518,7 @@ namespace Photobooth.Services
             Console.WriteLine($"    📦 Crop area: X={cropRect.X}, Y={cropRect.Y}, W={cropRect.Width}, H={cropRect.Height}");
 
             // Create processed image - EXACT target dimensions
-            var processedPhoto = new Bitmap(targetRect.Width, targetRect.Height, PixelFormat.Format24bppRgb);
+            var processedPhoto = new Bitmap(targetRect.Width, targetRect.Height, PixelFormat.Format32bppArgb);
             Console.WriteLine($"    🖼️  Creating bitmap: {processedPhoto.Width}x{processedPhoto.Height}");
             
             using var graphics = Graphics.FromImage(processedPhoto);
@@ -417,6 +526,63 @@ namespace Photobooth.Services
             graphics.SmoothingMode = SmoothingMode.HighQuality;
             graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
             graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
+            graphics.CompositingQuality = CompositingQuality.HighQuality;
+
+            // Clear to transparent background
+            graphics.Clear(Color.Transparent);
+
+            // Check if we need to create a circular mask (rotation = 360 indicates circular photo)
+            bool isCircular = Math.Abs(rotation - 360) < 0.1;
+            // Check if this is a heart-shaped photo (rotation = 720) - these use template overlay instead of clipping
+            bool isHeart = Math.Abs(rotation - 720) < 0.1;
+            // Check if this is a petal-shaped photo (rotation = 1080) - these use template overlay instead of clipping
+            bool isPetal = Math.Abs(rotation - 1080) < 0.1;
+            
+            if (isHeart)
+            {
+                Console.WriteLine($"    💖 Heart-shaped photo detected - will use template overlay (no clipping needed)");
+                // Don't apply any clipping for heart shapes - the template overlay will handle the masking
+            }
+            else if (isPetal)
+            {
+                Console.WriteLine($"    🌸 Petal-shaped photo detected - will use template overlay (no clipping needed)");
+                // Don't apply any clipping for petal shapes - the template overlay will handle the masking
+            }
+            else if (isCircular)
+            {
+                Console.WriteLine($"    🔵 Creating circular mask for fully rounded photo");
+                
+                // Create a circular clipping region
+                var centerX = targetRect.Width / 2f;
+                var centerY = targetRect.Height / 2f;
+                var radius = Math.Min(targetRect.Width, targetRect.Height) / 2f;
+                
+                using var path = new GraphicsPath();
+                path.AddEllipse(centerX - radius, centerY - radius, radius * 2, radius * 2);
+                
+                // Set the clipping region to the circle
+                graphics.SetClip(path);
+                
+                Console.WriteLine($"    🔵 Circular mask: center=({centerX}, {centerY}), radius={radius}");
+            }
+            else if (borderRadius > 0)
+            {
+                Console.WriteLine($"    🔲 Creating rounded corner mask with radius: {borderRadius}");
+                
+                // Create a rounded rectangle clipping region
+                using var path = new GraphicsPath();
+                var rect = new RectangleF(0, 0, targetRect.Width, targetRect.Height);
+                path.AddArc(rect.X, rect.Y, borderRadius * 2, borderRadius * 2, 180, 90); // Top-left
+                path.AddArc(rect.Right - borderRadius * 2, rect.Y, borderRadius * 2, borderRadius * 2, 270, 90); // Top-right
+                path.AddArc(rect.Right - borderRadius * 2, rect.Bottom - borderRadius * 2, borderRadius * 2, borderRadius * 2, 0, 90); // Bottom-right
+                path.AddArc(rect.X, rect.Bottom - borderRadius * 2, borderRadius * 2, borderRadius * 2, 90, 90); // Bottom-left
+                path.CloseFigure();
+                
+                // Set the clipping region to the rounded rectangle
+                graphics.SetClip(path);
+                
+                Console.WriteLine($"    🔲 Rounded corner mask applied with radius: {borderRadius}");
+            }
 
             // Draw cropped and scaled image - destination is ENTIRE bitmap (0,0 to full size)
             var destinationRect = new Rectangle(0, 0, targetRect.Width, targetRect.Height);
@@ -427,6 +593,28 @@ namespace Photobooth.Services
                 destinationRect,  // Where to draw (full bitmap)
                 cropRect,         // What part of source to use
                 GraphicsUnit.Pixel);
+
+            // Reset clipping region if any mask was applied
+            if (isCircular || borderRadius > 0)
+            {
+                graphics.ResetClip();
+                if (isCircular)
+                {
+                    Console.WriteLine($"    🔵 Circular mask applied and reset");
+                }
+                else
+                {
+                    Console.WriteLine($"    🔲 Rounded corner mask applied and reset");
+                }
+            }
+            else if (isHeart)
+            {
+                Console.WriteLine($"    💖 Heart shape processed (no clipping mask used)");
+            }
+            else if (isPetal)
+            {
+                Console.WriteLine($"    🌸 Petal shape processed (no clipping mask used)");
+            }
 
             Console.WriteLine($"    ✅ Processed photo created: {processedPhoto.Width}x{processedPhoto.Height}");
             return processedPhoto;

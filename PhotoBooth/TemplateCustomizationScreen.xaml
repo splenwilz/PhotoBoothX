@@ -219,6 +219,8 @@
                 </Border>
             </Grid>
 
+
+
             <!-- Template Preview - Full Center -->
             <Grid Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center">
                 <Viewbox Name="TemplatePreviewContainer" 
@@ -228,7 +230,7 @@
                     
                     <Border CornerRadius="20" 
                             ClipToBounds="True"
-                            Background="White">
+                            Background="Transparent">
                         <Border.Effect>
                             <DropShadowEffect Color="Black" 
                                             Opacity="0.15" 
@@ -237,7 +239,7 @@
                         </Border.Effect>
                         
                         <Image Name="TemplatePreviewImage" 
-                               Stretch="Uniform"
+                               Stretch="Fill"
                                RenderOptions.BitmapScalingMode="HighQuality"/>
                     </Border>
                 </Viewbox>

@@ -123,9 +123,13 @@ namespace Photobooth.Services
                 await connection.OpenAsync();
 
                 // Check if database is already initialized
+                Console.WriteLine("=== CHECKING IF DATABASE EXISTS ===");
                 var checkQuery = "SELECT name FROM sqlite_master WHERE type='table' AND name='AdminUsers';";
                 using var checkCommand = new SqliteCommand(checkQuery, connection);
                 var tableExists = await checkCommand.ExecuteScalarAsync();
+                
+                Console.WriteLine($"Table 'AdminUsers' exists: {tableExists != null}");
+                Console.WriteLine($"Database path: {_databasePath}");
 
                 if (tableExists != null)
                 {
@@ -139,22 +143,29 @@ namespace Photobooth.Services
                 }
 
                 // Database needs initialization - read and execute schema
+                Console.WriteLine("=== DATABASE IS NEW - INITIALIZING SCHEMA ===");
                 var schemaPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Database_Schema.sql");
 
+                Console.WriteLine($"Schema path: {schemaPath}");
                 if (!File.Exists(schemaPath))
                 {
+                    Console.WriteLine("=== SCHEMA FILE NOT FOUND ===");
                     var errorMsg = $"Database schema file not found at: {schemaPath}";
                     return DatabaseResult.ErrorResult(errorMsg);
                 }
+                Console.WriteLine("=== SCHEMA FILE FOUND, READING CONTENT ===");
 
                 var schemaScript = await File.ReadAllTextAsync(schemaPath);
+                Console.WriteLine($"Schema script length: {schemaScript.Length} characters");
 
                 // Split and execute commands
                 var commands = schemaScript.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
+                Console.WriteLine($"Found {commands.Length} SQL commands to execute");
 
                 using var transaction = connection.BeginTransaction();
                 try
                 {
+                    Console.WriteLine("=== STARTING TRANSACTION ===");
                     int commandIndex = 0;
                     foreach (var commandText in commands)
                     {
@@ -214,9 +225,11 @@ namespace Photobooth.Services
                     LoggingService.Application.Information("Transaction committed successfully");
 
                     // Create default admin users (only for new database)
+                    Console.WriteLine("=== STARTING ADMIN USER CREATION ===");
                     LoggingService.Application.Information("Creating default admin users...");
                     await CreateDefaultAdminUserDirect(connection);
                     LoggingService.Application.Information("Default admin users created");
+                    Console.WriteLine("=== ADMIN USER CREATION COMPLETED ===");
 
                     // Create default system settings (only for new database)
                     LoggingService.Application.Information("Creating default settings...");
@@ -224,9 +237,14 @@ namespace Photobooth.Services
                     LoggingService.Application.Information("Default settings created");
 
                     LoggingService.Application.Information("Database initialization completed successfully!");
+                    Console.WriteLine("=== DATABASE INITIALIZATION COMPLETED SUCCESSFULLY ===");
                 }
                 catch (Exception ex)
                 {
+                    Console.WriteLine("=== DATABASE INITIALIZATION ERROR ===");
+                    Console.WriteLine($"Error type: {ex.GetType().Name}");
+                    Console.WriteLine($"Error message: {ex.Message}");
+                    Console.WriteLine($"Stack trace: {ex.StackTrace}");
                     LoggingService.Application.Error("Database initialization error", ex,
                         ("ErrorMessage", ex.Message),
                         ("StackTrace", ex.StackTrace ?? "No stack trace available"));
@@ -243,6 +261,10 @@ namespace Photobooth.Services
             }
             catch (Exception ex)
             {
+                Console.WriteLine("=== OUTER CATCH: DATABASE INITIALIZATION FAILED ===");
+                Console.WriteLine($"Outer error type: {ex.GetType().Name}");
+                Console.WriteLine($"Outer error message: {ex.Message}");
+                Console.WriteLine($"Outer stack trace: {ex.StackTrace}");
                 var errorMsg = $"Database initialization failed: {ex.Message}";
                 LoggingService.Application.Error("Database initialization failed", ex,
                     ("ErrorMessage", ex.Message));
@@ -2186,7 +2208,7 @@ namespace Photobooth.Services
                 var photoAreas = new List<TemplatePhotoArea>();
                 
                 var query = @"
-                    SELECT Id, LayoutId, PhotoIndex, X, Y, Width, Height, Rotation
+                    SELECT Id, LayoutId, PhotoIndex, X, Y, Width, Height, Rotation, BorderRadius
                     FROM TemplatePhotoAreas
                     WHERE LayoutId = @layoutId
                     ORDER BY PhotoIndex";
@@ -2208,7 +2230,8 @@ namespace Photobooth.Services
                         Y = GetIntValue(reader, "Y"),
                         Width = GetIntValue(reader, "Width"),
                         Height = GetIntValue(reader, "Height"),
-                        Rotation = Convert.ToDouble(reader["Rotation"])
+                        Rotation = Convert.ToDouble(reader["Rotation"]),
+                        BorderRadius = GetIntValue(reader, "BorderRadius")
                     });
                 }
 
@@ -2234,7 +2257,7 @@ namespace Photobooth.Services
                 // Create parameter placeholders for IN clause
                 var placeholders = string.Join(",", layoutIds.Select((_, i) => $"@layoutId{i}"));
                 var query = $@"
-                    SELECT Id, LayoutId, PhotoIndex, X, Y, Width, Height, Rotation
+                    SELECT Id, LayoutId, PhotoIndex, X, Y, Width, Height, Rotation, BorderRadius
                     FROM TemplatePhotoAreas
                     WHERE LayoutId IN ({placeholders})
                     ORDER BY LayoutId, PhotoIndex";
@@ -2261,7 +2284,8 @@ namespace Photobooth.Services
                         Y = GetIntValue(reader, "Y"),
                         Width = GetIntValue(reader, "Width"),
                         Height = GetIntValue(reader, "Height"),
-                        Rotation = Convert.ToDouble(reader["Rotation"])
+                        Rotation = Convert.ToDouble(reader["Rotation"]),
+                        BorderRadius = GetIntValue(reader, "BorderRadius")
                     };
 
                     if (!photoAreasByLayout.ContainsKey(photoArea.LayoutId))
@@ -3484,7 +3508,11 @@ namespace Photobooth.Services
                 await userCommand.ExecuteNonQueryAsync();
 
                 // Write secure credentials to a protected file for first-time setup
+                Console.WriteLine("=== CALLING WriteInitialCredentialsSecurely ===");
+                Console.WriteLine($"Master password length: {masterPassword.Length}");
+                Console.WriteLine($"User password length: {userPassword.Length}");
                 await WriteInitialCredentialsSecurely(masterPassword, userPassword);
+                Console.WriteLine("=== WriteInitialCredentialsSecurely COMPLETED ===");
 
 
             }
@@ -3499,14 +3527,22 @@ namespace Photobooth.Services
         {
             try
             {
+                Console.WriteLine("=== CREATING INITIAL CREDENTIALS ===");
                 // Create setup folder on Desktop - highly visible and clearly temporary
                 var desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
                 var setupDir = Path.Combine(desktopPath, "PhotoBoothX-Setup-Credentials");
                 var credentialsFile = Path.Combine(setupDir, "LOGIN-CREDENTIALS.txt");
                 var readmeFile = Path.Combine(setupDir, "README-DELETE-AFTER-SETUP.txt");
+                
+                Console.WriteLine($"Desktop path: {desktopPath}");
+                Console.WriteLine($"Setup directory: {setupDir}");
+                Console.WriteLine($"Credentials file: {credentialsFile}");
 
+                Console.WriteLine("Creating setup directory...");
                 Directory.CreateDirectory(setupDir);
+                Console.WriteLine("Setup directory created successfully");
 
+                Console.WriteLine("Generating credentials content...");
                 var credentialsContent = $@"PhotoBoothX - Initial Setup Credentials
 Generated: {DateTime.Now:yyyy-MM-dd HH:mm:ss}
 

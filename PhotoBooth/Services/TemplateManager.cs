@@ -292,6 +292,9 @@ namespace Photobooth.Services
         {
             var result = new TemplateUploadResult();
             
+            Console.WriteLine("=== TEMPLATE SYNCHRONIZATION STARTED ===");
+            Console.WriteLine($"Templates directory: {_templatesDirectory}");
+            
             try
             {
 
@@ -314,6 +317,12 @@ namespace Photobooth.Services
                 // Step 2: Get all template folders from file system (AUTHORITATIVE SOURCE)
                 var templateFolders = FindTemplateFolders(_templatesDirectory);
                 var folderNames = templateFolders.Select(Path.GetFileName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                
+                Console.WriteLine($"Found {templateFolders.Count} template folders on disk:");
+                foreach (var folder in templateFolders)
+                {
+                    Console.WriteLine($"  - {Path.GetFileName(folder)} (Full path: {folder})");
+                }
 
 
                 foreach (var folder in templateFolders)
@@ -534,24 +543,31 @@ namespace Photobooth.Services
         {
             var templateFolders = new List<string>();
             
+            Console.WriteLine($"=== FINDING TEMPLATE FOLDERS IN: {rootPath} ===");
+            
             try
             {
                 // Check if root path itself is a template folder
                 if (IsTemplateFolder(rootPath))
                 {
+                    Console.WriteLine($"Root path is a template folder: {rootPath}");
                     templateFolders.Add(rootPath);
                 }
                 
                 // Check subdirectories
                 var subdirectories = Directory.GetDirectories(rootPath);
+                Console.WriteLine($"Found {subdirectories.Length} subdirectories in {rootPath}:");
                 foreach (var subdirectory in subdirectories)
                 {
+                    Console.WriteLine($"  Checking subdirectory: {subdirectory}");
                     if (IsTemplateFolder(subdirectory))
                     {
+                        Console.WriteLine($"    ✓ Template folder found: {subdirectory}");
                         templateFolders.Add(subdirectory);
                     }
                     else
                     {
+                        Console.WriteLine($"    - Not a template folder, searching recursively");
                         // Recursively search subdirectories
                         templateFolders.AddRange(FindTemplateFolders(subdirectory));
                     }
@@ -570,7 +586,10 @@ namespace Photobooth.Services
         /// </summary>
         private bool IsTemplateFolder(string folderPath)
         {
-            return File.Exists(Path.Combine(folderPath, "template.png"));
+            var templatePath = Path.Combine(folderPath, "template.png");
+            var exists = File.Exists(templatePath);
+            Console.WriteLine($"    Checking for template.png: {templatePath} - {(exists ? "EXISTS" : "NOT FOUND")}");
+            return exists;
         }
 
         /// <summary>
@@ -580,6 +599,9 @@ namespace Photobooth.Services
         {
             var result = new TemplateValidationResult();
             var folderName = Path.GetFileName(folderPath);
+            
+            Console.WriteLine($"=== VALIDATING TEMPLATE FOLDER: {folderName} ===");
+            Console.WriteLine($"Full path: {folderPath}");
             
             try
             {
@@ -595,19 +617,25 @@ namespace Photobooth.Services
                 
                 // Get template dimensions
                 var (width, height) = GetImageDimensions(templatePath);
+                Console.WriteLine($"Template dimensions: {width}x{height}");
+                
                 if (width == 0 || height == 0)
                 {
                     result.IsValid = false;
                     result.Errors.Add("Could not determine template dimensions");
+                    Console.WriteLine("✗ Could not determine template dimensions");
                     return result;
                 }
                 
                 // Find appropriate layout from database based on dimensions and folder path
                 var layoutId = await FindBestLayoutForDimensions(width, height, folderPath);
+                Console.WriteLine($"Layout ID found: {layoutId}");
+                
                 if (string.IsNullOrEmpty(layoutId))
                 {
                     result.IsValid = false;
                     result.Errors.Add($"No suitable layout found for dimensions {width}x{height}");
+                    Console.WriteLine($"✗ No suitable layout found for dimensions {width}x{height}");
                     return result;
                 }
                 
@@ -629,6 +657,7 @@ namespace Photobooth.Services
                 
                 if (layoutResult.Success && layoutResult.Data != null)
                 {
+                    Console.WriteLine($"Layout ProductCategoryId: {layoutResult.Data.ProductCategoryId}");
                     // Set template type based on layout's product category
                     templateType = layoutResult.Data.ProductCategoryId switch
                     {
@@ -637,6 +666,7 @@ namespace Photobooth.Services
                         3 => TemplateType.Photo4x6,   // Smartphone prints use 4x6 templates
                         _ => TemplateType.Strip       // Default to Strip
                     };
+                    Console.WriteLine($"Template type determined: {templateType}");
                 }
                 
                 // Create template object
@@ -657,6 +687,13 @@ namespace Photobooth.Services
                     TemplateType = templateType // Set the correct template type
                 };
                 
+                Console.WriteLine($"✓ Template object created successfully:");
+                Console.WriteLine($"  - Name: {template.Name}");
+                Console.WriteLine($"  - LayoutId: {template.LayoutId}");
+                Console.WriteLine($"  - TemplateType: {template.TemplateType}");
+                Console.WriteLine($"  - CategoryId: {template.CategoryId}");
+                Console.WriteLine($"  - FolderPath: {template.FolderPath}");
+                
                 result.Template = template;
             }
             catch (Exception ex)
@@ -673,29 +710,46 @@ namespace Photobooth.Services
         /// </summary>
         private async Task<string> FindBestLayoutForDimensions(int width, int height, string folderPath = "")
         {
+            Console.WriteLine($"=== FINDING LAYOUT FOR DIMENSIONS: {width}x{height} ===");
+            Console.WriteLine($"Folder path: {folderPath}");
+            
             try
             {
                 var layoutsResult = await _databaseService.GetTemplateLayoutsAsync();
                 if (!layoutsResult.Success || layoutsResult.Data == null)
                 {
+                    Console.WriteLine("Failed to get layouts from database");
                     return "";
                 }
                 
                 var layouts = layoutsResult.Data.Where(l => l.IsActive).ToList();
+                Console.WriteLine($"Found {layouts.Count} active layouts in database:");
+                foreach (var layout in layouts)
+                {
+                    Console.WriteLine($"  - {layout.LayoutKey}: {layout.Width}x{layout.Height} (ID: {layout.Id})");
+                }
                 
                 // If folder path is provided, try to match by folder structure first
                 if (!string.IsNullOrEmpty(folderPath))
                 {
                     var parentFolderName = Path.GetFileName(Path.GetDirectoryName(folderPath));
+                    Console.WriteLine($"Parent folder name: {parentFolderName}");
+                    
                     if (!string.IsNullOrEmpty(parentFolderName))
                     {
+                        Console.WriteLine($"Looking for layout with key: {parentFolderName}");
                         var layoutByFolder = layouts.FirstOrDefault(l => 
                             string.Equals(l.LayoutKey, parentFolderName, StringComparison.OrdinalIgnoreCase) &&
                             l.Width == width && l.Height == height);
                         
                         if (layoutByFolder != null)
                         {
+                            Console.WriteLine($"✓ Found matching layout by folder name: {layoutByFolder.LayoutKey} (ID: {layoutByFolder.Id})");
                             return layoutByFolder.Id;
+                        }
+                        else
+                        {
+                            Console.WriteLine($"✗ No layout found matching folder name: {parentFolderName}");
                         }
                     }
                 }
@@ -919,6 +973,7 @@ namespace Photobooth.Services
             }
             
             // Save to database with improved error handling
+            Console.WriteLine($"Saving template to database: {template.Name}");
             var createResult = await _databaseService.CreateTemplateAsync(template);
             if (!createResult.Success)
             {
@@ -927,12 +982,18 @@ namespace Photobooth.Services
                 {
                     // Template already exists - this shouldn't happen with our improved detection
                     // but provide a better error message
+                    Console.WriteLine($"✗ Template already exists in database: {template.FolderPath}");
                     throw new Exception($"Template with folder path '{template.FolderPath}' already exists in database");
                 }
                 else
                 {
+                    Console.WriteLine($"✗ Failed to create template: {createResult.ErrorMessage}");
                     throw new Exception($"Failed to create template: {createResult.ErrorMessage}");
                 }
+            }
+            else
+            {
+                Console.WriteLine($"✓ Template saved to database successfully with ID: {createResult.Data?.Id}");
             }
         }
 
