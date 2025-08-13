@@ -58,6 +58,12 @@ namespace Photobooth.Services
         Task<DatabaseResult<PrintSupply?>> GetPrintSupplyAsync(SupplyType supplyType);
         Task<DatabaseResult> UpdatePrintSupplyAsync(SupplyType supplyType, int newCount);
         
+        // Camera settings methods
+        Task<DatabaseResult<List<CameraSettings>>> GetAllCameraSettingsAsync();
+        Task<DatabaseResult<CameraSettings?>> GetCameraSettingAsync(string settingName);
+        Task<DatabaseResult> SaveCameraSettingAsync(string settingName, int settingValue);
+        Task<DatabaseResult> SaveAllCameraSettingsAsync(int brightness, int zoom, int contrast);
+        
         // Product management methods
         Task<DatabaseResult<List<Product>>> GetProductsAsync();
         Task<DatabaseResult<List<ProductCategory>>> GetProductCategoriesAsync();
@@ -123,9 +129,13 @@ namespace Photobooth.Services
                 await connection.OpenAsync();
 
                 // Check if database is already initialized
+                Console.WriteLine("=== CHECKING IF DATABASE EXISTS ===");
                 var checkQuery = "SELECT name FROM sqlite_master WHERE type='table' AND name='AdminUsers';";
                 using var checkCommand = new SqliteCommand(checkQuery, connection);
                 var tableExists = await checkCommand.ExecuteScalarAsync();
+                
+                Console.WriteLine($"Table 'AdminUsers' exists: {tableExists != null}");
+                Console.WriteLine($"Database path: {_databasePath}");
 
                 if (tableExists != null)
                 {
@@ -139,22 +149,29 @@ namespace Photobooth.Services
                 }
 
                 // Database needs initialization - read and execute schema
+                Console.WriteLine("=== DATABASE IS NEW - INITIALIZING SCHEMA ===");
                 var schemaPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Database_Schema.sql");
 
+                Console.WriteLine($"Schema path: {schemaPath}");
                 if (!File.Exists(schemaPath))
                 {
+                    Console.WriteLine("=== SCHEMA FILE NOT FOUND ===");
                     var errorMsg = $"Database schema file not found at: {schemaPath}";
                     return DatabaseResult.ErrorResult(errorMsg);
                 }
+                Console.WriteLine("=== SCHEMA FILE FOUND, READING CONTENT ===");
 
                 var schemaScript = await File.ReadAllTextAsync(schemaPath);
+                Console.WriteLine($"Schema script length: {schemaScript.Length} characters");
 
                 // Split and execute commands
                 var commands = schemaScript.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
+                Console.WriteLine($"Found {commands.Length} SQL commands to execute");
 
                 using var transaction = connection.BeginTransaction();
                 try
                 {
+                    Console.WriteLine("=== STARTING TRANSACTION ===");
                     int commandIndex = 0;
                     foreach (var commandText in commands)
                     {
@@ -214,9 +231,11 @@ namespace Photobooth.Services
                     LoggingService.Application.Information("Transaction committed successfully");
 
                     // Create default admin users (only for new database)
+                    Console.WriteLine("=== STARTING ADMIN USER CREATION ===");
                     LoggingService.Application.Information("Creating default admin users...");
                     await CreateDefaultAdminUserDirect(connection);
                     LoggingService.Application.Information("Default admin users created");
+                    Console.WriteLine("=== ADMIN USER CREATION COMPLETED ===");
 
                     // Create default system settings (only for new database)
                     LoggingService.Application.Information("Creating default settings...");
@@ -224,9 +243,14 @@ namespace Photobooth.Services
                     LoggingService.Application.Information("Default settings created");
 
                     LoggingService.Application.Information("Database initialization completed successfully!");
+                    Console.WriteLine("=== DATABASE INITIALIZATION COMPLETED SUCCESSFULLY ===");
                 }
                 catch (Exception ex)
                 {
+                    Console.WriteLine("=== DATABASE INITIALIZATION ERROR ===");
+                    Console.WriteLine($"Error type: {ex.GetType().Name}");
+                    Console.WriteLine($"Error message: {ex.Message}");
+                    Console.WriteLine($"Stack trace: {ex.StackTrace}");
                     LoggingService.Application.Error("Database initialization error", ex,
                         ("ErrorMessage", ex.Message),
                         ("StackTrace", ex.StackTrace ?? "No stack trace available"));
@@ -243,6 +267,10 @@ namespace Photobooth.Services
             }
             catch (Exception ex)
             {
+                Console.WriteLine("=== OUTER CATCH: DATABASE INITIALIZATION FAILED ===");
+                Console.WriteLine($"Outer error type: {ex.GetType().Name}");
+                Console.WriteLine($"Outer error message: {ex.Message}");
+                Console.WriteLine($"Outer stack trace: {ex.StackTrace}");
                 var errorMsg = $"Database initialization failed: {ex.Message}";
                 LoggingService.Application.Error("Database initialization failed", ex,
                     ("ErrorMessage", ex.Message));
@@ -2186,7 +2214,7 @@ namespace Photobooth.Services
                 var photoAreas = new List<TemplatePhotoArea>();
                 
                 var query = @"
-                    SELECT Id, LayoutId, PhotoIndex, X, Y, Width, Height, Rotation
+                    SELECT Id, LayoutId, PhotoIndex, X, Y, Width, Height, Rotation, BorderRadius, ShapeType
                     FROM TemplatePhotoAreas
                     WHERE LayoutId = @layoutId
                     ORDER BY PhotoIndex";
@@ -2199,6 +2227,9 @@ namespace Photobooth.Services
                 using var reader = await command.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
                 {
+                    var shapeTypeString = GetStringValue(reader, "ShapeType") ?? "Rectangle";
+                    var shapeType = Enum.TryParse<ShapeType>(shapeTypeString, out var parsedShapeType) ? parsedShapeType : ShapeType.Rectangle;
+                    
                     photoAreas.Add(new TemplatePhotoArea
                     {
                         Id = GetIntValue(reader, "Id"),
@@ -2208,7 +2239,9 @@ namespace Photobooth.Services
                         Y = GetIntValue(reader, "Y"),
                         Width = GetIntValue(reader, "Width"),
                         Height = GetIntValue(reader, "Height"),
-                        Rotation = Convert.ToDouble(reader["Rotation"])
+                        Rotation = Convert.ToDouble(reader["Rotation"]),
+                        BorderRadius = GetIntValue(reader, "BorderRadius"),
+                        ShapeType = shapeType
                     });
                 }
 
@@ -2234,7 +2267,7 @@ namespace Photobooth.Services
                 // Create parameter placeholders for IN clause
                 var placeholders = string.Join(",", layoutIds.Select((_, i) => $"@layoutId{i}"));
                 var query = $@"
-                    SELECT Id, LayoutId, PhotoIndex, X, Y, Width, Height, Rotation
+                    SELECT Id, LayoutId, PhotoIndex, X, Y, Width, Height, Rotation, BorderRadius, ShapeType
                     FROM TemplatePhotoAreas
                     WHERE LayoutId IN ({placeholders})
                     ORDER BY LayoutId, PhotoIndex";
@@ -2252,6 +2285,9 @@ namespace Photobooth.Services
                 using var reader = await command.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
                 {
+                    var shapeTypeString = GetStringValue(reader, "ShapeType") ?? "Rectangle";
+                    var shapeType = Enum.TryParse<ShapeType>(shapeTypeString, out var parsedShapeType) ? parsedShapeType : ShapeType.Rectangle;
+                    
                     var photoArea = new TemplatePhotoArea
                     {
                         Id = GetIntValue(reader, "Id"),
@@ -2261,7 +2297,9 @@ namespace Photobooth.Services
                         Y = GetIntValue(reader, "Y"),
                         Width = GetIntValue(reader, "Width"),
                         Height = GetIntValue(reader, "Height"),
-                        Rotation = Convert.ToDouble(reader["Rotation"])
+                        Rotation = Convert.ToDouble(reader["Rotation"]),
+                        BorderRadius = GetIntValue(reader, "BorderRadius"),
+                        ShapeType = shapeType
                     };
 
                     if (!photoAreasByLayout.ContainsKey(photoArea.LayoutId))
@@ -3484,7 +3522,11 @@ namespace Photobooth.Services
                 await userCommand.ExecuteNonQueryAsync();
 
                 // Write secure credentials to a protected file for first-time setup
+                Console.WriteLine("=== CALLING WriteInitialCredentialsSecurely ===");
+                Console.WriteLine($"Master password length: {masterPassword.Length}");
+                Console.WriteLine($"User password length: {userPassword.Length}");
                 await WriteInitialCredentialsSecurely(masterPassword, userPassword);
+                Console.WriteLine("=== WriteInitialCredentialsSecurely COMPLETED ===");
 
 
             }
@@ -3499,14 +3541,22 @@ namespace Photobooth.Services
         {
             try
             {
+                Console.WriteLine("=== CREATING INITIAL CREDENTIALS ===");
                 // Create setup folder on Desktop - highly visible and clearly temporary
                 var desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
                 var setupDir = Path.Combine(desktopPath, "PhotoBoothX-Setup-Credentials");
                 var credentialsFile = Path.Combine(setupDir, "LOGIN-CREDENTIALS.txt");
                 var readmeFile = Path.Combine(setupDir, "README-DELETE-AFTER-SETUP.txt");
+                
+                Console.WriteLine($"Desktop path: {desktopPath}");
+                Console.WriteLine($"Setup directory: {setupDir}");
+                Console.WriteLine($"Credentials file: {credentialsFile}");
 
+                Console.WriteLine("Creating setup directory...");
                 Directory.CreateDirectory(setupDir);
+                Console.WriteLine("Setup directory created successfully");
 
+                Console.WriteLine("Generating credentials content...");
                 var credentialsContent = $@"PhotoBoothX - Initial Setup Credentials
 Generated: {DateTime.Now:yyyy-MM-dd HH:mm:ss}
 
@@ -3677,6 +3727,176 @@ It contains no important application files.
             }
         }
 
+        
+        #region Camera Settings Methods
+
+        public async Task<DatabaseResult<List<CameraSettings>>> GetAllCameraSettingsAsync()
+        {
+            try
+            {
+                Console.WriteLine("DatabaseService: Getting all camera settings");
+                var query = "SELECT * FROM CameraSettings ORDER BY SettingName";
+
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+                using var command = new SqliteCommand(query, connection);
+                using var reader = await command.ExecuteReaderAsync();
+
+                var settings = new List<CameraSettings>();
+                while (await reader.ReadAsync())
+                {
+                    settings.Add(new CameraSettings
+                    {
+                        Id = reader.GetInt32("Id"),
+                        SettingName = reader.GetString("SettingName"),
+                        SettingValue = reader.GetInt32("SettingValue"),
+                        Description = reader.IsDBNull("Description") ? null : reader.GetString("Description"),
+                        CreatedAt = reader.GetDateTime("CreatedAt"),
+                        UpdatedAt = reader.GetDateTime("UpdatedAt")
+                    });
+                }
+
+                Console.WriteLine($"DatabaseService: Retrieved {settings.Count} camera settings");
+                return DatabaseResult<List<CameraSettings>>.SuccessResult(settings);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"DatabaseService: Error getting camera settings - {ex.Message}");
+                return DatabaseResult<List<CameraSettings>>.ErrorResult($"Failed to get camera settings: {ex.Message}");
+            }
+        }
+
+        public async Task<DatabaseResult<CameraSettings?>> GetCameraSettingAsync(string settingName)
+        {
+            try
+            {
+                Console.WriteLine($"DatabaseService: Getting camera setting '{settingName}'");
+                var query = "SELECT * FROM CameraSettings WHERE SettingName = @settingName";
+
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+                using var command = new SqliteCommand(query, connection);
+                command.Parameters.AddWithValue("@settingName", settingName);
+                using var reader = await command.ExecuteReaderAsync();
+
+                if (await reader.ReadAsync())
+                {
+                    var setting = new CameraSettings
+                    {
+                        Id = reader.GetInt32("Id"),
+                        SettingName = reader.GetString("SettingName"),
+                        SettingValue = reader.GetInt32("SettingValue"),
+                        Description = reader.IsDBNull("Description") ? null : reader.GetString("Description"),
+                        CreatedAt = reader.GetDateTime("CreatedAt"),
+                        UpdatedAt = reader.GetDateTime("UpdatedAt")
+                    };
+
+                    Console.WriteLine($"DatabaseService: Found camera setting '{settingName}' = {setting.SettingValue}");
+                    return DatabaseResult<CameraSettings?>.SuccessResult(setting);
+                }
+
+                Console.WriteLine($"DatabaseService: Camera setting '{settingName}' not found");
+                return DatabaseResult<CameraSettings?>.SuccessResult(null);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"DatabaseService: Error getting camera setting '{settingName}' - {ex.Message}");
+                return DatabaseResult<CameraSettings?>.ErrorResult($"Failed to get camera setting: {ex.Message}");
+            }
+        }
+
+        public async Task<DatabaseResult> SaveCameraSettingAsync(string settingName, int settingValue)
+        {
+            try
+            {
+                Console.WriteLine($"DatabaseService: Saving camera setting '{settingName}' = {settingValue}");
+                var query = @"
+                    INSERT INTO CameraSettings (SettingName, SettingValue, CreatedAt, UpdatedAt) 
+                    VALUES (@settingName, @settingValue, @createdAt, @updatedAt)
+                    ON CONFLICT(SettingName) DO UPDATE SET
+                        SettingValue = excluded.SettingValue,
+                        UpdatedAt = excluded.UpdatedAt";
+
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+                using var command = new SqliteCommand(query, connection);
+                command.Parameters.AddWithValue("@settingName", settingName);
+                command.Parameters.AddWithValue("@settingValue", settingValue);
+                command.Parameters.AddWithValue("@createdAt", DateTime.Now);
+                command.Parameters.AddWithValue("@updatedAt", DateTime.Now);
+
+                await command.ExecuteNonQueryAsync();
+                Console.WriteLine($"DatabaseService: Successfully saved camera setting '{settingName}' = {settingValue}");
+                return DatabaseResult.SuccessResult();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"DatabaseService: Error saving camera setting '{settingName}' - {ex.Message}");
+                return DatabaseResult.ErrorResult($"Failed to save camera setting: {ex.Message}");
+            }
+        }
+
+        public async Task<DatabaseResult> SaveAllCameraSettingsAsync(int brightness, int zoom, int contrast)
+        {
+            try
+            {
+                Console.WriteLine($"DatabaseService: Saving all camera settings - Brightness:{brightness}, Zoom:{zoom}, Contrast:{contrast}");
+                
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+                using var transaction = connection.BeginTransaction();
+                
+                try
+                {
+                    var query = @"
+                        INSERT INTO CameraSettings (SettingName, SettingValue, CreatedAt, UpdatedAt) 
+                        VALUES (@settingName, @settingValue, @createdAt, @updatedAt)
+                        ON CONFLICT(SettingName) DO UPDATE SET
+                            SettingValue = excluded.SettingValue,
+                            UpdatedAt = excluded.UpdatedAt";
+
+                    // Save brightness
+                    using var cmd1 = new SqliteCommand(query, connection, transaction);
+                    cmd1.Parameters.AddWithValue("@settingName", "Brightness");
+                    cmd1.Parameters.AddWithValue("@settingValue", brightness);
+                    cmd1.Parameters.AddWithValue("@createdAt", DateTime.Now);
+                    cmd1.Parameters.AddWithValue("@updatedAt", DateTime.Now);
+                    await cmd1.ExecuteNonQueryAsync();
+
+                    // Save zoom
+                    using var cmd2 = new SqliteCommand(query, connection, transaction);
+                    cmd2.Parameters.AddWithValue("@settingName", "Zoom");
+                    cmd2.Parameters.AddWithValue("@settingValue", zoom);
+                    cmd2.Parameters.AddWithValue("@createdAt", DateTime.Now);
+                    cmd2.Parameters.AddWithValue("@updatedAt", DateTime.Now);
+                    await cmd2.ExecuteNonQueryAsync();
+
+                    // Save contrast
+                    using var cmd3 = new SqliteCommand(query, connection, transaction);
+                    cmd3.Parameters.AddWithValue("@settingName", "Contrast");
+                    cmd3.Parameters.AddWithValue("@settingValue", contrast);
+                    cmd3.Parameters.AddWithValue("@createdAt", DateTime.Now);
+                    cmd3.Parameters.AddWithValue("@updatedAt", DateTime.Now);
+                    await cmd3.ExecuteNonQueryAsync();
+
+                    transaction.Commit();
+                    Console.WriteLine("DatabaseService: Successfully saved all camera settings");
+                    return DatabaseResult.SuccessResult();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"DatabaseService: Error saving camera settings - {ex.Message}");
+                return DatabaseResult.ErrorResult($"Failed to save camera settings: {ex.Message}");
+            }
+        }
+
+        #endregion
 
     }
 } 

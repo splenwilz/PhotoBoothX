@@ -123,6 +123,8 @@ CREATE TABLE TemplatePhotoAreas (
     Width INTEGER NOT NULL,
     Height INTEGER NOT NULL,
     Rotation REAL DEFAULT 0, -- Rotation in degrees
+    BorderRadius INTEGER DEFAULT 0, -- Border radius for rounded corners
+    ShapeType TEXT DEFAULT 'Rectangle' CHECK (ShapeType IN ('Rectangle', 'RoundedRectangle', 'Circle', 'Heart', 'Petal')), -- Explicit shape type instead of using rotation magic numbers
     FOREIGN KEY (LayoutId) REFERENCES TemplateLayouts(Id) ON DELETE CASCADE,
     UNIQUE(LayoutId, PhotoIndex)
 );
@@ -282,6 +284,16 @@ CREATE TABLE HardwareStatus (
     LastMaintenanceAt DATETIME
 );
 
+-- Camera settings storage
+CREATE TABLE CameraSettings (
+    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+    SettingName TEXT NOT NULL UNIQUE,
+    SettingValue INTEGER NOT NULL,
+    Description TEXT,
+    CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UpdatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Print supply tracking
 CREATE TABLE PrintSupplies (
     Id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -434,43 +446,95 @@ INSERT INTO TemplateCategories (Name, Description, SortOrder, IsSeasonalCategory
     ('Christmas', 'Holiday and winter celebration templates', 22, 1, '12-01', '12-26', 95);
 
 -- Insert template layouts (predefined photo area configurations)
+-- Strip template layouts (614x1864 dimension only)
 INSERT INTO TemplateLayouts (Id, LayoutKey, Name, Description, Width, Height, PhotoCount, ProductCategoryId, SortOrder) VALUES
-    ('550e8400-e29b-41d4-a716-446655440001', 'strip-591x1772', 'Compact Photo Strip', 'Compact 4-photo vertical strip layout', 591, 1772, 4, 1, 2),
-    ('550e8400-e29b-41d4-a716-446655440002', 'strip-591x1772b', 'Compact Photo Strip', 'Compact 4-photo vertical strip layout', 591, 1772, 4, 1, 2),
-    ('550e8400-e29b-41d4-a716-446655440003', '4x6-1864x1228', 'Standard 4x6', 'Single photo 4x6 print layout', 1864, 1228, 1, 2, 1),
-    ('550e8400-e29b-41d4-a716-446655440004', 'strip-1080x1920', 'Compact Photo Strip', 'Compact 3-photo vertical strip layout', 1080, 1920, 3, 1, 2),
-    ('550e8400-e29b-41d4-a716-446655440005', 'strip-707x2000', 'Compact Photo Strip', 'Compact 4-photo vertical strip layout', 707, 2000, 4, 1, 2);
+    ('550e8400-e29b-41d4-a716-446655440001', 'strip-614x1864a', 'Standard Photo Strip A', '3-photo vertical strip layout with circular photos', 614, 1864, 3, 1, 1),
+    ('550e8400-e29b-41d4-a716-446655440002', 'strip-614x1864b', 'Standard Photo Strip B', '3-photo vertical strip layout with rounded corners', 614, 1864, 3, 1, 2),
+    ('550e8400-e29b-41d4-a716-446655440003', 'strip-614x1864c', 'Standard Photo Strip C', '4-photo vertical strip layout with rounded corners', 614, 1864, 4, 1, 3),
+    ('550e8400-e29b-41d4-a716-446655440004', 'strip-614x1864d', 'Standard Photo Strip D', '2-photo vertical strip layout with large photos', 614, 1864, 2, 1, 4),
+    ('550e8400-e29b-41d4-a716-446655440005', 'strip-614x1864e', 'Standard Photo Strip E', '3-photo vertical strip layout with square photos', 614, 1864, 3, 1, 5),
+    ('550e8400-e29b-41d4-a716-446655440006', 'strip-614x1864f', 'Standard Photo Strip F', '3-photo staggered layout with rectangular photos', 614, 1864, 3, 1, 6),
+    ('550e8400-e29b-41d4-a716-446655440007', 'strip-614x1864g', 'Standard Photo Strip G', '3-photo heart-shaped layout', 614, 1864, 3, 1, 7),
+    ('550e8400-e29b-41d4-a716-446655440008', 'strip-614x1864h', 'Standard Photo Strip H', '3-photo petal-shaped layout', 614, 1864, 3, 1, 8),
+    ('550e8400-e29b-41d4-a716-446655440009', 'strip-614x1864i', 'Standard Photo Strip I', '4-photo regular rectangle layout', 614, 1864, 4, 1, 9),
+    ('550e8400-e29b-41d4-a716-446655440010', 'strip-614x1864j', 'Standard Photo Strip J', '3-photo regular rectangle layout', 614, 1864, 3, 1, 10),
+    ('550e8400-e29b-41d4-a716-446655440011', 'strip-614x1864k', 'Standard Photo Strip K', '3-photo regular rectangle layout', 614, 1864, 3, 1, 11),
+    ('550e8400-e29b-41d4-a716-446655440012', 'strip-614x1864l', 'Standard Photo Strip L', '3-photo regular rectangle layout', 614, 1864, 3, 1, 12);
 
--- strip-591x1772 layout (4 photos in vertical strip - compact)
-INSERT INTO TemplatePhotoAreas (LayoutId, PhotoIndex, X, Y, Width, Height, Rotation) VALUES
-    ('550e8400-e29b-41d4-a716-446655440001', 1, 61, 130, 473, 354, 0),
-    ('550e8400-e29b-41d4-a716-446655440001', 2, 61, 515, 473, 354, 0),
-    ('550e8400-e29b-41d4-a716-446655440001', 3, 61, 903, 473, 354, 0),
-    ('550e8400-e29b-41d4-a716-446655440001', 4, 61, 1290, 473, 354, 0);
+-- Photo area definitions for strip-614x1864 templates only
 
--- strip-591x1772b layout (4 photos in vertical strip - compact)
-INSERT INTO TemplatePhotoAreas (LayoutId, PhotoIndex, X, Y, Width, Height, Rotation) VALUES
-    ('550e8400-e29b-41d4-a716-446655440002', 1, 72, 60, 451, 326, 0),
-    ('550e8400-e29b-41d4-a716-446655440002', 2, 72, 443, 451, 326, 0),
-    ('550e8400-e29b-41d4-a716-446655440002', 3, 72, 824, 451, 326, 0),
-    ('550e8400-e29b-41d4-a716-446655440002', 4, 72, 1204, 451, 326, 0);
+-- strip-614x1864a layout (3 photos in vertical strip with fully rounded circles)
+INSERT INTO TemplatePhotoAreas (LayoutId, PhotoIndex, X, Y, Width, Height, Rotation, BorderRadius, ShapeType) VALUES
+    ('550e8400-e29b-41d4-a716-446655440001', 1, 56, 53, 503, 503, 0, 0, 'Circle'),   -- Fully rounded circle
+    ('550e8400-e29b-41d4-a716-446655440001', 2, 56, 583, 503, 503, 0, 0, 'Circle'),   -- Fully rounded circle
+    ('550e8400-e29b-41d4-a716-446655440001', 3, 56, 1115, 503, 503, 0, 0, 'Circle');  -- Fully rounded circle
 
--- 4x6-1864x1228 layout (single photo)
-INSERT INTO TemplatePhotoAreas (LayoutId, PhotoIndex, X, Y, Width, Height, Rotation) VALUES
-    ('550e8400-e29b-41d4-a716-446655440003', 1, 433, 200, 952, 715, 0);
+-- strip-614x1864b layout (3 photos in vertical strip with rounded corners)
+INSERT INTO TemplatePhotoAreas (LayoutId, PhotoIndex, X, Y, Width, Height, Rotation, BorderRadius, ShapeType) VALUES
+    ('550e8400-e29b-41d4-a716-446655440002', 1, 54, 513, 508, 425, 0, 80, 'RoundedRectangle'),
+    ('550e8400-e29b-41d4-a716-446655440002', 2, 54, 50, 508, 425, 0, 80, 'RoundedRectangle'),
+    ('550e8400-e29b-41d4-a716-446655440002', 3, 54, 977, 508, 425, 0, 80, 'RoundedRectangle');
 
--- strip-1080x1920 layout (3 photos in vertical strip)
-INSERT INTO TemplatePhotoAreas (LayoutId, PhotoIndex, X, Y, Width, Height, Rotation) VALUES
-    ('550e8400-e29b-41d4-a716-446655440004', 1, 249, 5, 582, 459, 0),
-    ('550e8400-e29b-41d4-a716-446655440004', 2, 249, 492, 582, 459, 0),
-    ('550e8400-e29b-41d4-a716-446655440004', 3, 249, 981, 582, 459, 0);
+-- strip-614x1864c layout (4 photos in vertical strip with rounded corners)
+INSERT INTO TemplatePhotoAreas (LayoutId, PhotoIndex, X, Y, Width, Height, Rotation, BorderRadius, ShapeType) VALUES
+    ('550e8400-e29b-41d4-a716-446655440003', 1, 41, 50, 543, 414, 0, 80, 'RoundedRectangle'),
+    ('550e8400-e29b-41d4-a716-446655440003', 2, 41, 500, 543, 414, 0, 80, 'RoundedRectangle'),
+    ('550e8400-e29b-41d4-a716-446655440003', 3, 41, 951, 543, 414, 0, 80, 'RoundedRectangle'),
+    ('550e8400-e29b-41d4-a716-446655440003', 4, 41, 1402, 543, 414, 0, 80, 'RoundedRectangle');
 
--- strip-707x2000 layout (4 photos in vertical strip - compact)
-INSERT INTO TemplatePhotoAreas (LayoutId, PhotoIndex, X, Y, Width, Height, Rotation) VALUES
-    ('550e8400-e29b-41d4-a716-446655440005', 1, 95, 95, 523, 319, 356.945), --3.055
-    ('550e8400-e29b-41d4-a716-446655440005', 2, 101, 497, 523, 319, 1.056), --358.948
-    ('550e8400-e29b-41d4-a716-446655440005', 3, 104, 895, 523, 319, 356.955), --3.045
-    ('550e8400-e29b-41d4-a716-446655440005', 4, 89, 1291, 533, 329, 1.786); --358.214
+-- strip-614x1864d layout (2 photos in vertical strip with large photos)
+INSERT INTO TemplatePhotoAreas (LayoutId, PhotoIndex, X, Y, Width, Height, Rotation, BorderRadius, ShapeType) VALUES
+    ('550e8400-e29b-41d4-a716-446655440004', 1, 41, 50, 543, 698, 0, 0, 'Rectangle'),
+    ('550e8400-e29b-41d4-a716-446655440004', 2, 41, 795, 543, 698, 0, 0, 'Rectangle');
+
+-- strip-614x1864e layout (3 photos in vertical strip with square photos)
+INSERT INTO TemplatePhotoAreas (LayoutId, PhotoIndex, X, Y, Width, Height, Rotation, BorderRadius, ShapeType) VALUES
+    ('550e8400-e29b-41d4-a716-446655440005', 1, 43, 42, 529, 528, 0, 0, 'Rectangle'),
+    ('550e8400-e29b-41d4-a716-446655440005', 2, 43, 609, 529, 528, 0, 0, 'Rectangle'),
+    ('550e8400-e29b-41d4-a716-446655440005', 3, 43, 1177, 529, 528, 0, 0, 'Rectangle');
+
+-- strip-614x1864f layout (3 photos in staggered layout with rectangular photos)
+INSERT INTO TemplatePhotoAreas (LayoutId, PhotoIndex, X, Y, Width, Height, Rotation, BorderRadius, ShapeType) VALUES
+    ('550e8400-e29b-41d4-a716-446655440006', 1, 42, 41, 472, 444, 0, 0, 'Rectangle'),
+    ('550e8400-e29b-41d4-a716-446655440006', 2, 103, 518, 472, 444, 0, 0, 'Rectangle'),
+    ('550e8400-e29b-41d4-a716-446655440006', 3, 42, 996, 472, 444, 0, 0, 'Rectangle');
+
+-- strip-614x1864g layout (3 photos in heart-shaped layout)
+INSERT INTO TemplatePhotoAreas (LayoutId, PhotoIndex, X, Y, Width, Height, Rotation, BorderRadius, ShapeType) VALUES
+    ('550e8400-e29b-41d4-a716-446655440007', 1, 31, 38, 553, 445, 0, 0, 'Heart'),   -- Heart shape
+    ('550e8400-e29b-41d4-a716-446655440007', 2, 31, 487, 553, 445, 0, 0, 'Heart'),  -- Heart shape
+    ('550e8400-e29b-41d4-a716-446655440007', 3, 31, 935, 553, 445, 0, 0, 'Heart');  -- Heart shape
+
+-- strip-614x1864h layout (3 photos with petal shapes)
+INSERT INTO TemplatePhotoAreas (LayoutId, PhotoIndex, X, Y, Width, Height, Rotation, BorderRadius, ShapeType) VALUES
+    ('550e8400-e29b-41d4-a716-446655440008', 1, 51, 48, 514, 512, 0, 0, 'Petal'),   -- Petal shape
+    ('550e8400-e29b-41d4-a716-446655440008', 2, 51, 573, 514, 512, 0, 0, 'Petal'),  -- Petal shape
+    ('550e8400-e29b-41d4-a716-446655440008', 3, 51, 1100, 514, 512, 0, 0, 'Petal'); -- Petal shape
+
+-- strip-614x1864i layout (4 photos with regular rectangles)
+INSERT INTO TemplatePhotoAreas (LayoutId, PhotoIndex, X, Y, Width, Height, Rotation, BorderRadius, ShapeType) VALUES
+    ('550e8400-e29b-41d4-a716-446655440009', 1, 43, 74, 523, 389, 0, 0, 'Rectangle'),      -- Regular rectangle
+    ('550e8400-e29b-41d4-a716-446655440009', 2, 43, 515, 523, 389, 0, 0, 'Rectangle'),     -- Regular rectangle
+    ('550e8400-e29b-41d4-a716-446655440009', 3, 43, 956, 523, 389, 0, 0, 'Rectangle'),     -- Regular rectangle
+    ('550e8400-e29b-41d4-a716-446655440009', 4, 43, 1399, 523, 389, 0, 0, 'Rectangle');    -- Regular rectangle
+
+-- strip-614x1864j layout (3 photos with regular rectangles)
+INSERT INTO TemplatePhotoAreas (LayoutId, PhotoIndex, X, Y, Width, Height, Rotation, BorderRadius, ShapeType) VALUES
+    ('550e8400-e29b-41d4-a716-446655440010', 1, 40, 517, 528, 391, 0, 0, 'Rectangle'),     -- Regular rectangle
+    ('550e8400-e29b-41d4-a716-446655440010', 2, 40, 957, 528, 391, 0, 0, 'Rectangle'),     -- Regular rectangle
+    ('550e8400-e29b-41d4-a716-446655440010', 3, 40, 1397, 528, 391, 0, 0, 'Rectangle');    -- Regular rectangle
+
+-- strip-614x1864k layout (3 photos with regular rectangles)
+INSERT INTO TemplatePhotoAreas (LayoutId, PhotoIndex, X, Y, Width, Height, Rotation, BorderRadius, ShapeType) VALUES
+    ('550e8400-e29b-41d4-a716-446655440011', 1, 40, 73, 528, 391, 0, 0, 'Rectangle'),      -- Regular rectangle
+    ('550e8400-e29b-41d4-a716-446655440011', 2, 40, 514, 528, 391, 0, 0, 'Rectangle'),     -- Regular rectangle
+    ('550e8400-e29b-41d4-a716-446655440011', 3, 40, 955, 528, 391, 0, 0, 'Rectangle');     -- Regular rectangle
+
+-- strip-614x1864l layout (3 photos with regular rectangles)
+INSERT INTO TemplatePhotoAreas (LayoutId, PhotoIndex, X, Y, Width, Height, Rotation, BorderRadius, ShapeType) VALUES
+    ('550e8400-e29b-41d4-a716-446655440012', 1, 43, 74, 524, 392, 0, 0, 'Rectangle'),      -- Regular rectangle
+    ('550e8400-e29b-41d4-a716-446655440012', 2, 43, 515, 524, 392, 0, 0, 'Rectangle'),     -- Regular rectangle
+    ('550e8400-e29b-41d4-a716-446655440012', 3, 43, 1399, 524, 392, 0, 0, 'Rectangle');    -- Regular rectangle
 
 
 -- Insert default hardware components
@@ -480,6 +544,12 @@ INSERT INTO HardwareStatus (ComponentName, Status) VALUES
     ('Arduino', 'Online'),
     ('TouchScreen', 'Online'),
     ('RFID Reader', 'Online');
+
+-- Insert default camera settings
+INSERT INTO CameraSettings (SettingName, SettingValue, Description) VALUES
+    ('Brightness', 50, 'Camera brightness level (0-100)'),
+    ('Zoom', 100, 'Camera zoom level (100-300%)'),
+    ('Contrast', 50, 'Camera contrast level (0-100)');
 
 -- Insert default print supplies
 INSERT INTO PrintSupplies (SupplyType, TotalCapacity, CurrentCount, LowThreshold, CriticalThreshold) VALUES
