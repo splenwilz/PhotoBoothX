@@ -53,6 +53,18 @@ namespace Photobooth.Models
         Photo4x6
     }
 
+    /// <summary>
+    /// Shape types for template photo areas, replacing magic rotation values
+    /// </summary>
+    public enum ShapeType
+    {
+        Rectangle,
+        RoundedRectangle,
+        Circle,
+        Heart,
+        Petal
+    }
+
     public class ProductCategory
     {
         public int Id { get; set; }
@@ -261,9 +273,27 @@ namespace Photobooth.Models
         public int Height { get; set; }
         public double Rotation { get; set; } = 0;
         public int BorderRadius { get; set; } = 0; // Border radius in pixels for rounded corners
+        public ShapeType ShapeType { get; set; } = ShapeType.Rectangle; // Explicit shape type instead of using rotation magic numbers
 
         // Navigation properties
         public TemplateLayout? Layout { get; set; }
+        
+        /// <summary>
+        /// Legacy property for backward compatibility - derives ShapeType from rotation values
+        /// </summary>
+        public ShapeType GetShapeTypeFromRotation()
+        {
+            if (Math.Abs(Rotation - 360) < 0.1)
+                return ShapeType.Circle;
+            else if (Math.Abs(Rotation - 720) < 0.1)
+                return ShapeType.Heart;
+            else if (Math.Abs(Rotation - 1080) < 0.1)
+                return ShapeType.Petal;
+            else if (BorderRadius > 0)
+                return ShapeType.RoundedRectangle;
+            else
+                return ShapeType.Rectangle;
+        }
     }
 
     public class PhotoArea
@@ -275,6 +305,7 @@ namespace Photobooth.Models
         public int Height { get; set; }
         public double Rotation { get; set; } = 0;
         public int BorderRadius { get; set; } = 0; // Border radius in pixels for rounded corners
+        public ShapeType ShapeType { get; set; } = ShapeType.Rectangle; // Explicit shape type
     }
 
     public class TemplateDimensions
@@ -326,7 +357,8 @@ namespace Photobooth.Models
                 Width = pa.Width,
                 Height = pa.Height,
                 Rotation = pa.Rotation,
-                BorderRadius = pa.BorderRadius
+                BorderRadius = pa.BorderRadius,
+                ShapeType = pa.ShapeType
             }).ToList() ?? new List<PhotoArea>();
         }
         

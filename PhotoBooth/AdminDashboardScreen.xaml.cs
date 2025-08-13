@@ -308,23 +308,32 @@ namespace Photobooth
                     // Trigger the save functionality when price input is completed
                     LoggingService.Application.Information("Price input completed via virtual keyboard", ("Context", context));
                     
-                    // Use Dispatcher to ensure we're on the UI thread
-                    _ = Dispatcher.BeginInvoke(new Action(async () =>
+                    // Use Dispatcher to ensure we're on the UI thread with proper async handling
+                    _ = Task.Run(async () =>
                     {
                         try
                         {
-                            // Trigger the save functionality
-                            await SaveProductConfiguration();
-                            
-                            // Show success feedback
-                            NotificationService.Quick.Success("Product settings saved successfully!");
+                            // Use InvokeAsync for proper async/await handling
+                            await Dispatcher.InvokeAsync(async () =>
+                            {
+                                // Trigger the save functionality
+                                await SaveProductConfiguration();
+                                
+                                // Show success feedback
+                                NotificationService.Quick.Success("Product settings saved successfully!");
+                            });
                         }
                         catch (Exception ex)
                         {
                             LoggingService.Application.Error("Failed to save product configuration from virtual keyboard callback", ex);
-                            NotificationService.Quick.Error("Failed to save product settings");
+                            
+                            // Ensure error notification is shown on UI thread
+                            await Dispatcher.InvokeAsync(() =>
+                            {
+                                NotificationService.Quick.Error("Failed to save product settings");
+                            });
                         }
-                    }));
+                    });
                 };
             }
             catch (Exception ex)

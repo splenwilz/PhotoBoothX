@@ -1140,6 +1140,13 @@ namespace Photobooth.Services
         {
             try
             {
+                // Ensure we're working with the expected format
+                if (bitmap.PixelFormat != PixelFormat.Format24bppRgb)
+                {
+                    LoggingService.Hardware.Warning("Camera", "Unexpected pixel format for brightness/contrast", 
+                        ("PixelFormat", bitmap.PixelFormat.ToString()));
+                    return;
+                }
                 var data = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height),
                     ImageLockMode.ReadWrite, PixelFormat.Format24bppRgb);
 

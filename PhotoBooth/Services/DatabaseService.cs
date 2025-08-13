@@ -2214,7 +2214,7 @@ namespace Photobooth.Services
                 var photoAreas = new List<TemplatePhotoArea>();
                 
                 var query = @"
-                    SELECT Id, LayoutId, PhotoIndex, X, Y, Width, Height, Rotation, BorderRadius
+                    SELECT Id, LayoutId, PhotoIndex, X, Y, Width, Height, Rotation, BorderRadius, ShapeType
                     FROM TemplatePhotoAreas
                     WHERE LayoutId = @layoutId
                     ORDER BY PhotoIndex";
@@ -2227,6 +2227,9 @@ namespace Photobooth.Services
                 using var reader = await command.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
                 {
+                    var shapeTypeString = GetStringValue(reader, "ShapeType") ?? "Rectangle";
+                    var shapeType = Enum.TryParse<ShapeType>(shapeTypeString, out var parsedShapeType) ? parsedShapeType : ShapeType.Rectangle;
+                    
                     photoAreas.Add(new TemplatePhotoArea
                     {
                         Id = GetIntValue(reader, "Id"),
@@ -2237,7 +2240,8 @@ namespace Photobooth.Services
                         Width = GetIntValue(reader, "Width"),
                         Height = GetIntValue(reader, "Height"),
                         Rotation = Convert.ToDouble(reader["Rotation"]),
-                        BorderRadius = GetIntValue(reader, "BorderRadius")
+                        BorderRadius = GetIntValue(reader, "BorderRadius"),
+                        ShapeType = shapeType
                     });
                 }
 
@@ -2263,7 +2267,7 @@ namespace Photobooth.Services
                 // Create parameter placeholders for IN clause
                 var placeholders = string.Join(",", layoutIds.Select((_, i) => $"@layoutId{i}"));
                 var query = $@"
-                    SELECT Id, LayoutId, PhotoIndex, X, Y, Width, Height, Rotation, BorderRadius
+                    SELECT Id, LayoutId, PhotoIndex, X, Y, Width, Height, Rotation, BorderRadius, ShapeType
                     FROM TemplatePhotoAreas
                     WHERE LayoutId IN ({placeholders})
                     ORDER BY LayoutId, PhotoIndex";
@@ -2281,6 +2285,9 @@ namespace Photobooth.Services
                 using var reader = await command.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
                 {
+                    var shapeTypeString = GetStringValue(reader, "ShapeType") ?? "Rectangle";
+                    var shapeType = Enum.TryParse<ShapeType>(shapeTypeString, out var parsedShapeType) ? parsedShapeType : ShapeType.Rectangle;
+                    
                     var photoArea = new TemplatePhotoArea
                     {
                         Id = GetIntValue(reader, "Id"),
@@ -2291,7 +2298,8 @@ namespace Photobooth.Services
                         Width = GetIntValue(reader, "Width"),
                         Height = GetIntValue(reader, "Height"),
                         Rotation = Convert.ToDouble(reader["Rotation"]),
-                        BorderRadius = GetIntValue(reader, "BorderRadius")
+                        BorderRadius = GetIntValue(reader, "BorderRadius"),
+                        ShapeType = shapeType
                     };
 
                     if (!photoAreasByLayout.ContainsKey(photoArea.LayoutId))
@@ -3803,14 +3811,18 @@ It contains no important application files.
             {
                 Console.WriteLine($"DatabaseService: Saving camera setting '{settingName}' = {settingValue}");
                 var query = @"
-                    INSERT OR REPLACE INTO CameraSettings (SettingName, SettingValue, UpdatedAt) 
-                    VALUES (@settingName, @settingValue, @updatedAt)";
+                    INSERT INTO CameraSettings (SettingName, SettingValue, CreatedAt, UpdatedAt) 
+                    VALUES (@settingName, @settingValue, @createdAt, @updatedAt)
+                    ON CONFLICT(SettingName) DO UPDATE SET
+                        SettingValue = excluded.SettingValue,
+                        UpdatedAt = excluded.UpdatedAt";
 
                 using var connection = new SqliteConnection(_connectionString);
                 await connection.OpenAsync();
                 using var command = new SqliteCommand(query, connection);
                 command.Parameters.AddWithValue("@settingName", settingName);
                 command.Parameters.AddWithValue("@settingValue", settingValue);
+                command.Parameters.AddWithValue("@createdAt", DateTime.Now);
                 command.Parameters.AddWithValue("@updatedAt", DateTime.Now);
 
                 await command.ExecuteNonQueryAsync();
@@ -3837,13 +3849,17 @@ It contains no important application files.
                 try
                 {
                     var query = @"
-                        INSERT OR REPLACE INTO CameraSettings (SettingName, SettingValue, UpdatedAt) 
-                        VALUES (@settingName, @settingValue, @updatedAt)";
+                        INSERT INTO CameraSettings (SettingName, SettingValue, CreatedAt, UpdatedAt) 
+                        VALUES (@settingName, @settingValue, @createdAt, @updatedAt)
+                        ON CONFLICT(SettingName) DO UPDATE SET
+                            SettingValue = excluded.SettingValue,
+                            UpdatedAt = excluded.UpdatedAt";
 
                     // Save brightness
                     using var cmd1 = new SqliteCommand(query, connection, transaction);
                     cmd1.Parameters.AddWithValue("@settingName", "Brightness");
                     cmd1.Parameters.AddWithValue("@settingValue", brightness);
+                    cmd1.Parameters.AddWithValue("@createdAt", DateTime.Now);
                     cmd1.Parameters.AddWithValue("@updatedAt", DateTime.Now);
                     await cmd1.ExecuteNonQueryAsync();
 
@@ -3851,6 +3867,7 @@ It contains no important application files.
                     using var cmd2 = new SqliteCommand(query, connection, transaction);
                     cmd2.Parameters.AddWithValue("@settingName", "Zoom");
                     cmd2.Parameters.AddWithValue("@settingValue", zoom);
+                    cmd2.Parameters.AddWithValue("@createdAt", DateTime.Now);
                     cmd2.Parameters.AddWithValue("@updatedAt", DateTime.Now);
                     await cmd2.ExecuteNonQueryAsync();
 
@@ -3858,6 +3875,7 @@ It contains no important application files.
                     using var cmd3 = new SqliteCommand(query, connection, transaction);
                     cmd3.Parameters.AddWithValue("@settingName", "Contrast");
                     cmd3.Parameters.AddWithValue("@settingValue", contrast);
+                    cmd3.Parameters.AddWithValue("@createdAt", DateTime.Now);
                     cmd3.Parameters.AddWithValue("@updatedAt", DateTime.Now);
                     await cmd3.ExecuteNonQueryAsync();
 

@@ -212,7 +212,7 @@ namespace Photobooth.Services
                 Console.WriteLine("=== END PHOTO ANALYSIS ===\n");
 
                 // Apply template overlay for heart-shaped and other special templates
-                await ApplyTemplateOverlayAsync(graphics, template);
+                await ApplyTemplateOverlayAsync(graphics, template, photoAreas);
 
                 // Save composed image
                 var outputFileName = $"composed_{template.Name}_{DateTime.Now:yyyyMMdd_HHmmss}.jpg";
@@ -313,7 +313,8 @@ namespace Photobooth.Services
                 Console.WriteLine($"Target rectangle (where photo should be placed): X={targetRect.X}, Y={targetRect.Y}, W={targetRect.Width}, H={targetRect.Height}");
                 
                 // Create processed photo that fits the target area
-                using var processedPhoto = await Task.Run(() => ProcessCapturedPhoto(capturedPhoto, targetRect, photoArea.Rotation, photoArea.BorderRadius));
+                var photoShapeType = photoArea.ShapeType != ShapeType.Rectangle ? photoArea.ShapeType : photoArea.GetShapeTypeFromRotation();
+                using var processedPhoto = await Task.Run(() => ProcessCapturedPhoto(capturedPhoto, targetRect, photoArea.Rotation, photoArea.BorderRadius, photoShapeType));
                 Console.WriteLine($"Processed photo dimensions: {processedPhoto.Width}x{processedPhoto.Height}");
                 
                 // Verify the processed photo matches target dimensions
@@ -327,8 +328,12 @@ namespace Photobooth.Services
                 }
                 
                 // Draw the processed photo onto the composition
-                // Skip additional rotation for circular photos (360°), heart-shaped photos (720°), and petal-shaped photos (1080°) since masking is already applied
-                if (photoArea.Rotation != 0 && Math.Abs(photoArea.Rotation - 360) >= 0.1 && Math.Abs(photoArea.Rotation - 720) >= 0.1 && Math.Abs(photoArea.Rotation - 1080) >= 0.1)
+                // Skip additional rotation for special shapes since masking is already applied
+                // For legacy support, also check rotation values
+                var shapeType = photoArea.ShapeType != ShapeType.Rectangle ? photoArea.ShapeType : photoArea.GetShapeTypeFromRotation();
+                bool isSpecialShape = shapeType == ShapeType.Circle || shapeType == ShapeType.Heart || shapeType == ShapeType.Petal;
+                
+                if (photoArea.Rotation != 0 && !isSpecialShape)
                 {
                     Console.WriteLine($"Applying rotation: {photoArea.Rotation}°");
                     
@@ -350,21 +355,23 @@ namespace Photobooth.Services
                 }
                 else
                 {
-                    if (Math.Abs(photoArea.Rotation - 360) < 0.1)
+                    switch (shapeType)
                     {
-                        Console.WriteLine($"Drawing circular photo (no additional rotation needed)");
-                    }
-                    else if (Math.Abs(photoArea.Rotation - 720) < 0.1)
-                    {
-                        Console.WriteLine($"Drawing heart-shaped photo (no additional rotation needed)");
-                    }
-                    else if (Math.Abs(photoArea.Rotation - 1080) < 0.1)
-                    {
-                        Console.WriteLine($"Drawing petal-shaped photo (no additional rotation needed)");
-                    }
-                    else
-                    {
-                        Console.WriteLine($"Drawing photo without rotation");
+                        case ShapeType.Circle:
+                            Console.WriteLine($"Drawing circular photo (no additional rotation needed)");
+                            break;
+                        case ShapeType.Heart:
+                            Console.WriteLine($"Drawing heart-shaped photo (no additional rotation needed)");
+                            break;
+                        case ShapeType.Petal:
+                            Console.WriteLine($"Drawing petal-shaped photo (no additional rotation needed)");
+                            break;
+                        case ShapeType.RoundedRectangle:
+                            Console.WriteLine($"Drawing rounded rectangle photo (no additional rotation needed)");
+                            break;
+                        default:
+                            Console.WriteLine($"Drawing photo without rotation");
+                            break;
                     }
                     graphics.DrawImage(processedPhoto, targetRect);
                     Console.WriteLine($"Photo drawn at: X={targetRect.X}, Y={targetRect.Y}, W={targetRect.Width}, H={targetRect.Height}");
@@ -394,7 +401,7 @@ namespace Photobooth.Services
         /// <summary>
         /// Apply template overlay for special templates (like heart shapes) by layering template.png on top
         /// </summary>
-        private async Task ApplyTemplateOverlayAsync(Graphics graphics, Template template)
+        private async Task ApplyTemplateOverlayAsync(Graphics graphics, Template template, List<TemplatePhotoArea> photoAreas)
         {
             try
             {
@@ -403,23 +410,27 @@ namespace Photobooth.Services
                 Console.WriteLine($"Layout Key: {template.Layout?.LayoutKey}");
                 Console.WriteLine($"Template Folder Path: {template.FolderPath}");
                 
+                // Prefer resolved (possibly DB-fetched) photo areas; fallback to template.Layout-backed areas
+                var areas = photoAreas ?? template.Layout?.PhotoAreas ?? new List<TemplatePhotoArea>();
+                Console.WriteLine($"Using photo areas source: {(photoAreas?.Count > 0 ? "resolved photoAreas" : template.Layout?.PhotoAreas?.Count > 0 ? "template.Layout fallback" : "empty fallback")}");
+                
                 // Debug photo areas
-                if (template.PhotoAreas != null)
+                if (areas != null && areas.Count > 0)
                 {
-                    Console.WriteLine($"Found {template.PhotoAreas.Count} photo areas:");
-                    foreach (var pa in template.PhotoAreas)
+                    Console.WriteLine($"Found {areas.Count} photo areas:");
+                    foreach (var pa in areas)
                     {
-                        Console.WriteLine($"  Photo Area {pa.Id}: Rotation={pa.Rotation}°, Position=({pa.X},{pa.Y}), Size={pa.Width}x{pa.Height}");
+                        Console.WriteLine($"  Photo Area {pa.Id}: Rotation={pa.Rotation}°, Position=({pa.X},{pa.Y}), Size={pa.Width}x{pa.Height}, Shape={pa.ShapeType}");
                     }
                 }
                 else
                 {
-                    Console.WriteLine($"⚠️  No photo areas found in template!");
+                    Console.WriteLine($"⚠️  No photo areas found in any source!");
                 }
                 
-                // Check if this template uses special shapes (rotation = 720 indicates heart shapes, 1080 indicates petal shapes)
-                bool hasHeartShapes = template.PhotoAreas?.Any(pa => Math.Abs(pa.Rotation - 720) < 0.1) == true;
-                bool hasPetalShapes = template.PhotoAreas?.Any(pa => Math.Abs(pa.Rotation - 1080) < 0.1) == true;
+                // Check if this template uses special shapes (ShapeType indicates shape types)
+                bool hasHeartShapes = areas?.Any(pa => pa.ShapeType == ShapeType.Heart) == true;
+                bool hasPetalShapes = areas?.Any(pa => pa.ShapeType == ShapeType.Petal) == true;
                 bool hasSpecialShapes = hasHeartShapes || hasPetalShapes;
                 Console.WriteLine($"Has heart shapes: {hasHeartShapes}");
                 Console.WriteLine($"Has petal shapes: {hasPetalShapes}");
@@ -480,7 +491,7 @@ namespace Photobooth.Services
         /// <summary>
         /// Process captured photo to fit target area with proper cropping and scaling
         /// </summary>
-        private Bitmap ProcessCapturedPhoto(Image capturedPhoto, Rectangle targetRect, double rotation, int borderRadius = 0)
+        private Bitmap ProcessCapturedPhoto(Image capturedPhoto, Rectangle targetRect, double rotation, int borderRadius = 0, ShapeType shapeType = ShapeType.Rectangle)
         {
             Console.WriteLine($"    🔄 ProcessCapturedPhoto Details:");
             Console.WriteLine($"    📥 Input: {capturedPhoto.Width}x{capturedPhoto.Height}");
@@ -528,12 +539,26 @@ namespace Photobooth.Services
             // Clear to transparent background
             graphics.Clear(Color.Transparent);
 
-            // Check if we need to create a circular mask (rotation = 360 indicates circular photo)
-            bool isCircular = Math.Abs(rotation - 360) < 0.1;
-            // Check if this is a heart-shaped photo (rotation = 720) - these use template overlay instead of clipping
-            bool isHeart = Math.Abs(rotation - 720) < 0.1;
-            // Check if this is a petal-shaped photo (rotation = 1080) - these use template overlay instead of clipping
-            bool isPetal = Math.Abs(rotation - 1080) < 0.1;
+            // Use the provided ShapeType parameter (with fallback to rotation for legacy compatibility)
+            if (shapeType == ShapeType.Rectangle && (Math.Abs(rotation - 360) < 0.1 || Math.Abs(rotation - 720) < 0.1 || Math.Abs(rotation - 1080) < 0.1 || borderRadius > 0))
+            {
+                // Legacy fallback: derive from rotation if ShapeType is default Rectangle
+                if (Math.Abs(rotation - 360) < 0.1)
+                    shapeType = ShapeType.Circle;
+                else if (Math.Abs(rotation - 720) < 0.1)
+                    shapeType = ShapeType.Heart;
+                else if (Math.Abs(rotation - 1080) < 0.1)
+                    shapeType = ShapeType.Petal;
+                else if (borderRadius > 0)
+                    shapeType = ShapeType.RoundedRectangle;
+            }
+            
+            bool isCircular = shapeType == ShapeType.Circle;
+            bool isHeart = shapeType == ShapeType.Heart;
+            bool isPetal = shapeType == ShapeType.Petal;
+            bool isRoundedRectangle = shapeType == ShapeType.RoundedRectangle;
+            
+            Console.WriteLine($"    🎨 Shape Type: {shapeType}");
             
             if (isHeart)
             {
@@ -562,7 +587,7 @@ namespace Photobooth.Services
                 
                 Console.WriteLine($"    🔵 Circular mask: center=({centerX}, {centerY}), radius={radius}");
             }
-            else if (borderRadius > 0)
+            else if (isRoundedRectangle && borderRadius > 0)
             {
                 Console.WriteLine($"    🔲 Creating rounded corner mask with radius: {borderRadius}");
                 
@@ -592,14 +617,14 @@ namespace Photobooth.Services
                 GraphicsUnit.Pixel);
 
             // Reset clipping region if any mask was applied
-            if (isCircular || borderRadius > 0)
+            if (isCircular || isRoundedRectangle)
             {
                 graphics.ResetClip();
                 if (isCircular)
                 {
                     Console.WriteLine($"    🔵 Circular mask applied and reset");
                 }
-                else
+                else if (isRoundedRectangle)
                 {
                     Console.WriteLine($"    🔲 Rounded corner mask applied and reset");
                 }
@@ -611,6 +636,10 @@ namespace Photobooth.Services
             else if (isPetal)
             {
                 Console.WriteLine($"    🌸 Petal shape processed (no clipping mask used)");
+            }
+            else
+            {
+                Console.WriteLine($"    🟦 Rectangle shape processed (no clipping mask used)");
             }
 
             Console.WriteLine($"    ✅ Processed photo created: {processedPhoto.Width}x{processedPhoto.Height}");
