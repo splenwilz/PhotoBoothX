@@ -58,6 +58,12 @@ namespace Photobooth.Services
         Task<DatabaseResult<PrintSupply?>> GetPrintSupplyAsync(SupplyType supplyType);
         Task<DatabaseResult> UpdatePrintSupplyAsync(SupplyType supplyType, int newCount);
         
+        // Camera settings methods
+        Task<DatabaseResult<List<CameraSettings>>> GetAllCameraSettingsAsync();
+        Task<DatabaseResult<CameraSettings?>> GetCameraSettingAsync(string settingName);
+        Task<DatabaseResult> SaveCameraSettingAsync(string settingName, int settingValue);
+        Task<DatabaseResult> SaveAllCameraSettingsAsync(int brightness, int zoom, int contrast);
+        
         // Product management methods
         Task<DatabaseResult<List<Product>>> GetProductsAsync();
         Task<DatabaseResult<List<ProductCategory>>> GetProductCategoriesAsync();
@@ -3713,6 +3719,166 @@ It contains no important application files.
             }
         }
 
+        
+        #region Camera Settings Methods
+
+        public async Task<DatabaseResult<List<CameraSettings>>> GetAllCameraSettingsAsync()
+        {
+            try
+            {
+                Console.WriteLine("DatabaseService: Getting all camera settings");
+                var query = "SELECT * FROM CameraSettings ORDER BY SettingName";
+
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+                using var command = new SqliteCommand(query, connection);
+                using var reader = await command.ExecuteReaderAsync();
+
+                var settings = new List<CameraSettings>();
+                while (await reader.ReadAsync())
+                {
+                    settings.Add(new CameraSettings
+                    {
+                        Id = reader.GetInt32("Id"),
+                        SettingName = reader.GetString("SettingName"),
+                        SettingValue = reader.GetInt32("SettingValue"),
+                        Description = reader.IsDBNull("Description") ? null : reader.GetString("Description"),
+                        CreatedAt = reader.GetDateTime("CreatedAt"),
+                        UpdatedAt = reader.GetDateTime("UpdatedAt")
+                    });
+                }
+
+                Console.WriteLine($"DatabaseService: Retrieved {settings.Count} camera settings");
+                return DatabaseResult<List<CameraSettings>>.SuccessResult(settings);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"DatabaseService: Error getting camera settings - {ex.Message}");
+                return DatabaseResult<List<CameraSettings>>.ErrorResult($"Failed to get camera settings: {ex.Message}");
+            }
+        }
+
+        public async Task<DatabaseResult<CameraSettings?>> GetCameraSettingAsync(string settingName)
+        {
+            try
+            {
+                Console.WriteLine($"DatabaseService: Getting camera setting '{settingName}'");
+                var query = "SELECT * FROM CameraSettings WHERE SettingName = @settingName";
+
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+                using var command = new SqliteCommand(query, connection);
+                command.Parameters.AddWithValue("@settingName", settingName);
+                using var reader = await command.ExecuteReaderAsync();
+
+                if (await reader.ReadAsync())
+                {
+                    var setting = new CameraSettings
+                    {
+                        Id = reader.GetInt32("Id"),
+                        SettingName = reader.GetString("SettingName"),
+                        SettingValue = reader.GetInt32("SettingValue"),
+                        Description = reader.IsDBNull("Description") ? null : reader.GetString("Description"),
+                        CreatedAt = reader.GetDateTime("CreatedAt"),
+                        UpdatedAt = reader.GetDateTime("UpdatedAt")
+                    };
+
+                    Console.WriteLine($"DatabaseService: Found camera setting '{settingName}' = {setting.SettingValue}");
+                    return DatabaseResult<CameraSettings?>.SuccessResult(setting);
+                }
+
+                Console.WriteLine($"DatabaseService: Camera setting '{settingName}' not found");
+                return DatabaseResult<CameraSettings?>.SuccessResult(null);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"DatabaseService: Error getting camera setting '{settingName}' - {ex.Message}");
+                return DatabaseResult<CameraSettings?>.ErrorResult($"Failed to get camera setting: {ex.Message}");
+            }
+        }
+
+        public async Task<DatabaseResult> SaveCameraSettingAsync(string settingName, int settingValue)
+        {
+            try
+            {
+                Console.WriteLine($"DatabaseService: Saving camera setting '{settingName}' = {settingValue}");
+                var query = @"
+                    INSERT OR REPLACE INTO CameraSettings (SettingName, SettingValue, UpdatedAt) 
+                    VALUES (@settingName, @settingValue, @updatedAt)";
+
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+                using var command = new SqliteCommand(query, connection);
+                command.Parameters.AddWithValue("@settingName", settingName);
+                command.Parameters.AddWithValue("@settingValue", settingValue);
+                command.Parameters.AddWithValue("@updatedAt", DateTime.Now);
+
+                await command.ExecuteNonQueryAsync();
+                Console.WriteLine($"DatabaseService: Successfully saved camera setting '{settingName}' = {settingValue}");
+                return DatabaseResult.SuccessResult();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"DatabaseService: Error saving camera setting '{settingName}' - {ex.Message}");
+                return DatabaseResult.ErrorResult($"Failed to save camera setting: {ex.Message}");
+            }
+        }
+
+        public async Task<DatabaseResult> SaveAllCameraSettingsAsync(int brightness, int zoom, int contrast)
+        {
+            try
+            {
+                Console.WriteLine($"DatabaseService: Saving all camera settings - Brightness:{brightness}, Zoom:{zoom}, Contrast:{contrast}");
+                
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+                using var transaction = connection.BeginTransaction();
+                
+                try
+                {
+                    var query = @"
+                        INSERT OR REPLACE INTO CameraSettings (SettingName, SettingValue, UpdatedAt) 
+                        VALUES (@settingName, @settingValue, @updatedAt)";
+
+                    // Save brightness
+                    using var cmd1 = new SqliteCommand(query, connection, transaction);
+                    cmd1.Parameters.AddWithValue("@settingName", "Brightness");
+                    cmd1.Parameters.AddWithValue("@settingValue", brightness);
+                    cmd1.Parameters.AddWithValue("@updatedAt", DateTime.Now);
+                    await cmd1.ExecuteNonQueryAsync();
+
+                    // Save zoom
+                    using var cmd2 = new SqliteCommand(query, connection, transaction);
+                    cmd2.Parameters.AddWithValue("@settingName", "Zoom");
+                    cmd2.Parameters.AddWithValue("@settingValue", zoom);
+                    cmd2.Parameters.AddWithValue("@updatedAt", DateTime.Now);
+                    await cmd2.ExecuteNonQueryAsync();
+
+                    // Save contrast
+                    using var cmd3 = new SqliteCommand(query, connection, transaction);
+                    cmd3.Parameters.AddWithValue("@settingName", "Contrast");
+                    cmd3.Parameters.AddWithValue("@settingValue", contrast);
+                    cmd3.Parameters.AddWithValue("@updatedAt", DateTime.Now);
+                    await cmd3.ExecuteNonQueryAsync();
+
+                    transaction.Commit();
+                    Console.WriteLine("DatabaseService: Successfully saved all camera settings");
+                    return DatabaseResult.SuccessResult();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"DatabaseService: Error saving camera settings - {ex.Message}");
+                return DatabaseResult.ErrorResult($"Failed to save camera settings: {ex.Message}");
+            }
+        }
+
+        #endregion
 
     }
 } 

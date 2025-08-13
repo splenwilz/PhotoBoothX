@@ -266,6 +266,9 @@ namespace Photobooth.Services
                 // Start capture
                 _videoSource.Start();
                 _isCapturing = true;
+                
+                // Load saved camera settings from database
+                _ = LoadCameraSettingsFromDatabaseAsync();
 
                 // Reset counters
                 _frameCounter = 0;
@@ -643,8 +646,10 @@ namespace Photobooth.Services
                     // Dispose previous frame
                     _lastFrame?.Dispose();
                     
-                    // Store new frame
-                    _lastFrame = new Bitmap(eventArgs.Frame);
+                    // Store new frame with adjustments applied
+                    var originalFrame = new Bitmap(eventArgs.Frame);
+                    _lastFrame = ApplyImageAdjustments(originalFrame);
+                    originalFrame.Dispose();
                 }
 
                 // Throttle UI updates to prevent freezing (longer throttle during photo capture)
@@ -929,6 +934,303 @@ namespace Photobooth.Services
             {
                 LoggingService.Hardware.Error("Camera", "Could not check camera privacy settings", ex);
                 return true; // Assume allowed if we can't check
+            }
+        }
+
+        #endregion
+
+        #region Camera Property Controls
+
+        // Camera setting storage
+        private int _currentBrightness = 50;
+        private int _currentZoom = 100;
+        private int _currentContrast = 50;
+
+        /// <summary>
+        /// Set camera brightness (0-100)
+        /// </summary>
+        public bool SetBrightness(int brightness)
+        {
+            try
+            {
+                brightness = Math.Clamp(brightness, 0, 100);
+                _currentBrightness = brightness;
+
+                if (_videoSource != null && _isCapturing)
+                {
+                    LoggingService.Hardware.Information("Camera", "Brightness adjusted", 
+                        ("Brightness", brightness));
+                    return true;
+                }
+
+                LoggingService.Hardware.Information("Camera", "Brightness setting stored for future use", 
+                    ("Brightness", brightness));
+                return true;
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Hardware.Error("Camera", "Failed to set brightness", ex, 
+                    ("Brightness", brightness));
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Set camera zoom (100-300, where 100 = no zoom)
+        /// </summary>
+        public bool SetZoom(int zoomPercentage)
+        {
+            try
+            {
+                zoomPercentage = Math.Clamp(zoomPercentage, 100, 300);
+                _currentZoom = zoomPercentage;
+
+                if (_videoSource != null && _isCapturing)
+                {
+                    LoggingService.Hardware.Information("Camera", "Zoom adjusted (software scaling)", 
+                        ("ZoomPercentage", zoomPercentage));
+                    return true;
+                }
+
+                LoggingService.Hardware.Information("Camera", "Zoom setting stored for future use", 
+                    ("ZoomPercentage", zoomPercentage));
+                return true;
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Hardware.Error("Camera", "Failed to set zoom", ex, 
+                    ("ZoomPercentage", zoomPercentage));
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Set camera contrast (0-100)
+        /// </summary>
+        public bool SetContrast(int contrast)
+        {
+            try
+            {
+                contrast = Math.Clamp(contrast, 0, 100);
+                _currentContrast = contrast;
+
+                if (_videoSource != null && _isCapturing)
+                {
+                    LoggingService.Hardware.Information("Camera", "Contrast adjusted", 
+                        ("Contrast", contrast));
+                    return true;
+                }
+
+                LoggingService.Hardware.Information("Camera", "Contrast setting stored for future use", 
+                    ("Contrast", contrast));
+                return true;
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Hardware.Error("Camera", "Failed to set contrast", ex, 
+                    ("Contrast", contrast));
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Get current camera brightness setting
+        /// </summary>
+        public int GetBrightness()
+        {
+            return _currentBrightness;
+        }
+
+        /// <summary>
+        /// Get current camera zoom setting
+        /// </summary>
+        public int GetZoom()
+        {
+            return _currentZoom;
+        }
+
+        /// <summary>
+        /// Get current camera contrast setting
+        /// </summary>
+        public int GetContrast()
+        {
+            return _currentContrast;
+        }
+
+        /// <summary>
+        /// Reset all camera settings to defaults
+        /// </summary>
+        public void ResetCameraSettings()
+        {
+            try
+            {
+                SetBrightness(50);
+                SetZoom(100);
+                SetContrast(50);
+                
+                LoggingService.Hardware.Information("Camera", "All camera settings reset to defaults");
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Hardware.Error("Camera", "Failed to reset camera settings", ex);
+            }
+        }
+
+        /// <summary>
+        /// Apply software-based image adjustments to the frame
+        /// This provides immediate visual feedback even if hardware controls aren't available
+        /// </summary>
+        private Bitmap ApplyImageAdjustments(Bitmap originalFrame)
+        {
+            try
+            {
+                if (_currentBrightness == 50 && _currentZoom == 100 && _currentContrast == 50)
+                {
+                    // No adjustments needed
+                    return new Bitmap(originalFrame);
+                }
+
+                var adjustedFrame = new Bitmap(originalFrame.Width, originalFrame.Height);
+                
+                // Calculate adjustment factors
+                float brightnessFactor = (_currentBrightness - 50) / 50.0f; // -1.0 to 1.0
+                float contrastFactor = _currentContrast / 50.0f; // 0.0 to 2.0
+                float zoomFactor = _currentZoom / 100.0f; // 1.0 to 3.0
+
+                using (var graphics = Graphics.FromImage(adjustedFrame))
+                {
+                    // Apply zoom (center crop)
+                    if (zoomFactor > 1.0f)
+                    {
+                        var zoomedWidth = (int)(originalFrame.Width / zoomFactor);
+                        var zoomedHeight = (int)(originalFrame.Height / zoomFactor);
+                        var cropX = (originalFrame.Width - zoomedWidth) / 2;
+                        var cropY = (originalFrame.Height - zoomedHeight) / 2;
+                        
+                        var cropRect = new Rectangle(cropX, cropY, zoomedWidth, zoomedHeight);
+                        var destRect = new Rectangle(0, 0, adjustedFrame.Width, adjustedFrame.Height);
+                        
+                        graphics.DrawImage(originalFrame, destRect, cropRect, GraphicsUnit.Pixel);
+                    }
+                    else
+                    {
+                        graphics.DrawImage(originalFrame, 0, 0);
+                    }
+                }
+
+                // Apply brightness and contrast adjustments
+                if (_currentBrightness != 50 || _currentContrast != 50)
+                {
+                    ApplyBrightnessContrast(adjustedFrame, brightnessFactor, contrastFactor);
+                }
+
+                return adjustedFrame;
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Hardware.Error("Camera", "Failed to apply image adjustments", ex);
+                return new Bitmap(originalFrame);
+            }
+        }
+
+        /// <summary>
+        /// Apply brightness and contrast adjustments to bitmap
+        /// </summary>
+        private void ApplyBrightnessContrast(Bitmap bitmap, float brightness, float contrast)
+        {
+            try
+            {
+                var data = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height),
+                    ImageLockMode.ReadWrite, PixelFormat.Format24bppRgb);
+
+                unsafe
+                {
+                    byte* ptr = (byte*)data.Scan0;
+                    int bytes = Math.Abs(data.Stride) * bitmap.Height;
+                    
+                    for (int i = 0; i < bytes; i += 3)
+                    {
+                        // Apply brightness and contrast to each color channel
+                        for (int channel = 0; channel < 3; channel++)
+                        {
+                            float pixel = ptr[i + channel];
+                            
+                            // Apply contrast
+                            pixel = ((pixel / 255.0f - 0.5f) * contrast + 0.5f) * 255.0f;
+                            
+                            // Apply brightness
+                            pixel += brightness * 255.0f;
+                            
+                            // Clamp to valid range
+                            pixel = Math.Max(0, Math.Min(255, pixel));
+                            
+                            ptr[i + channel] = (byte)pixel;
+                        }
+                    }
+                }
+                
+                bitmap.UnlockBits(data);
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Hardware.Error("Camera", "Failed to apply brightness/contrast", ex);
+            }
+        }
+
+        #endregion
+
+        #region Database Settings Integration
+
+        /// <summary>
+        /// Load camera settings from database and apply them
+        /// </summary>
+        private async Task LoadCameraSettingsFromDatabaseAsync()
+        {
+            try
+            {
+                Console.WriteLine("CameraService: Loading camera settings from database");
+                
+                // Create database service instance directly (same pattern as other services in the app)
+                var databaseService = new DatabaseService();
+                
+                try
+                {
+                    // Load brightness
+                    var brightnessResult = await databaseService.GetCameraSettingAsync("Brightness");
+                    if (brightnessResult.Success && brightnessResult.Data != null)
+                    {
+                        SetBrightness(brightnessResult.Data.SettingValue);
+                        Console.WriteLine($"CameraService: Applied brightness = {brightnessResult.Data.SettingValue}");
+                    }
+
+                    // Load zoom
+                    var zoomResult = await databaseService.GetCameraSettingAsync("Zoom");
+                    if (zoomResult.Success && zoomResult.Data != null)
+                    {
+                        SetZoom(zoomResult.Data.SettingValue);
+                        Console.WriteLine($"CameraService: Applied zoom = {zoomResult.Data.SettingValue}");
+                    }
+
+                    // Load contrast
+                    var contrastResult = await databaseService.GetCameraSettingAsync("Contrast");
+                    if (contrastResult.Success && contrastResult.Data != null)
+                    {
+                        SetContrast(contrastResult.Data.SettingValue);
+                        Console.WriteLine($"CameraService: Applied contrast = {contrastResult.Data.SettingValue}");
+                    }
+
+                    LoggingService.Hardware.Information("Camera", "Camera settings loaded from database successfully");
+                }
+                catch (Exception dbEx)
+                {
+                    Console.WriteLine($"CameraService: Database access error - {dbEx.Message}");
+                    LoggingService.Hardware.Warning("Camera", "Database access failed - using default camera settings");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"CameraService: Error loading camera settings from database - {ex.Message}");
+                LoggingService.Hardware.Error("Camera", "Failed to load camera settings from database", ex);
             }
         }
 

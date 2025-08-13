@@ -548,6 +548,16 @@ namespace Photobooth.Models
         public DateTime? LastMaintenanceAt { get; set; }
     }
 
+    public class CameraSettings
+    {
+        public int Id { get; set; }
+        public string SettingName { get; set; } = string.Empty;
+        public int SettingValue { get; set; }
+        public string? Description { get; set; }
+        public DateTime CreatedAt { get; set; } = DateTime.Now;
+        public DateTime UpdatedAt { get; set; } = DateTime.Now;
+    }
+
     public class PrintSupply
     {
         public int Id { get; set; }

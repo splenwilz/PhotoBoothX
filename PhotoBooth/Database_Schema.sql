@@ -283,6 +283,16 @@ CREATE TABLE HardwareStatus (
     LastMaintenanceAt DATETIME
 );
 
+-- Camera settings storage
+CREATE TABLE CameraSettings (
+    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+    SettingName TEXT NOT NULL UNIQUE,
+    SettingValue INTEGER NOT NULL,
+    Description TEXT,
+    CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UpdatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Print supply tracking
 CREATE TABLE PrintSupplies (
     Id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -533,6 +543,12 @@ INSERT INTO HardwareStatus (ComponentName, Status) VALUES
     ('Arduino', 'Online'),
     ('TouchScreen', 'Online'),
     ('RFID Reader', 'Online');
+
+-- Insert default camera settings
+INSERT INTO CameraSettings (SettingName, SettingValue, Description) VALUES
+    ('Brightness', 50, 'Camera brightness level (0-100)'),
+    ('Zoom', 100, 'Camera zoom level (50-200%)'),
+    ('Contrast', 50, 'Camera contrast level (0-100)');
 
 -- Insert default print supplies
 INSERT INTO PrintSupplies (SupplyType, TotalCapacity, CurrentCount, LowThreshold, CriticalThreshold) VALUES

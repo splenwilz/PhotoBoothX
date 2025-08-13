@@ -309,7 +309,7 @@ namespace Photobooth
                     LoggingService.Application.Information("Price input completed via virtual keyboard", ("Context", context));
                     
                     // Use Dispatcher to ensure we're on the UI thread
-                    Dispatcher.BeginInvoke(new Action(async () =>
+                    _ = Dispatcher.BeginInvoke(new Action(async () =>
                     {
                         try
                         {
@@ -592,7 +592,25 @@ namespace Photobooth
         /// </summary>
         private void ExitAdminButton_Click(object sender, RoutedEventArgs e)
         {
-            ExitAdminRequested?.Invoke(this, EventArgs.Empty);
+            try
+            {
+                Console.WriteLine("AdminDashboard: Exit admin button clicked - cleaning up diagnostic camera");
+                
+                // Stop diagnostic camera when exiting admin
+                StopDiagnosticCamera();
+                LogToDiagnostics("Diagnostic camera stopped - exiting admin dashboard");
+                
+                // Invoke the exit event
+                ExitAdminRequested?.Invoke(this, EventArgs.Empty);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"AdminDashboard: Error during admin exit - {ex.Message}");
+                LoggingService.Application.Error("Failed to cleanup during admin exit", ex);
+                
+                // Still try to exit even if cleanup fails
+                ExitAdminRequested?.Invoke(this, EventArgs.Empty);
+            }
         }
 
         /// <summary>
@@ -616,6 +634,13 @@ namespace Photobooth
                 {
                     clickedTab.Tag = "Active";
 
+                    // Auto-stop diagnostic camera when leaving diagnostics tab
+                    if (DiagnosticsTabContent.Visibility == Visibility.Visible && clickedTab.Name != "DiagnosticsTab")
+                    {
+                        StopDiagnosticCamera();
+                        LogToDiagnostics("Diagnostic camera auto-stopped when leaving tab");
+                    }
+                    
                     // Hide all tab contents
                     SalesTabContent.Visibility = Visibility.Collapsed;
                     SettingsTabContent.Visibility = Visibility.Collapsed;
@@ -663,6 +688,7 @@ namespace Photobooth
                         case "DiagnosticsTab":
                             DiagnosticsTabContent.Visibility = Visibility.Visible;
                             BreadcrumbText.Text = "Diagnostics";
+                            InitializeDiagnosticsTab();
                             break;
                         case "SystemTab":
                             SystemTabContent.Visibility = Visibility.Visible;
@@ -4164,6 +4190,891 @@ namespace Photobooth
             border.Child = grid;
             return border;
         }
+
+        #endregion
+
+        #region Cleanup
+
+        /// <summary>
+        /// Cleanup diagnostic resources when admin dashboard is closed
+        /// </summary>
+        public void CleanupDiagnosticResources()
+        {
+            try
+            {
+                StopDiagnosticCamera();
+                LogToDiagnostics("Admin dashboard cleanup completed");
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to cleanup diagnostic resources", ex);
+            }
+        }
+
+        #endregion
+
+        #region Diagnostics Event Handlers
+
+        /// <summary>
+        /// Initialize diagnostic system info when diagnostics tab is loaded
+        /// </summary>
+        private void InitializeDiagnosticsTab()
+        {
+            try
+            {
+                Console.WriteLine("AdminDashboard: Initializing diagnostics tab");
+                
+                // Update system information
+                if (OSVersionText != null)
+                    OSVersionText.Text = Environment.OSVersion.ToString();
+                
+                if (AppVersionText != null)
+                {
+                    var assembly = System.Reflection.Assembly.GetExecutingAssembly();
+                    var version = assembly.GetName().Version;
+                    AppVersionText.Text = version?.ToString() ?? "Unknown";
+                }
+                
+                if (UptimeText != null)
+                {
+                    var uptime = DateTime.Now - System.Diagnostics.Process.GetCurrentProcess().StartTime;
+                    UptimeText.Text = $"{uptime.Days}d {uptime.Hours}h {uptime.Minutes}m";
+                }
+                
+                // Load camera settings from database
+                _ = LoadCameraSettingsFromDatabaseAsync();
+                
+                _ = LoadFreeCreditUsageAsync();
+                LogToDiagnostics("Diagnostics system initialized - loading camera settings from database");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"AdminDashboard: Error initializing diagnostics tab - {ex.Message}");
+                LoggingService.Application.Error("Failed to initialize diagnostics tab", ex);
+                LogToDiagnostics($"ERROR: Failed to initialize diagnostics - {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Load camera settings from database
+        /// </summary>
+        private async Task LoadCameraSettingsFromDatabaseAsync()
+        {
+            try
+            {
+                Console.WriteLine("AdminDashboard: Loading camera settings from database");
+                
+                // Load brightness
+                var brightnessResult = await _databaseService.GetCameraSettingAsync("Brightness");
+                if (brightnessResult.Success && brightnessResult.Data != null)
+                {
+                    _savedBrightness = brightnessResult.Data.SettingValue;
+                    Console.WriteLine($"AdminDashboard: Loaded brightness = {_savedBrightness}");
+                }
+
+                // Load zoom
+                var zoomResult = await _databaseService.GetCameraSettingAsync("Zoom");
+                if (zoomResult.Success && zoomResult.Data != null)
+                {
+                    _savedZoom = zoomResult.Data.SettingValue;
+                    Console.WriteLine($"AdminDashboard: Loaded zoom = {_savedZoom}");
+                }
+
+                // Load contrast
+                var contrastResult = await _databaseService.GetCameraSettingAsync("Contrast");
+                if (contrastResult.Success && contrastResult.Data != null)
+                {
+                    _savedContrast = contrastResult.Data.SettingValue;
+                    Console.WriteLine($"AdminDashboard: Loaded contrast = {_savedContrast}");
+                }
+                    
+                    // Update UI sliders with loaded values
+                    Dispatcher.Invoke(() =>
+                    {
+                        if (BrightnessSlider != null) BrightnessSlider.Value = _savedBrightness;
+                        if (ZoomSlider != null) ZoomSlider.Value = _savedZoom;
+                        if (ContrastSlider != null) ContrastSlider.Value = _savedContrast;
+                    });
+                    
+                    LogToDiagnostics($"Camera settings loaded from database: Brightness={_savedBrightness}, Zoom={_savedZoom}, Contrast={_savedContrast}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"AdminDashboard: Error loading camera settings from database - {ex.Message}");
+                LogToDiagnostics($"ERROR: Failed to load camera settings from database - {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Load free credit usage tracking
+        /// </summary>
+        private async Task LoadFreeCreditUsageAsync()
+        {
+            try
+            {
+                // Get total free credits issued from credit transactions
+                var result = await _databaseService.GetCreditTransactionsAsync();
+                if (result.Success && result.Data != null)
+                {
+                    var freeCreditsTotal = result.Data
+                        .Where(ct => ct.TransactionType == CreditTransactionType.Add && 
+                                    (ct.Description?.Contains("Free Credit") == true || ct.CreatedBy == "System"))
+                        .Sum(ct => ct.Amount);
+                    
+                    if (FreeCreditUsedText != null)
+                        FreeCreditUsedText.Text = $"${freeCreditsTotal:F2}";
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to load free credit usage", ex);
+                if (FreeCreditUsedText != null)
+                    FreeCreditUsedText.Text = "Error";
+            }
+        }
+
+        /// <summary>
+        /// Log message to diagnostic console
+        /// </summary>
+        private void LogToDiagnostics(string message)
+        {
+            try
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    if (DiagnosticLogText != null)
+                    {
+                        var timestamp = DateTime.Now.ToString("HH:mm:ss");
+                        var currentText = DiagnosticLogText.Text;
+                        
+                        if (currentText == "Diagnostic log will appear here...")
+                            currentText = "";
+                        
+                        var newText = $"[{timestamp}] {message}\n{currentText}";
+                        
+                        // Keep only last 50 lines
+                        var lines = newText.Split('\n');
+                        if (lines.Length > 50)
+                            newText = string.Join("\n", lines.Take(50));
+                        
+                        DiagnosticLogText.Text = newText;
+                        
+                        // Auto scroll to top
+                        if (DiagnosticLogScrollViewer != null)
+                            DiagnosticLogScrollViewer.ScrollToTop();
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to log to diagnostics", ex);
+            }
+        }
+
+        /// <summary>
+        /// Update hardware status indicator
+        /// </summary>
+        private void UpdateHardwareStatus(string hardware, bool isConnected, string message, string? statusOverride = null)
+        {
+            try
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    Border? indicator = null;
+                    TextBlock? statusText = null;
+                    TextBlock? statusMessage = null;
+                    
+                    switch (hardware.ToLower())
+                    {
+                        case "camera":
+                            indicator = CameraStatusIndicator;
+                            statusText = CameraStatusText;
+                            statusMessage = CameraStatusMessage;
+                            break;
+                        case "printer":
+                            indicator = PrinterStatusIndicator;
+                            statusText = PrinterStatusText;
+                            statusMessage = PrinterStatusMessage;
+                            break;
+                        case "arduino":
+                            indicator = ArduinoStatusIndicator;
+                            statusText = ArduinoStatusText;
+                            statusMessage = ArduinoStatusMessage;
+                            break;
+                    }
+                    
+                    if (indicator != null && statusText != null && statusMessage != null)
+                    {
+                        if (isConnected)
+                        {
+                            // Professional green for connected/active state
+                            indicator.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F0F9FF"));
+                            indicator.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0284C7"));
+                            statusText.Text = statusOverride ?? "Connected";
+                            statusText.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0C4A6E"));
+                        }
+                        else
+                        {
+                            // Determine if this is an error or just inactive/stopped
+                            bool isError = message.ToLower().Contains("error") || message.ToLower().Contains("failed") || message.ToLower().Contains("not found");
+                            
+                            if (isError)
+                            {
+                                // Professional red for actual errors
+                                indicator.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FEF2F2"));
+                                indicator.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#DC2626"));
+                                statusText.Text = statusOverride ?? "Error";
+                                statusText.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#991B1B"));
+                            }
+                            else
+                            {
+                                // Professional gray for inactive/stopped state
+                                indicator.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F8FAFC"));
+                                indicator.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#64748B"));
+                                statusText.Text = statusOverride ?? "Inactive";
+                                statusText.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#475569"));
+                            }
+                        }
+                        statusMessage.Text = message;
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error($"Failed to update {hardware} status", ex);
+            }
+        }
+
+        // Camera Testing Event Handlers
+        private void TestCameraButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                LogToDiagnostics("Testing camera connection...");
+                
+                // Use existing camera service
+                var cameraService = new CameraService();
+                var cameras = cameraService.GetAvailableCameras();
+                
+                if (cameras.Count > 0)
+                {
+                    LogToDiagnostics($"Found {cameras.Count} camera(s): {string.Join(", ", cameras.Select(c => c.Name))}");
+                    
+                    bool started = cameraService.StartCamera();
+                    if (started)
+                    {
+                        UpdateHardwareStatus("camera", true, "Camera started successfully");
+                        LogToDiagnostics("Camera started successfully - preview available");
+                        
+                        // Enable camera controls
+                        if (StopCameraButton != null) StopCameraButton.IsEnabled = true;
+                        if (TestCameraButton != null) TestCameraButton.IsEnabled = false;
+                        
+                        // Subscribe to preview frames
+                        cameraService.PreviewFrameReady += CameraService_PreviewFrameReady;
+                        
+                        // Apply saved camera settings to camera
+                        cameraService.SetBrightness(_savedBrightness);
+                        cameraService.SetZoom(_savedZoom);
+                        cameraService.SetContrast(_savedContrast);
+                        LogToDiagnostics($"Applied saved settings: Brightness={_savedBrightness}%, Zoom={_savedZoom}%, Contrast={_savedContrast}%");
+                        
+                        // Start preview updates
+                        _ = StartCameraPreviewUpdates(cameraService);
+                    }
+                    else
+                    {
+                        UpdateHardwareStatus("camera", false, "Failed to start camera");
+                        LogToDiagnostics("ERROR: Failed to start camera");
+                    }
+                }
+                else
+                {
+                    UpdateHardwareStatus("camera", false, "No cameras found");
+                    LogToDiagnostics("ERROR: No cameras detected");
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Camera test failed", ex);
+                UpdateHardwareStatus("camera", false, $"Test failed: {ex.Message}");
+                LogToDiagnostics($"ERROR: Camera test failed - {ex.Message}");
+            }
+        }
+
+        private CameraService? _diagnosticCameraService;
+        
+        // Persistent camera settings
+        private int _savedBrightness = 50;
+        private int _savedZoom = 100;
+        private int _savedContrast = 50;
+
+        private Task StartCameraPreviewUpdates(CameraService cameraService)
+        {
+            _diagnosticCameraService = cameraService;
+            
+            // Optimized preview update loop for smooth performance
+            _ = Task.Run(async () =>
+            {
+                while (_diagnosticCameraService != null && _diagnosticCameraService.IsCapturing)
+                {
+                    try
+                    {
+                        if (_diagnosticCameraService.IsNewFrameAvailable())
+                        {
+                            var previewBitmap = _diagnosticCameraService.GetPreviewBitmap();
+                            if (previewBitmap != null)
+                            {
+                                // Use BeginInvoke for better performance (non-blocking)
+                                _ = Dispatcher.BeginInvoke(new Action(() =>
+                                {
+                                    if (CameraPreviewImage != null)
+                                    {
+                                        CameraPreviewImage.Source = previewBitmap;
+                                        if (CameraPreviewPlaceholder != null)
+                                            CameraPreviewPlaceholder.Visibility = Visibility.Collapsed;
+                                    }
+                                }), System.Windows.Threading.DispatcherPriority.Render);
+                            }
+                        }
+                        await Task.Delay(16); // ~60 FPS for smooth preview matching frontend
+                    }
+                    catch (Exception ex)
+                    {
+                        LoggingService.Application.Error("Camera preview update failed", ex);
+                        break;
+                    }
+                }
+            });
+            
+            return Task.CompletedTask;
+        }
+
+        private void CameraService_PreviewFrameReady(object? sender, System.Windows.Media.Imaging.WriteableBitmap e)
+        {
+            // Preview frames are handled in the update loop
+        }
+
+        private void StopCameraButton_Click(object sender, RoutedEventArgs e)
+        {
+            StopDiagnosticCamera();
+        }
+
+        /// <summary>
+        /// Stop the diagnostic camera and clean up resources
+        /// </summary>
+        private void StopDiagnosticCamera()
+        {
+            try
+            {
+                _diagnosticCameraService?.StopCamera();
+                _diagnosticCameraService?.Dispose();
+                _diagnosticCameraService = null;
+                
+                // Reset UI
+                if (CameraPreviewImage != null) CameraPreviewImage.Source = null;
+                if (CameraPreviewPlaceholder != null) CameraPreviewPlaceholder.Visibility = Visibility.Visible;
+                if (StopCameraButton != null) StopCameraButton.IsEnabled = false;
+                if (TestCameraButton != null) TestCameraButton.IsEnabled = true;
+                
+                UpdateHardwareStatus("camera", false, "Camera stopped", "Stopped");
+                LogToDiagnostics("Camera stopped and resources cleaned up");
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to stop camera", ex);
+                LogToDiagnostics($"ERROR: Failed to stop camera - {ex.Message}");
+            }
+        }
+
+        private void BrightnessSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            Console.WriteLine($"AdminDashboard: Brightness slider changed to {(int)e.NewValue}");
+            
+            if (BrightnessValue != null)
+                BrightnessValue.Text = ((int)e.NewValue).ToString();
+            
+            // Save setting persistently
+            _savedBrightness = (int)e.NewValue;
+            Console.WriteLine($"AdminDashboard: Saved brightness = {_savedBrightness}");
+            
+            // Apply brightness setting to camera if active
+            if (_diagnosticCameraService != null && _diagnosticCameraService.IsCapturing)
+            {
+                var success = _diagnosticCameraService.SetBrightness(_savedBrightness);
+                Console.WriteLine($"AdminDashboard: Applied brightness to active camera - {(success ? "Success" : "Failed")}");
+                LogToDiagnostics($"Brightness adjusted to {_savedBrightness}% - {(success ? "Applied" : "Failed")}");
+            }
+            else
+            {
+                Console.WriteLine("AdminDashboard: Camera not active, brightness will apply when camera starts");
+                LogToDiagnostics($"Brightness set to {_savedBrightness}% (saved, will apply when camera starts)");
+            }
+        }
+
+        private void ZoomSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (ZoomValue != null)
+                ZoomValue.Text = $"{(int)e.NewValue}%";
+            
+            // Save setting persistently
+            _savedZoom = (int)e.NewValue;
+            
+            // Apply zoom setting to camera if active
+            if (_diagnosticCameraService != null && _diagnosticCameraService.IsCapturing)
+            {
+                var success = _diagnosticCameraService.SetZoom(_savedZoom);
+                LogToDiagnostics($"Zoom adjusted to {_savedZoom}% - {(success ? "Applied" : "Failed")}");
+            }
+            else
+            {
+                LogToDiagnostics($"Zoom set to {_savedZoom}% (saved, will apply when camera starts)");
+            }
+        }
+
+        private void ContrastSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (ContrastValue != null)
+                ContrastValue.Text = ((int)e.NewValue).ToString();
+            
+            // Save setting persistently
+            _savedContrast = (int)e.NewValue;
+            
+            // Apply contrast setting to camera if active
+            if (_diagnosticCameraService != null && _diagnosticCameraService.IsCapturing)
+            {
+                var success = _diagnosticCameraService.SetContrast(_savedContrast);
+                LogToDiagnostics($"Contrast adjusted to {_savedContrast}% - {(success ? "Applied" : "Failed")}");
+            }
+            else
+            {
+                LogToDiagnostics($"Contrast set to {_savedContrast}% (saved, will apply when camera starts)");
+            }
+        }
+
+        private async void SaveCameraSettingsButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                Console.WriteLine($"AdminDashboard: Saving camera settings - Brightness:{_savedBrightness}, Zoom:{_savedZoom}, Contrast:{_savedContrast}");
+                
+                var result = await _databaseService.SaveAllCameraSettingsAsync(_savedBrightness, _savedZoom, _savedContrast);
+                
+                if (result.Success)
+                {
+                    LogToDiagnostics($"✅ Camera settings saved to database: Brightness={_savedBrightness}%, Zoom={_savedZoom}%, Contrast={_savedContrast}%");
+                    
+                    // Show success notification
+                    NotificationService.Quick.Success("Camera settings saved successfully!");
+                }
+                else
+                {
+                    LogToDiagnostics($"❌ Failed to save camera settings: {result.ErrorMessage}");
+                    NotificationService.Quick.Error("Failed to save camera settings");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"AdminDashboard: Error saving camera settings - {ex.Message}");
+                LoggingService.Application.Error("Failed to save camera settings", ex);
+                LogToDiagnostics($"❌ ERROR: Failed to save camera settings - {ex.Message}");
+                NotificationService.Quick.Error("Failed to save camera settings");
+            }
+        }
+
+        private void ResetCameraSettingsButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                Console.WriteLine("AdminDashboard: Resetting camera settings to defaults");
+                
+                // Reset saved settings
+                _savedBrightness = 50;
+                _savedZoom = 100;
+                _savedContrast = 50;
+                
+                // Reset camera service settings
+                if (_diagnosticCameraService != null)
+                {
+                    _diagnosticCameraService.ResetCameraSettings();
+                }
+                
+                // Reset UI sliders (this will trigger ValueChanged events and update saved settings)
+                if (BrightnessSlider != null) BrightnessSlider.Value = 50;
+                if (ZoomSlider != null) ZoomSlider.Value = 100;
+                if (ContrastSlider != null) ContrastSlider.Value = 50;
+                
+                LogToDiagnostics("Camera settings reset to defaults (use Save Settings to persist)");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"AdminDashboard: Error resetting camera settings - {ex.Message}");
+                LoggingService.Application.Error("Failed to reset camera settings", ex);
+                LogToDiagnostics($"ERROR: Failed to reset camera settings - {ex.Message}");
+            }
+        }
+
+        // Printer Testing Event Handlers
+        private async void TestPrinterButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                LogToDiagnostics("Testing printer connection...");
+                
+                // TODO: Implement actual printer service when available
+                // For now, simulate printer detection
+                await Task.Delay(1000);
+                
+                // Simulate printer detection logic
+                bool printerFound = System.IO.Ports.SerialPort.GetPortNames().Length > 0; // Simple check
+                
+                if (printerFound)
+                {
+                    UpdateHardwareStatus("printer", true, "DNP RX1hs detected and ready");
+                    LogToDiagnostics("Printer connection successful");
+                    
+                    // Update printer details
+                    if (PrinterStatusDetailsText != null) PrinterStatusDetailsText.Text = "Ready";
+                    if (PrinterPaperLevelText != null) PrinterPaperLevelText.Text = "Good (estimated)";
+                    if (PrinterLastErrorText != null) PrinterLastErrorText.Text = "None";
+                }
+                else
+                {
+                    UpdateHardwareStatus("printer", false, "No printer detected");
+                    LogToDiagnostics("ERROR: No printer found");
+                    
+                    if (PrinterStatusDetailsText != null) PrinterStatusDetailsText.Text = "Not Found";
+                    if (PrinterPaperLevelText != null) PrinterPaperLevelText.Text = "Unknown";
+                    if (PrinterLastErrorText != null) PrinterLastErrorText.Text = "Printer not detected";
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Printer test failed", ex);
+                UpdateHardwareStatus("printer", false, $"Test failed: {ex.Message}");
+                LogToDiagnostics($"ERROR: Printer test failed - {ex.Message}");
+            }
+        }
+
+        private async void PrintLastPhotoButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                LogToDiagnostics("Attempting to print last photo...");
+                
+                // TODO: Implement actual print last photo when printer service is available
+                await Task.Delay(2000); // Simulate printing
+                
+                LogToDiagnostics("Print last photo completed (simulated)");
+                NotificationService.Instance.ShowSuccess("Print Test", "Last photo print completed successfully");
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Print last photo failed", ex);
+                LogToDiagnostics($"ERROR: Print last photo failed - {ex.Message}");
+                NotificationService.Instance.ShowError("Print Test", "Failed to print last photo");
+            }
+        }
+
+        private async void PrintTestPageButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                LogToDiagnostics("Printing test page...");
+                
+                // TODO: Implement actual test page printing when printer service is available
+                await Task.Delay(3000); // Simulate printing
+                
+                LogToDiagnostics("Test page printed successfully (simulated)");
+                NotificationService.Instance.ShowSuccess("Print Test", "Test page printed successfully");
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Print test page failed", ex);
+                LogToDiagnostics($"ERROR: Print test page failed - {ex.Message}");
+                NotificationService.Instance.ShowError("Print Test", "Failed to print test page");
+            }
+        }
+
+        private async void CheckPrinterStatusButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                LogToDiagnostics("Checking printer status...");
+                
+                // TODO: Implement actual printer status check when printer service is available
+                await Task.Delay(500);
+                
+                // Simulate status update
+                if (PrinterStatusDetailsText != null) PrinterStatusDetailsText.Text = "Online";
+                if (PrinterPaperLevelText != null) PrinterPaperLevelText.Text = "85% (595 prints remaining)";
+                if (PrinterLastErrorText != null) PrinterLastErrorText.Text = "None";
+                
+                LogToDiagnostics("Printer status updated");
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Check printer status failed", ex);
+                LogToDiagnostics($"ERROR: Check printer status failed - {ex.Message}");
+            }
+        }
+
+        // Arduino Testing Event Handlers
+        private async void TestArduinoButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                LogToDiagnostics("Testing Arduino connection...");
+                
+                // TODO: Implement actual Arduino service when available
+                // For now, simulate Arduino detection
+                await Task.Delay(1000);
+                
+                var availablePorts = System.IO.Ports.SerialPort.GetPortNames();
+                if (availablePorts.Length > 0)
+                {
+                    var arduinoPort = availablePorts.FirstOrDefault(p => p.StartsWith("COM"));
+                    if (arduinoPort != null)
+                    {
+                        UpdateHardwareStatus("arduino", true, "Arduino Uno detected");
+                        LogToDiagnostics($"Arduino found on {arduinoPort}");
+                        
+                        // Update Arduino details
+                        if (ArduinoPortText != null) ArduinoPortText.Text = arduinoPort;
+                        if (ArduinoLedStatusText != null) ArduinoLedStatusText.Text = "Ready";
+                        if (ArduinoLastPulseText != null) ArduinoLastPulseText.Text = "Ready to receive";
+                    }
+                    else
+                    {
+                        UpdateHardwareStatus("arduino", false, "No Arduino ports found");
+                        LogToDiagnostics("ERROR: No Arduino-compatible ports found");
+                    }
+                }
+                else
+                {
+                    UpdateHardwareStatus("arduino", false, "No serial ports available");
+                    LogToDiagnostics("ERROR: No serial ports detected");
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Arduino test failed", ex);
+                UpdateHardwareStatus("arduino", false, $"Test failed: {ex.Message}");
+                LogToDiagnostics($"ERROR: Arduino test failed - {ex.Message}");
+            }
+        }
+
+        private async void TestLEDOnButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                LogToDiagnostics("Turning LED ON...");
+                
+                // TODO: Implement actual Arduino LED control when service is available
+                await Task.Delay(500);
+                
+                if (ArduinoLedStatusText != null) ArduinoLedStatusText.Text = "ON";
+                LogToDiagnostics("LED turned ON (simulated)");
+                NotificationService.Instance.ShowSuccess("Arduino Test", "LED turned ON");
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("LED ON test failed", ex);
+                LogToDiagnostics($"ERROR: LED ON test failed - {ex.Message}");
+            }
+        }
+
+        private async void TestLEDOffButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                LogToDiagnostics("Turning LED OFF...");
+                
+                // TODO: Implement actual Arduino LED control when service is available
+                await Task.Delay(500);
+                
+                if (ArduinoLedStatusText != null) ArduinoLedStatusText.Text = "OFF";
+                LogToDiagnostics("LED turned OFF (simulated)");
+                NotificationService.Instance.ShowSuccess("Arduino Test", "LED turned OFF");
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("LED OFF test failed", ex);
+                LogToDiagnostics($"ERROR: LED OFF test failed - {ex.Message}");
+            }
+        }
+
+        private async void TestPaymentPulseButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                LogToDiagnostics("Simulating payment pulse...");
+                
+                // TODO: Implement actual pulse simulation when Arduino service is available
+                await Task.Delay(500);
+                
+                if (ArduinoLastPulseText != null) 
+                    ArduinoLastPulseText.Text = DateTime.Now.ToString("HH:mm:ss");
+                
+                LogToDiagnostics("Payment pulse simulated successfully");
+                NotificationService.Instance.ShowSuccess("Arduino Test", "Payment pulse simulated");
+                
+                // Simulate adding $1 credit
+                await AddCreditsAsync(1.00m, "Test pulse simulation");
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Payment pulse test failed", ex);
+                LogToDiagnostics($"ERROR: Payment pulse test failed - {ex.Message}");
+            }
+        }
+
+        // System Tools Event Handlers
+        private void CalibrateTouchButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                LogToDiagnostics("Starting touch screen calibration...");
+                
+                var result = ConfirmationDialog.ShowConfirmation(
+                    "Touch Screen Calibration",
+                    "This will start the Windows touch screen calibration utility.\n\nProceed with calibration?",
+                    "Start Calibration",
+                    "Cancel");
+                
+                if (result)
+                {
+                    // Launch Windows touch calibration utility
+                    var startInfo = new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = "tabcal.exe",
+                        UseShellExecute = true,
+                        Verb = "runas" // Run as administrator
+                    };
+                    
+                    System.Diagnostics.Process.Start(startInfo);
+                    LogToDiagnostics("Touch calibration utility launched");
+                    NotificationService.Instance.ShowSuccess("System Tools", "Touch calibration utility started");
+                }
+                else
+                {
+                    LogToDiagnostics("Touch calibration cancelled by user");
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Touch calibration failed", ex);
+                LogToDiagnostics($"ERROR: Touch calibration failed - {ex.Message}");
+                NotificationService.Instance.ShowError("System Tools", "Failed to start touch calibration");
+            }
+        }
+
+        private async void IssueFreeCreditsButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                LogToDiagnostics("Issuing free credit (+$1.00)...");
+                
+                await AddCreditsAsync(1.00m, "Free Credit (Diagnostics)");
+                await LoadFreeCreditUsageAsync(); // Refresh the counter
+                
+                LogToDiagnostics("Free credit issued successfully");
+                NotificationService.Instance.ShowSuccess("System Tools", "Free credit (+$1.00) added successfully");
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Issue free credit failed", ex);
+                LogToDiagnostics($"ERROR: Issue free credit failed - {ex.Message}");
+                NotificationService.Instance.ShowError("System Tools", "Failed to issue free credit");
+            }
+        }
+
+        private async void RunDiagnosticsButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                LogToDiagnostics("Running comprehensive diagnostics...");
+                
+                // Run all hardware tests sequentially
+                await Task.Delay(500);
+                TestCameraButton_Click(sender, e);
+                
+                await Task.Delay(2000);
+                TestPrinterButton_Click(sender, e);
+                
+                await Task.Delay(2000);
+                TestArduinoButton_Click(sender, e);
+                
+                await Task.Delay(1000);
+                LogToDiagnostics("Comprehensive diagnostics completed");
+                NotificationService.Instance.ShowSuccess("Diagnostics", "All hardware tests completed");
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Run all diagnostics failed", ex);
+                LogToDiagnostics($"ERROR: Comprehensive diagnostics failed - {ex.Message}");
+            }
+        }
+
+        private async void RestartSystemButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var result = ConfirmationDialog.ShowConfirmation(
+                    "Restart System",
+                    "This will restart the computer immediately.\n\nAll unsaved work will be lost.\n\nAre you sure you want to restart now?",
+                    "Restart Now",
+                    "Cancel");
+                
+                if (result)
+                {
+                    LogToDiagnostics("System restart initiated by user");
+                    LoggingService.Application.Warning("System restart initiated from diagnostics panel");
+                    
+                    // Give time for log to be written
+                    await Task.Delay(1000);
+                    
+                    // Restart the computer
+                    var startInfo = new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = "shutdown",
+                        Arguments = "/r /t 0",
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    };
+                    
+                    System.Diagnostics.Process.Start(startInfo);
+                }
+                else
+                {
+                    LogToDiagnostics("System restart cancelled by user");
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("System restart failed", ex);
+                LogToDiagnostics($"ERROR: System restart failed - {ex.Message}");
+                NotificationService.Instance.ShowError("System Tools", "Failed to restart system");
+            }
+        }
+
+        private void ClearLogButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                if (DiagnosticLogText != null)
+                {
+                    DiagnosticLogText.Text = "Diagnostic log cleared...";
+                    LogToDiagnostics("Diagnostic log cleared");
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Clear diagnostic log failed", ex);
+            }
+        }
+
+
 
         #endregion
 

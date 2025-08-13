@@ -454,15 +454,12 @@ namespace Photobooth.Services
                 using var templateOverlay = await Task.Run(() => Image.FromFile(templateImagePath));
                 Console.WriteLine($"Template overlay loaded: {templateOverlay.Width}x{templateOverlay.Height}");
                 
-                // The template overlay should match the canvas dimensions
-                var canvasWidth = template.Layout?.Width ?? 614;
-                var canvasHeight = template.Layout?.Height ?? 1864;
+                // Use the actual composition canvas dimensions to avoid distortion
+                var canvasBounds = graphics.VisibleClipBounds;
+                var canvasWidth = (int)Math.Round(canvasBounds.Width);
+                var canvasHeight = (int)Math.Round(canvasBounds.Height);
                 
-                Console.WriteLine($"Canvas dimensions: {canvasWidth}x{canvasHeight}");
-                Console.WriteLine($"Template overlay will be scaled to match canvas");
-                
-                // Draw the template overlay on top of all photos
-                // This will mask out areas where the template is opaque, revealing photos only in transparent areas
+                Console.WriteLine($"Canvas dimensions (from graphics): {canvasWidth}x{canvasHeight}");
                 Console.WriteLine($"Drawing template overlay from ({templateOverlay.Width}x{templateOverlay.Height}) to canvas ({canvasWidth}x{canvasHeight})");
                 graphics.DrawImage(templateOverlay, 0, 0, canvasWidth, canvasHeight);
                 
