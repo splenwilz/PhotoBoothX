@@ -5102,11 +5102,20 @@ namespace Photobooth
             try
             {
                 // Use the built-in async overlay and data-load logic
-                var owner = Window.GetWindow(this);
+                var owner = Window.GetWindow(this) ?? Application.Current.MainWindow;
+                if (owner == null)
+                {
+                    NotificationService.Instance.ShowError("System Configuration", "Unable to locate main window for dialog.");
+                    return;
+                }
+                
                 await SystemDateDialog.ShowSystemDateDialogAsync(owner, _databaseService);
                 
-                LoggingService.Application.Information("System date updated via admin panel");
-                NotificationService.Instance.ShowSuccess("System Configuration", "System date and time updated successfully");
+                // Reflect any normalization from the database
+                await LoadSystemTabSettings();
+                
+                LoggingService.Application.Information("System date dialog completed");
+                // Success/error feedback is handled within the dialog
             }
             catch (Exception ex)
             {
@@ -5181,7 +5190,8 @@ namespace Photobooth
             }
             finally
             {
-                button.IsEnabled = true; // Re-enable if process doesn't terminate app
+                // If the app isn't shutting down, restore the button
+                button.IsEnabled = true;
             }
         }
 
@@ -5229,7 +5239,8 @@ namespace Photobooth
             }
             finally
             {
-                button.IsEnabled = true; // Re-enable if restart fails or is cancelled
+                // If the restart was cancelled or failed, restore the button
+                button.IsEnabled = true;
             }
         }
 
@@ -5357,6 +5368,9 @@ namespace Photobooth
                 {
                     LoggingService.Application.Information("System settings saved successfully");
                     NotificationService.Instance.ShowSuccess("System Configuration", "All settings saved successfully");
+                    
+                    // Reflect any normalization from the database
+                    await LoadSystemTabSettings();
                 }
             }
             catch (Exception ex)
@@ -5479,7 +5493,7 @@ namespace Photobooth
         private void DecimalOnly_PreviewTextInput(object sender, TextCompositionEventArgs e)
         {
             // Allow digits and one decimal point (invariant culture uses '.' as decimal separator)
-            if (!char.IsDigit(e.Text[0]) && e.Text[0] != '.')
+            if (e.Text.Any(ch => !char.IsDigit(ch) && ch != '.'))
             {
                 e.Handled = true;
                 return;
@@ -5488,7 +5502,7 @@ namespace Photobooth
             if (sender is TextBox textBox)
             {
                 // Don't allow multiple decimal points
-                if (e.Text[0] == '.' && textBox.Text.Contains('.'))
+                if (e.Text.Contains('.') && textBox.Text.Contains('.'))
                 {
                     e.Handled = true;
                     return;
@@ -5531,7 +5545,7 @@ namespace Photobooth
             if (e.DataObject.GetDataPresent(typeof(string)))
             {
                 var pastedText = (string)e.DataObject.GetData(typeof(string));
-                if (!decimal.TryParse(pastedText, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out decimal value))
+                if (!decimal.TryParse(pastedText, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out decimal value) || value < 0)
                 {
                     e.CancelCommand();
                 }
