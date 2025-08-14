@@ -5046,13 +5046,12 @@ namespace Photobooth
                     // Give time for log to be written
                     await Task.Delay(1000);
                     
-                    // Restart the computer
-                    var startInfo = new System.Diagnostics.ProcessStartInfo
+                    // Restart the computer with proper elevation
+                    var startInfo = new System.Diagnostics.ProcessStartInfo("shutdown.exe", "/r /t 0")
                     {
-                        FileName = "shutdown",
-                        Arguments = "/r /t 0",
-                        UseShellExecute = false,
-                        CreateNoWindow = true
+                        UseShellExecute = true, // Required for elevation
+                        Verb = "runas", // Prompt for elevation if required
+                        WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden // CreateNoWindow equivalent
                     };
                     
                     System.Diagnostics.Process.Start(startInfo);
@@ -5211,13 +5210,12 @@ namespace Photobooth
                     // Give time for save to complete
                     await Task.Delay(1000);
                     
-                    // Restart the computer
-                    var startInfo = new System.Diagnostics.ProcessStartInfo
+                    // Restart the computer with proper elevation
+                    var startInfo = new System.Diagnostics.ProcessStartInfo("shutdown.exe", "/r /t 5")
                     {
-                        FileName = "shutdown",
-                        Arguments = "/r /t 5", // 5 second delay
-                        UseShellExecute = false,
-                        CreateNoWindow = true
+                        UseShellExecute = true, // Required for elevation
+                        Verb = "runas", // Prompt for elevation if required
+                        WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden // CreateNoWindow equivalent
                     };
                     
                     System.Diagnostics.Process.Start(startInfo);
@@ -5265,7 +5263,7 @@ namespace Photobooth
                 // Validate and save Payment Settings
                 if (PulsesPerCreditTextBox?.Text != null && int.TryParse(PulsesPerCreditTextBox.Text, out var ppc) && ppc > 0)
                 {
-                    var result = await _databaseService.SetSettingValueAsync("Payment", "PulsesPerCredit", ppc);
+                    var result = await _databaseService.SetSettingValueAsync("Payment", "PulsesPerCredit", ppc, _currentUserId);
                     if (!result.Success)
                         errors.Add($"Payment.PulsesPerCredit: {result.ErrorMessage ?? "Unknown error"}");
                 }
@@ -5276,7 +5274,7 @@ namespace Photobooth
                 
                 if (CreditValueTextBox?.Text != null && decimal.TryParse(CreditValueTextBox.Text, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out decimal creditValue) && creditValue > 0)
                 {
-                    var result = await _databaseService.SetSettingValueAsync("Payment", "CreditValue", creditValue);
+                    var result = await _databaseService.SetSettingValueAsync("Payment", "CreditValue", creditValue, _currentUserId);
                     if (!result.Success)
                         errors.Add($"Payment.CreditValue: {result.ErrorMessage ?? "Unknown error"}");
                 }
@@ -5288,21 +5286,21 @@ namespace Photobooth
                 // Save Hardware Settings with error checking
                 if (BillAcceptorToggle != null)
                 {
-                    var result = await _databaseService.SetSettingValueAsync("Payment", "BillAcceptorEnabled", BillAcceptorToggle.IsChecked == true);
+                    var result = await _databaseService.SetSettingValueAsync("Payment", "BillAcceptorEnabled", BillAcceptorToggle.IsChecked == true, _currentUserId);
                     if (!result.Success)
                         errors.Add($"Payment.BillAcceptorEnabled: {result.ErrorMessage ?? "Unknown error"}");
                 }
                 
                 if (CreditCardReaderToggle != null)
                 {
-                    var result = await _databaseService.SetSettingValueAsync("Payment", "CreditCardReaderEnabled", CreditCardReaderToggle.IsChecked == true);
+                    var result = await _databaseService.SetSettingValueAsync("Payment", "CreditCardReaderEnabled", CreditCardReaderToggle.IsChecked == true, _currentUserId);
                     if (!result.Success)
                         errors.Add($"Payment.CreditCardReaderEnabled: {result.ErrorMessage ?? "Unknown error"}");
                 }
                 
                 if (PrintsPerRollTextBox?.Text != null && int.TryParse(PrintsPerRollTextBox.Text, out var ppr) && ppr > 0)
                 {
-                    var result = await _databaseService.SetSettingValueAsync("Printer", "PrintsPerRoll", ppr);
+                    var result = await _databaseService.SetSettingValueAsync("Printer", "PrintsPerRoll", ppr, _currentUserId);
                     if (!result.Success)
                         errors.Add($"Printer.PrintsPerRoll: {result.ErrorMessage ?? "Unknown error"}");
                 }
@@ -5313,14 +5311,14 @@ namespace Photobooth
                 
                 if (SystemRFIDToggle != null)
                 {
-                    var result = await _databaseService.SetSettingValueAsync("RFID", "Enabled", SystemRFIDToggle.IsChecked == true);
+                    var result = await _databaseService.SetSettingValueAsync("RFID", "Enabled", SystemRFIDToggle.IsChecked == true, _currentUserId);
                     if (!result.Success)
                         errors.Add($"RFID.Enabled: {result.ErrorMessage ?? "Unknown error"}");
                 }
                 
                 if (SystemFlashToggle != null)
                 {
-                    var result = await _databaseService.SetSettingValueAsync("System", "LightsEnabled", SystemFlashToggle.IsChecked == true);
+                    var result = await _databaseService.SetSettingValueAsync("System", "LightsEnabled", SystemFlashToggle.IsChecked == true, _currentUserId);
                     if (!result.Success)
                         errors.Add($"System.LightsEnabled: {result.ErrorMessage ?? "Unknown error"}");
                 }
@@ -5331,7 +5329,7 @@ namespace Photobooth
                     int flashDuration = (int)FlashDurationSlider.Value;
                     if (flashDuration >= 1 && flashDuration <= 10)
                     {
-                        var result = await _databaseService.SetSettingValueAsync("System", "FlashDuration", flashDuration);
+                        var result = await _databaseService.SetSettingValueAsync("System", "FlashDuration", flashDuration, _currentUserId);
                         if (!result.Success)
                             errors.Add($"System.FlashDuration: {result.ErrorMessage ?? "Unknown error"}");
                     }
@@ -5343,7 +5341,7 @@ namespace Photobooth
                 
                 if (SystemSeasonalToggle != null)
                 {
-                    var result = await _databaseService.SetSettingValueAsync("Seasonal", "AutoTemplates", SystemSeasonalToggle.IsChecked == true);
+                    var result = await _databaseService.SetSettingValueAsync("Seasonal", "AutoTemplates", SystemSeasonalToggle.IsChecked == true, _currentUserId);
                     if (!result.Success)
                         errors.Add($"Seasonal.AutoTemplates: {result.ErrorMessage ?? "Unknown error"}");
                 }
@@ -5496,9 +5494,10 @@ namespace Photobooth
                     return;
                 }
 
-                // Check if the resulting value would be valid using invariant culture
-                var proposedText = textBox.Text.Insert(textBox.SelectionStart, e.Text);
-                if (decimal.TryParse(proposedText, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out decimal value) && value <= 0)
+                // Ensure resulting text is a valid non-negative decimal (allow 0 while typing)
+                var proposedText = textBox.Text.Remove(textBox.SelectionStart, textBox.SelectionLength)
+                                               .Insert(textBox.SelectionStart, e.Text);
+                if (!decimal.TryParse(proposedText, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out decimal value))
                 {
                     e.Handled = true;
                 }
@@ -5532,7 +5531,7 @@ namespace Photobooth
             if (e.DataObject.GetDataPresent(typeof(string)))
             {
                 var pastedText = (string)e.DataObject.GetData(typeof(string));
-                if (!decimal.TryParse(pastedText, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out decimal value) || value <= 0)
+                if (!decimal.TryParse(pastedText, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out decimal value))
                 {
                     e.CancelCommand();
                 }
