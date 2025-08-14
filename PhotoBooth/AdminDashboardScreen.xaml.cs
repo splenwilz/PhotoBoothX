@@ -702,6 +702,7 @@ namespace Photobooth
                         case "SystemTab":
                             SystemTabContent.Visibility = Visibility.Visible;
                             BreadcrumbText.Text = "System";
+                            await LoadSystemTabSettings();
                             break;
                         case "CreditsTab":
                             CreditsTabContent.Visibility = Visibility.Visible;
@@ -1967,7 +1968,6 @@ namespace Photobooth
         {
             await LoadSalesData();
             await LoadSupplyStatus();
-            await LoadSystemSettings();
             await LoadBusinessInformation();
             await LoadOperationModeFromSettings();
             await LoadSystemPreferences();
@@ -1975,6 +1975,7 @@ namespace Photobooth
             await LoadUsersList(); // Load the users list
             await LoadCreditsAsync(); // Load the credit system data
             await LoadTransactionHistory(); // Load transaction history for sales tab
+            await LoadSystemTabSettings(); // Load system configuration settings
         }
 
         private async System.Threading.Tasks.Task LoadBusinessInformation()
@@ -5084,6 +5085,289 @@ namespace Photobooth
         }
 
 
+
+        #endregion
+
+        #region System Tab Event Handlers
+
+
+
+        /// <summary>
+        /// Set system date and time
+        /// </summary>
+        private void SetSystemDate_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                // Create system date dialog
+                var dialog = new PhotoBooth.Controls.SystemDateDialog(_databaseService);
+                var window = new Window
+                {
+                    Title = "Set System Date & Time",
+                    Content = dialog,
+                    Width = 750,
+                    Height = 700,
+                    MinWidth = 700,
+                    MinHeight = 600,
+                    MaxWidth = 800,
+                    MaxHeight = 800,
+                    ResizeMode = ResizeMode.CanResize,
+                    WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                    Owner = Window.GetWindow(this)
+                };
+
+                // Load the dialog data after showing it
+                window.Loaded += async (s, args) =>
+                {
+                    try
+                    {
+                        await dialog.LoadSystemDateDataAsync();
+                    }
+                    catch (Exception ex)
+                    {
+                        LoggingService.Application.Error("Failed to load system date dialog data", ex);
+                    }
+                };
+                
+                if (window.ShowDialog() == true)
+                {
+                    LoggingService.Application.Information("System date updated via admin panel");
+                    NotificationService.Instance.ShowSuccess("System Configuration", "System date and time updated successfully");
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("System date setting failed", ex);
+                NotificationService.Instance.ShowError("System Configuration", $"Failed to set system date: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Restart the photobooth application
+        /// </summary>
+        private async void RestartApplication_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var result = ConfirmationDialog.ShowConfirmation(
+                    "Restart Application",
+                    "This will restart the PhotoBooth application.\n\nAny unsaved settings will be lost.\n\nContinue?",
+                    "Restart App",
+                    "Cancel");
+
+                if (result)
+                {
+                    LoggingService.Application.Warning("Application restart initiated by user");
+                    
+                    // Save any pending settings first
+                    await SaveSystemSettings();
+                    
+                    // Give time for save to complete
+                    await Task.Delay(1000);
+                    
+                    // Restart the application
+                    var currentProcess = System.Diagnostics.Process.GetCurrentProcess();
+                    var startInfo = new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = currentProcess.MainModule?.FileName ?? "",
+                        UseShellExecute = true
+                    };
+                    
+                    System.Diagnostics.Process.Start(startInfo);
+                    Application.Current.Shutdown();
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Application restart failed", ex);
+                NotificationService.Instance.ShowError("System Configuration", $"Failed to restart application: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Restart the computer
+        /// </summary>
+        private async void RestartComputer_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var result = ConfirmationDialog.ShowConfirmation(
+                    "Restart Computer",
+                    "This will restart the entire computer.\n\nAll unsaved work will be lost.\n\nAre you sure?",
+                    "Restart Computer",
+                    "Cancel");
+
+                if (result)
+                {
+                    LoggingService.Application.Warning("Computer restart initiated by user");
+                    
+                    // Save any pending settings first
+                    await SaveSystemSettings();
+                    
+                    // Give time for save to complete
+                    await Task.Delay(1000);
+                    
+                    // Restart the computer
+                    var startInfo = new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = "shutdown",
+                        Arguments = "/r /t 5", // 5 second delay
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    };
+                    
+                    System.Diagnostics.Process.Start(startInfo);
+                    NotificationService.Instance.ShowInfo("System Configuration", "Computer will restart in 5 seconds...");
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Computer restart failed", ex);
+                NotificationService.Instance.ShowError("System Configuration", $"Failed to restart computer: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Save all system settings
+        /// </summary>
+        private async void SaveSystemSettings_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                await SaveSystemSettings();
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Save system settings failed", ex);
+                NotificationService.Instance.ShowError("System Configuration", $"Failed to save settings: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Save system settings to database
+        /// </summary>
+        private async Task SaveSystemSettings()
+        {
+            try
+            {
+                LoggingService.Application.Information("Saving system settings");
+                
+
+                
+                // Payment Settings
+                if (int.TryParse(PulsesPerCreditTextBox.Text, out int pulsesPerCredit))
+                {
+                    await _databaseService.SetSettingValueAsync("Payment", "PulsesPerCredit", pulsesPerCredit);
+                }
+                
+                if (decimal.TryParse(CreditValueTextBox.Text, out decimal creditValue))
+                {
+                    await _databaseService.SetSettingValueAsync("Payment", "CreditValue", creditValue);
+                }
+                
+                // Hardware Settings
+                await _databaseService.SetSettingValueAsync("Payment", "BillAcceptorEnabled", BillAcceptorToggle.IsChecked == true);
+                await _databaseService.SetSettingValueAsync("Payment", "CreditCardReaderEnabled", CreditCardReaderToggle.IsChecked == true);
+                
+                if (int.TryParse(PrintsPerRollTextBox.Text, out int printsPerRoll))
+                {
+                    await _databaseService.SetSettingValueAsync("Printer", "PrintsPerRoll", printsPerRoll);
+                }
+                
+                await _databaseService.SetSettingValueAsync("RFID", "Enabled", SystemRFIDToggle.IsChecked == true);
+                await _databaseService.SetSettingValueAsync("System", "LightsEnabled", SystemFlashToggle.IsChecked == true);
+                
+                if (int.TryParse(FlashDurationTextBox.Text, out int flashDuration))
+                {
+                    await _databaseService.SetSettingValueAsync("System", "FlashDuration", flashDuration);
+                }
+                
+                await _databaseService.SetSettingValueAsync("Seasonal", "AutoTemplates", SystemSeasonalToggle.IsChecked == true);
+                
+
+                
+                LoggingService.Application.Information("System settings saved successfully");
+                NotificationService.Instance.ShowSuccess("System Configuration", "All settings saved successfully");
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to save system settings", ex);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Load system settings for the System tab from database
+        /// </summary>
+        private async Task LoadSystemTabSettings()
+        {
+            try
+            {
+                LoggingService.Application.Information("Loading system tab settings");
+                
+                // Payment Settings
+                var pulsesResult = await _databaseService.GetSettingValueAsync<int>("Payment", "PulsesPerCredit");
+                if (pulsesResult.Success)
+                {
+                    PulsesPerCreditTextBox.Text = pulsesResult.Data.ToString();
+                }
+                
+                var creditValueResult = await _databaseService.GetSettingValueAsync<decimal>("Payment", "CreditValue");
+                if (creditValueResult.Success)
+                {
+                    CreditValueTextBox.Text = creditValueResult.Data.ToString("F2");
+                }
+                
+                // Hardware Settings
+                var billAcceptorResult = await _databaseService.GetSettingValueAsync<bool>("Payment", "BillAcceptorEnabled");
+                if (billAcceptorResult.Success)
+                {
+                    BillAcceptorToggle.IsChecked = billAcceptorResult.Data;
+                }
+                
+                var creditCardResult = await _databaseService.GetSettingValueAsync<bool>("Payment", "CreditCardReaderEnabled");
+                if (creditCardResult.Success)
+                {
+                    CreditCardReaderToggle.IsChecked = creditCardResult.Data;
+                }
+                
+                var printsPerRollResult = await _databaseService.GetSettingValueAsync<int>("Printer", "PrintsPerRoll");
+                if (printsPerRollResult.Success)
+                {
+                    PrintsPerRollTextBox.Text = printsPerRollResult.Data.ToString();
+                }
+                
+                var rfidResult = await _databaseService.GetSettingValueAsync<bool>("RFID", "Enabled");
+                if (rfidResult.Success)
+                {
+                    SystemRFIDToggle.IsChecked = rfidResult.Data;
+                }
+                
+                var lightsResult = await _databaseService.GetSettingValueAsync<bool>("System", "LightsEnabled");
+                if (lightsResult.Success)
+                {
+                    SystemFlashToggle.IsChecked = lightsResult.Data;
+                }
+                
+                var flashDurationResult = await _databaseService.GetSettingValueAsync<int>("System", "FlashDuration");
+                if (flashDurationResult.Success)
+                {
+                    FlashDurationTextBox.Text = flashDurationResult.Data.ToString();
+                }
+                
+                var seasonalResult = await _databaseService.GetSettingValueAsync<bool>("Seasonal", "AutoTemplates");
+                if (seasonalResult.Success)
+                {
+                    SystemSeasonalToggle.IsChecked = seasonalResult.Data;
+                }
+                
+                LoggingService.Application.Information("System tab settings loaded successfully");
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to load system tab settings", ex);
+            }
+        }
 
         #endregion
 
