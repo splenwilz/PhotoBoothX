@@ -6,8 +6,10 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows;
+using PhotoBooth.Controls;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Data;
@@ -5095,50 +5097,26 @@ namespace Photobooth
         /// <summary>
         /// Set system date and time
         /// </summary>
-        private void SetSystemDate_Click(object sender, RoutedEventArgs e)
+        private async void SetSystemDate_Click(object sender, RoutedEventArgs e)
         {
+            SetSystemDateButton.IsEnabled = false;
             try
             {
-                // Create system date dialog
-                var dialog = new PhotoBooth.Controls.SystemDateDialog(_databaseService);
-                var window = new Window
-                {
-                    Title = "Set System Date & Time",
-                    Content = dialog,
-                    Width = 750,
-                    Height = 700,
-                    MinWidth = 700,
-                    MinHeight = 600,
-                    MaxWidth = 800,
-                    MaxHeight = 800,
-                    ResizeMode = ResizeMode.CanResize,
-                    WindowStartupLocation = WindowStartupLocation.CenterOwner,
-                    Owner = Window.GetWindow(this)
-                };
-
-                // Load the dialog data after showing it
-                window.Loaded += async (s, args) =>
-                {
-                    try
-                    {
-                        await dialog.LoadSystemDateDataAsync();
-                    }
-                    catch (Exception ex)
-                    {
-                        LoggingService.Application.Error("Failed to load system date dialog data", ex);
-                    }
-                };
+                // Use the built-in async overlay and data-load logic
+                var owner = Window.GetWindow(this);
+                await SystemDateDialog.ShowSystemDateDialogAsync(owner, _databaseService);
                 
-                if (window.ShowDialog() == true)
-                {
-                    LoggingService.Application.Information("System date updated via admin panel");
-                    NotificationService.Instance.ShowSuccess("System Configuration", "System date and time updated successfully");
-                }
+                LoggingService.Application.Information("System date updated via admin panel");
+                NotificationService.Instance.ShowSuccess("System Configuration", "System date and time updated successfully");
             }
             catch (Exception ex)
             {
                 LoggingService.Application.Error("System date setting failed", ex);
                 NotificationService.Instance.ShowError("System Configuration", $"Failed to set system date: {ex.Message}");
+            }
+            finally
+            {
+                SetSystemDateButton.IsEnabled = true;
             }
         }
 
@@ -5147,6 +5125,8 @@ namespace Photobooth
         /// </summary>
         private async void RestartApplication_Click(object sender, RoutedEventArgs e)
         {
+            var button = (Button)sender;
+            button.IsEnabled = false;
             try
             {
                 var result = ConfirmationDialog.ShowConfirmation(
@@ -5165,11 +5145,29 @@ namespace Photobooth
                     // Give time for save to complete
                     await Task.Delay(1000);
                     
-                    // Restart the application
+                    // Resolve executable path reliably with fallbacks
                     var currentProcess = System.Diagnostics.Process.GetCurrentProcess();
+                    var exePath = Environment.ProcessPath
+                                  ?? currentProcess.MainModule?.FileName
+                                  ?? System.Reflection.Assembly.GetEntryAssembly()?.Location
+                                  ?? string.Empty;
+                    
+                    if (string.IsNullOrWhiteSpace(exePath))
+                    {
+                        NotificationService.Instance.ShowError(
+                            "System Configuration",
+                            "Unable to determine application path to restart.");
+                        return;
+                    }
+                    
+                    // Notify user immediately that restart is in progress
+                    NotificationService.Instance.ShowInfo(
+                        "System Configuration",
+                        "Restarting application...");
+                    
                     var startInfo = new System.Diagnostics.ProcessStartInfo
                     {
-                        FileName = currentProcess.MainModule?.FileName ?? "",
+                        FileName = exePath,
                         UseShellExecute = true
                     };
                     
@@ -5182,6 +5180,10 @@ namespace Photobooth
                 LoggingService.Application.Error("Application restart failed", ex);
                 NotificationService.Instance.ShowError("System Configuration", $"Failed to restart application: {ex.Message}");
             }
+            finally
+            {
+                button.IsEnabled = true; // Re-enable if process doesn't terminate app
+            }
         }
 
         /// <summary>
@@ -5189,6 +5191,8 @@ namespace Photobooth
         /// </summary>
         private async void RestartComputer_Click(object sender, RoutedEventArgs e)
         {
+            var button = (Button)sender;
+            button.IsEnabled = false;
             try
             {
                 var result = ConfirmationDialog.ShowConfirmation(
@@ -5225,6 +5229,10 @@ namespace Photobooth
                 LoggingService.Application.Error("Computer restart failed", ex);
                 NotificationService.Instance.ShowError("System Configuration", $"Failed to restart computer: {ex.Message}");
             }
+            finally
+            {
+                button.IsEnabled = true; // Re-enable if restart fails or is cancelled
+            }
         }
 
         /// <summary>
@@ -5248,50 +5256,115 @@ namespace Photobooth
         /// </summary>
         private async Task SaveSystemSettings()
         {
+            var errors = new List<string>();
+            
             try
             {
                 LoggingService.Application.Information("Saving system settings");
                 
-
-                
-                // Payment Settings
-                if (int.TryParse(PulsesPerCreditTextBox.Text, out int pulsesPerCredit))
+                // Validate and save Payment Settings
+                if (PulsesPerCreditTextBox?.Text != null && int.TryParse(PulsesPerCreditTextBox.Text, out var ppc) && ppc > 0)
                 {
-                    await _databaseService.SetSettingValueAsync("Payment", "PulsesPerCredit", pulsesPerCredit);
+                    var result = await _databaseService.SetSettingValueAsync("Payment", "PulsesPerCredit", ppc);
+                    if (!result.Success)
+                        errors.Add($"Payment.PulsesPerCredit: {result.ErrorMessage ?? "Unknown error"}");
+                }
+                else
+                {
+                    errors.Add("Pulses per credit must be a positive whole number.");
                 }
                 
-                if (decimal.TryParse(CreditValueTextBox.Text, out decimal creditValue))
+                if (CreditValueTextBox?.Text != null && decimal.TryParse(CreditValueTextBox.Text, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out decimal creditValue) && creditValue > 0)
                 {
-                    await _databaseService.SetSettingValueAsync("Payment", "CreditValue", creditValue);
+                    var result = await _databaseService.SetSettingValueAsync("Payment", "CreditValue", creditValue);
+                    if (!result.Success)
+                        errors.Add($"Payment.CreditValue: {result.ErrorMessage ?? "Unknown error"}");
+                }
+                else
+                {
+                    errors.Add("Credit value must be a positive decimal number using a dot as the separator.");
                 }
                 
-                // Hardware Settings
-                await _databaseService.SetSettingValueAsync("Payment", "BillAcceptorEnabled", BillAcceptorToggle.IsChecked == true);
-                await _databaseService.SetSettingValueAsync("Payment", "CreditCardReaderEnabled", CreditCardReaderToggle.IsChecked == true);
-                
-                if (int.TryParse(PrintsPerRollTextBox.Text, out int printsPerRoll))
+                // Save Hardware Settings with error checking
+                if (BillAcceptorToggle != null)
                 {
-                    await _databaseService.SetSettingValueAsync("Printer", "PrintsPerRoll", printsPerRoll);
+                    var result = await _databaseService.SetSettingValueAsync("Payment", "BillAcceptorEnabled", BillAcceptorToggle.IsChecked == true);
+                    if (!result.Success)
+                        errors.Add($"Payment.BillAcceptorEnabled: {result.ErrorMessage ?? "Unknown error"}");
                 }
                 
-                await _databaseService.SetSettingValueAsync("RFID", "Enabled", SystemRFIDToggle.IsChecked == true);
-                await _databaseService.SetSettingValueAsync("System", "LightsEnabled", SystemFlashToggle.IsChecked == true);
-                
-                if (int.TryParse(FlashDurationTextBox.Text, out int flashDuration))
+                if (CreditCardReaderToggle != null)
                 {
-                    await _databaseService.SetSettingValueAsync("System", "FlashDuration", flashDuration);
+                    var result = await _databaseService.SetSettingValueAsync("Payment", "CreditCardReaderEnabled", CreditCardReaderToggle.IsChecked == true);
+                    if (!result.Success)
+                        errors.Add($"Payment.CreditCardReaderEnabled: {result.ErrorMessage ?? "Unknown error"}");
                 }
                 
-                await _databaseService.SetSettingValueAsync("Seasonal", "AutoTemplates", SystemSeasonalToggle.IsChecked == true);
+                if (PrintsPerRollTextBox?.Text != null && int.TryParse(PrintsPerRollTextBox.Text, out var ppr) && ppr > 0)
+                {
+                    var result = await _databaseService.SetSettingValueAsync("Printer", "PrintsPerRoll", ppr);
+                    if (!result.Success)
+                        errors.Add($"Printer.PrintsPerRoll: {result.ErrorMessage ?? "Unknown error"}");
+                }
+                else
+                {
+                    errors.Add("Prints per roll must be a positive whole number.");
+                }
                 
-
+                if (SystemRFIDToggle != null)
+                {
+                    var result = await _databaseService.SetSettingValueAsync("RFID", "Enabled", SystemRFIDToggle.IsChecked == true);
+                    if (!result.Success)
+                        errors.Add($"RFID.Enabled: {result.ErrorMessage ?? "Unknown error"}");
+                }
                 
-                LoggingService.Application.Information("System settings saved successfully");
-                NotificationService.Instance.ShowSuccess("System Configuration", "All settings saved successfully");
+                if (SystemFlashToggle != null)
+                {
+                    var result = await _databaseService.SetSettingValueAsync("System", "LightsEnabled", SystemFlashToggle.IsChecked == true);
+                    if (!result.Success)
+                        errors.Add($"System.LightsEnabled: {result.ErrorMessage ?? "Unknown error"}");
+                }
+                
+                // Flash duration validation and save
+                if (FlashDurationSlider != null)
+                {
+                    int flashDuration = (int)FlashDurationSlider.Value;
+                    if (flashDuration >= 1 && flashDuration <= 10)
+                    {
+                        var result = await _databaseService.SetSettingValueAsync("System", "FlashDuration", flashDuration);
+                        if (!result.Success)
+                            errors.Add($"System.FlashDuration: {result.ErrorMessage ?? "Unknown error"}");
+                    }
+                    else
+                    {
+                        errors.Add("Flash duration must be between 1 and 10 seconds.");
+                    }
+                }
+                
+                if (SystemSeasonalToggle != null)
+                {
+                    var result = await _databaseService.SetSettingValueAsync("Seasonal", "AutoTemplates", SystemSeasonalToggle.IsChecked == true);
+                    if (!result.Success)
+                        errors.Add($"Seasonal.AutoTemplates: {result.ErrorMessage ?? "Unknown error"}");
+                }
+                
+                // Report results to user
+                if (errors.Count > 0)
+                {
+                    LoggingService.Application.Warning($"System settings saved with {errors.Count} errors");
+                    NotificationService.Instance.ShowError("System Configuration", 
+                        $"Some settings could not be saved:\n• " + string.Join("\n• ", errors));
+                }
+                else
+                {
+                    LoggingService.Application.Information("System settings saved successfully");
+                    NotificationService.Instance.ShowSuccess("System Configuration", "All settings saved successfully");
+                }
             }
             catch (Exception ex)
             {
                 LoggingService.Application.Error("Failed to save system settings", ex);
+                NotificationService.Instance.ShowError("System Configuration", $"Failed to save settings: {ex.Message}");
                 throw;
             }
         }
@@ -5315,7 +5388,7 @@ namespace Photobooth
                 var creditValueResult = await _databaseService.GetSettingValueAsync<decimal>("Payment", "CreditValue");
                 if (creditValueResult.Success)
                 {
-                    CreditValueTextBox.Text = creditValueResult.Data.ToString("F2");
+                    CreditValueTextBox.Text = creditValueResult.Data.ToString("F2", CultureInfo.InvariantCulture);
                 }
                 
                 // Hardware Settings
@@ -5352,7 +5425,10 @@ namespace Photobooth
                 var flashDurationResult = await _databaseService.GetSettingValueAsync<int>("System", "FlashDuration");
                 if (flashDurationResult.Success)
                 {
-                    FlashDurationTextBox.Text = flashDurationResult.Data.ToString();
+                    // Ensure the value is within valid range (1-10 seconds)
+                    int flashValue = Math.Max(1, Math.Min(10, flashDurationResult.Data));
+                    FlashDurationSlider.Value = flashValue;
+                    FlashDurationValueText.Text = flashValue.ToString();
                 }
                 
                 var seasonalResult = await _databaseService.GetSettingValueAsync<bool>("Seasonal", "AutoTemplates");
@@ -5366,6 +5442,104 @@ namespace Photobooth
             catch (Exception ex)
             {
                 LoggingService.Application.Error("Failed to load system tab settings", ex);
+            }
+        }
+
+        #endregion
+
+        #region Slider Event Handlers
+
+        /// <summary>
+        /// Update flash duration display when slider value changes
+        /// </summary>
+        private void FlashDurationSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (FlashDurationValueText != null)
+            {
+                FlashDurationValueText.Text = ((int)e.NewValue).ToString();
+            }
+        }
+
+        #endregion
+
+        #region Input Validation Event Handlers
+
+        // Regex pattern for numeric-only input (positive integers)
+        private static readonly Regex _numericRegex = new Regex("^[0-9]+$");
+
+        /// <summary>
+        /// Validates numeric input for TextBoxes that should only accept integers > 0
+        /// </summary>
+        private void NumericOnly_PreviewTextInput(object sender, TextCompositionEventArgs e)
+        {
+            e.Handled = !_numericRegex.IsMatch(e.Text);
+        }
+
+        /// <summary>
+        /// Validates decimal input for TextBoxes that should only accept decimals > 0
+        /// </summary>
+        private void DecimalOnly_PreviewTextInput(object sender, TextCompositionEventArgs e)
+        {
+            // Allow digits and one decimal point (invariant culture uses '.' as decimal separator)
+            if (!char.IsDigit(e.Text[0]) && e.Text[0] != '.')
+            {
+                e.Handled = true;
+                return;
+            }
+
+            if (sender is TextBox textBox)
+            {
+                // Don't allow multiple decimal points
+                if (e.Text[0] == '.' && textBox.Text.Contains('.'))
+                {
+                    e.Handled = true;
+                    return;
+                }
+
+                // Check if the resulting value would be valid using invariant culture
+                var proposedText = textBox.Text.Insert(textBox.SelectionStart, e.Text);
+                if (decimal.TryParse(proposedText, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out decimal value) && value <= 0)
+                {
+                    e.Handled = true;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Handles paste operations for numeric-only TextBoxes
+        /// </summary>
+        private void NumericOnly_Pasting(object sender, DataObjectPastingEventArgs e)
+        {
+            if (e.DataObject.GetDataPresent(typeof(string)))
+            {
+                string? text = e.DataObject.GetData(typeof(string)) as string;
+                if (!_numericRegex.IsMatch(text ?? string.Empty))
+                {
+                    e.CancelCommand();
+                }
+            }
+            else
+            {
+                e.CancelCommand();
+            }
+        }
+
+        /// <summary>
+        /// Handles paste operations for decimal-only TextBoxes
+        /// </summary>
+        private void DecimalOnly_Pasting(object sender, DataObjectPastingEventArgs e)
+        {
+            if (e.DataObject.GetDataPresent(typeof(string)))
+            {
+                var pastedText = (string)e.DataObject.GetData(typeof(string));
+                if (!decimal.TryParse(pastedText, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out decimal value) || value <= 0)
+                {
+                    e.CancelCommand();
+                }
+            }
+            else
+            {
+                e.CancelCommand();
             }
         }
 

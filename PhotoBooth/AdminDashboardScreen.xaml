@@ -2329,7 +2329,9 @@
                                                             <ColumnDefinition Width="Auto"/>
                                                         </Grid.ColumnDefinitions>
                                                         <TextBox Name="PulsesPerCreditTextBox" Grid.Column="0" Text="1" FontSize="14" BorderThickness="0" Background="Transparent" VerticalAlignment="Center"
-                                                                 behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True"/>
+                                                                 behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True"
+                                                                 PreviewTextInput="NumericOnly_PreviewTextInput"
+                                                                 DataObject.Pasting="NumericOnly_Pasting"/>
                                                         <TextBlock Grid.Column="1" Text="pulses" FontSize="12" Foreground="#6B7280" VerticalAlignment="Center" Margin="8,0,0,0"/>
                                                     </Grid>
                                                 </Border>
@@ -2349,7 +2351,9 @@
                                                         </Grid.ColumnDefinitions>
                                                         <TextBlock Grid.Column="0" Text="$" FontSize="14" Foreground="#6B7280" VerticalAlignment="Center" Margin="0,0,4,0"/>
                                                         <TextBox Name="CreditValueTextBox" Grid.Column="1" Text="1.00" FontSize="14" BorderThickness="0" Background="Transparent" VerticalAlignment="Center"
-                                                                 behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True"/>
+                                                                 behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True"
+                                                                 PreviewTextInput="DecimalOnly_PreviewTextInput"
+                                                                 DataObject.Pasting="DecimalOnly_Pasting"/>
                                                     </Grid>
                                                 </Border>
                                             </StackPanel>
@@ -2433,7 +2437,9 @@
                                                             <ColumnDefinition Width="Auto"/>
                                                         </Grid.ColumnDefinitions>
                                                         <TextBox Name="PrintsPerRollTextBox" Grid.Column="0" Text="700" FontSize="14" BorderThickness="0" Background="Transparent" VerticalAlignment="Center"
-                                                                 behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True"/>
+                                                                 behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True"
+                                                                 PreviewTextInput="NumericOnly_PreviewTextInput"
+                                                                 DataObject.Pasting="NumericOnly_Pasting"/>
                                                         <TextBlock Grid.Column="1" Text="prints" FontSize="12" Foreground="#6B7280" VerticalAlignment="Center" Margin="8,0,0,0"/>
                                                     </Grid>
                                                 </Border>
@@ -2473,10 +2479,15 @@
                                                         <Grid.ColumnDefinitions>
                                                             <ColumnDefinition Width="*"/>
                                                             <ColumnDefinition Width="Auto"/>
+                                                            <ColumnDefinition Width="Auto"/>
                                                         </Grid.ColumnDefinitions>
-                                                        <TextBox Name="FlashDurationTextBox" Grid.Column="0" Text="3" FontSize="14" BorderThickness="0" Background="Transparent" VerticalAlignment="Center"
-                                                                 behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True"/>
-                                                        <TextBlock Grid.Column="1" Text="sec" FontSize="12" Foreground="#6B7280" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                                        <Slider Name="FlashDurationSlider" Grid.Column="0" 
+                                                                Minimum="1" Maximum="10" Value="3" 
+                                                                TickFrequency="1" IsSnapToTickEnabled="True" 
+                                                                VerticalAlignment="Center" Margin="0,0,12,0"
+                                                                ValueChanged="FlashDurationSlider_ValueChanged"/>
+                                                        <TextBlock Name="FlashDurationValueText" Grid.Column="1" Text="3" FontSize="14" Foreground="#374151" VerticalAlignment="Center" MinWidth="20" TextAlignment="Center"/>
+                                                        <TextBlock Grid.Column="2" Text="sec" FontSize="12" Foreground="#6B7280" VerticalAlignment="Center" Margin="4,0,0,0"/>
                                                     </Grid>
                                                 </Border>
                                             </StackPanel>
