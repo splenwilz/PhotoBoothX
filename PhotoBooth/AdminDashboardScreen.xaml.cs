@@ -5269,6 +5269,12 @@ namespace Photobooth
             
             try
             {
+                if (string.IsNullOrEmpty(_currentUserId))
+                {
+                    NotificationService.Instance.ShowWarning("System Configuration", "User session invalid, please login again.");
+                    return;
+                }
+                
                 LoggingService.Application.Information("Saving system settings");
                 
                 // Validate and save Payment Settings
@@ -5283,7 +5289,7 @@ namespace Photobooth
                     errors.Add("Pulses per credit must be a positive whole number.");
                 }
                 
-                if (CreditValueTextBox?.Text != null && decimal.TryParse(CreditValueTextBox.Text.Trim(), NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out decimal creditValue) && creditValue > 0)
+                if (CreditValueTextBox?.Text != null && decimal.TryParse(CreditValueTextBox.Text.Trim(), NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out decimal creditValue) && creditValue >= 0)
                 {
                     var result = await _databaseService.SetSettingValueAsync("Payment", "CreditValue", creditValue, _currentUserId);
                     if (!result.Success)
@@ -5291,7 +5297,7 @@ namespace Photobooth
                 }
                 else
                 {
-                    errors.Add("Credit value must be a positive decimal number using a dot as the separator.");
+                    errors.Add("Credit value must be a non-negative decimal number using a dot as the separator.");
                 }
                 
                 // Save Hardware Settings with error checking
