@@ -5133,7 +5133,7 @@ namespace Photobooth
         /// </summary>
         private async void RestartApplication_Click(object sender, RoutedEventArgs e)
         {
-            var button = (Button)sender;
+            if (sender is not Button button) return;
             button.IsEnabled = false;
             try
             {
@@ -5200,7 +5200,7 @@ namespace Photobooth
         /// </summary>
         private async void RestartComputer_Click(object sender, RoutedEventArgs e)
         {
-            var button = (Button)sender;
+            if (sender is not Button button) return;
             button.IsEnabled = false;
             try
             {
@@ -5228,8 +5228,8 @@ namespace Photobooth
                         WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden // CreateNoWindow equivalent
                     };
                     
+                    NotificationService.Instance.ShowInfo("System Tools", "System is restarting now...");
                     System.Diagnostics.Process.Start(startInfo);
-                    NotificationService.Instance.ShowInfo("System Configuration", "Computer will restart in 5 seconds...");
                 }
             }
             catch (Exception ex)
@@ -5272,7 +5272,7 @@ namespace Photobooth
                 LoggingService.Application.Information("Saving system settings");
                 
                 // Validate and save Payment Settings
-                if (PulsesPerCreditTextBox?.Text != null && int.TryParse(PulsesPerCreditTextBox.Text, out var ppc) && ppc > 0)
+                if (PulsesPerCreditTextBox?.Text != null && int.TryParse(PulsesPerCreditTextBox.Text.Trim(), out var ppc) && ppc > 0)
                 {
                     var result = await _databaseService.SetSettingValueAsync("Payment", "PulsesPerCredit", ppc, _currentUserId);
                     if (!result.Success)
@@ -5283,7 +5283,7 @@ namespace Photobooth
                     errors.Add("Pulses per credit must be a positive whole number.");
                 }
                 
-                if (CreditValueTextBox?.Text != null && decimal.TryParse(CreditValueTextBox.Text, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out decimal creditValue) && creditValue > 0)
+                if (CreditValueTextBox?.Text != null && decimal.TryParse(CreditValueTextBox.Text.Trim(), NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out decimal creditValue) && creditValue > 0)
                 {
                     var result = await _databaseService.SetSettingValueAsync("Payment", "CreditValue", creditValue, _currentUserId);
                     if (!result.Success)
@@ -5309,7 +5309,7 @@ namespace Photobooth
                         errors.Add($"Payment.CreditCardReaderEnabled: {result.ErrorMessage ?? "Unknown error"}");
                 }
                 
-                if (PrintsPerRollTextBox?.Text != null && int.TryParse(PrintsPerRollTextBox.Text, out var ppr) && ppr > 0)
+                if (PrintsPerRollTextBox?.Text != null && int.TryParse(PrintsPerRollTextBox.Text.Trim(), out var ppr) && ppr > 0)
                 {
                     var result = await _databaseService.SetSettingValueAsync("Printer", "PrintsPerRoll", ppr, _currentUserId);
                     if (!result.Success)
@@ -5376,8 +5376,7 @@ namespace Photobooth
             catch (Exception ex)
             {
                 LoggingService.Application.Error("Failed to save system settings", ex);
-                NotificationService.Instance.ShowError("System Configuration", $"Failed to save settings: {ex.Message}");
-                throw;
+                throw; // Let callers decide on user-facing notifications
             }
         }
 
@@ -5544,8 +5543,8 @@ namespace Photobooth
         {
             if (e.DataObject.GetDataPresent(typeof(string)))
             {
-                var pastedText = (string)e.DataObject.GetData(typeof(string));
-                if (!decimal.TryParse(pastedText, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out decimal value) || value < 0)
+                var pastedText = ((string)e.DataObject.GetData(typeof(string))).Trim();
+                if (!decimal.TryParse(pastedText, NumberStyles.AllowDecimalPoint | NumberStyles.AllowLeadingWhite | NumberStyles.AllowTrailingWhite, CultureInfo.InvariantCulture, out decimal value) || value < 0)
                 {
                     e.CancelCommand();
                 }
