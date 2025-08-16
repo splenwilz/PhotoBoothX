@@ -958,7 +958,9 @@ namespace Photobooth.Services
 
                 if (_videoSource != null && _isCapturing)
                 {
-                    LoggingService.Hardware.Information("Camera", "Brightness adjusted", 
+                    // Note: Using software-based brightness adjustment
+                    // Hardware brightness control would require COM interface implementation
+                    LoggingService.Hardware.Information("Camera", "Brightness adjusted (software-based)", 
                         ("Brightness", brightness));
                     return true;
                 }
@@ -1016,7 +1018,9 @@ namespace Photobooth.Services
 
                 if (_videoSource != null && _isCapturing)
                 {
-                    LoggingService.Hardware.Information("Camera", "Contrast adjusted", 
+                    // Note: Using software-based contrast adjustment
+                    // Hardware contrast control would require COM interface implementation
+                    LoggingService.Hardware.Information("Camera", "Contrast adjusted (software-based)", 
                         ("Contrast", contrast));
                     return true;
                 }
@@ -1140,25 +1144,40 @@ namespace Photobooth.Services
         {
             try
             {
-                // Ensure we're working with the expected format
-                if (bitmap.PixelFormat != PixelFormat.Format24bppRgb)
+                BitmapData data;
+                int bytesPerPixel;
+                
+                // Handle different pixel formats
+                if (bitmap.PixelFormat == PixelFormat.Format32bppArgb)
                 {
-                    LoggingService.Hardware.Warning("Camera", "Unexpected pixel format for brightness/contrast", 
+                    data = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height),
+                        ImageLockMode.ReadWrite, PixelFormat.Format32bppArgb);
+                    bytesPerPixel = 4; // ARGB = 4 bytes per pixel
+                }
+                else if (bitmap.PixelFormat == PixelFormat.Format24bppRgb)
+                {
+                    data = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height),
+                        ImageLockMode.ReadWrite, PixelFormat.Format24bppRgb);
+                    bytesPerPixel = 3; // RGB = 3 bytes per pixel
+                }
+                else
+                {
+                    LoggingService.Hardware.Warning("Camera", "Unsupported pixel format for brightness/contrast", 
                         ("PixelFormat", bitmap.PixelFormat.ToString()));
                     return;
                 }
-                var data = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height),
-                    ImageLockMode.ReadWrite, PixelFormat.Format24bppRgb);
 
                 unsafe
                 {
                     byte* ptr = (byte*)data.Scan0;
                     int bytes = Math.Abs(data.Stride) * bitmap.Height;
                     
-                    for (int i = 0; i < bytes; i += 3)
+                    for (int i = 0; i < bytes; i += bytesPerPixel)
                     {
-                        // Apply brightness and contrast to each color channel
-                        for (int channel = 0; channel < 3; channel++)
+                        // Apply brightness and contrast to each color channel (skip alpha if present)
+                        int colorChannels = bytesPerPixel == 4 ? 3 : 3; // RGB channels only, skip Alpha
+                        
+                        for (int channel = 0; channel < colorChannels; channel++)
                         {
                             float pixel = ptr[i + channel];
                             
@@ -1173,6 +1192,9 @@ namespace Photobooth.Services
                             
                             ptr[i + channel] = (byte)pixel;
                         }
+                        
+                        // For ARGB format, preserve the Alpha channel (don't modify it)
+                        // Alpha channel is at index 3, we skip it in the loop above
                     }
                 }
                 

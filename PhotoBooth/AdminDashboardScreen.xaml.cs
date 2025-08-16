@@ -5148,7 +5148,21 @@ namespace Photobooth
                     LoggingService.Application.Warning("Application restart initiated by user");
                     
                     // Save any pending settings first
-                    await SaveSystemSettings();
+                    var saved = await SaveSystemSettings();
+                    if (!saved)
+                    {
+                        var proceed = ConfirmationDialog.ShowConfirmation(
+                            "Restart Application",
+                            "Some settings could not be saved. Do you still want to restart the application?\n\nUnsaved settings will be lost during restart.",
+                            "Restart Anyway",
+                            "Cancel");
+                        
+                        if (!proceed)
+                        {
+                            NotificationService.Instance.ShowWarning("System Configuration", "Application restart cancelled.");
+                            return;
+                        }
+                    }
                     
                     // Give time for save to complete
                     await Task.Delay(1000);
@@ -5215,7 +5229,21 @@ namespace Photobooth
                     LoggingService.Application.Warning("Computer restart initiated by user");
                     
                     // Save any pending settings first
-                    await SaveSystemSettings();
+                    var saved = await SaveSystemSettings();
+                    if (!saved)
+                    {
+                        var proceed = ConfirmationDialog.ShowConfirmation(
+                            "Restart Computer",
+                            "Some settings could not be saved. Do you still want to restart the computer?\n\nUnsaved settings will be lost during restart.",
+                            "Restart Anyway",
+                            "Cancel");
+                        
+                        if (!proceed)
+                        {
+                            NotificationService.Instance.ShowWarning("System Configuration", "Computer restart cancelled.");
+                            return;
+                        }
+                    }
                     
                     // Give time for save to complete
                     await Task.Delay(1000);
@@ -5251,7 +5279,8 @@ namespace Photobooth
         {
             try
             {
-                await SaveSystemSettings();
+                var saved = await SaveSystemSettings();
+                // Success/failure messages are already handled within SaveSystemSettings()
             }
             catch (Exception ex)
             {
@@ -5263,7 +5292,8 @@ namespace Photobooth
         /// <summary>
         /// Save system settings to database
         /// </summary>
-        private async Task SaveSystemSettings()
+        /// <returns>True if all settings were saved successfully, false otherwise</returns>
+        private async Task<bool> SaveSystemSettings()
         {
             var errors = new List<string>();
             
@@ -5272,7 +5302,7 @@ namespace Photobooth
                 if (string.IsNullOrEmpty(_currentUserId))
                 {
                     NotificationService.Instance.ShowWarning("System Configuration", "User session invalid, please login again.");
-                    return;
+                    return false; // Cannot save without valid user session
                 }
                 
                 LoggingService.Application.Information("Saving system settings");
@@ -5366,9 +5396,10 @@ namespace Photobooth
                 // Report results to user
                 if (errors.Count > 0)
                 {
-                    LoggingService.Application.Warning($"System settings saved with {errors.Count} errors");
+                    LoggingService.Application.Warning($"System settings saved with {errors.Count} errors: {string.Join(", ", errors)}");
                     NotificationService.Instance.ShowError("System Configuration", 
                         $"Some settings could not be saved:\n• " + string.Join("\n• ", errors));
+                    return false; // Some settings failed to save
                 }
                 else
                 {
@@ -5377,12 +5408,13 @@ namespace Photobooth
                     
                     // Reflect any normalization from the database
                     await LoadSystemTabSettings();
+                    return true; // All settings saved successfully
                 }
             }
             catch (Exception ex)
             {
                 LoggingService.Application.Error("Failed to save system settings", ex);
-                throw; // Let callers decide on user-facing notifications
+                return false; // Return false instead of throwing to prevent duplicate error notifications
             }
         }
 
@@ -5506,16 +5538,18 @@ namespace Photobooth
 
             if (sender is TextBox textBox)
             {
-                // Don't allow multiple decimal points
-                if (e.Text.Contains('.') && textBox.Text.Contains('.'))
+                // Build the resulting text considering current selection
+                var proposedText = textBox.Text.Remove(textBox.SelectionStart, textBox.SelectionLength)
+                                               .Insert(textBox.SelectionStart, e.Text);
+                
+                // Reject if more than one decimal point would result
+                if (proposedText.Count(ch => ch == '.') > 1)
                 {
                     e.Handled = true;
                     return;
                 }
-
-                // Ensure resulting text is a valid non-negative decimal (allow 0 while typing)
-                var proposedText = textBox.Text.Remove(textBox.SelectionStart, textBox.SelectionLength)
-                                               .Insert(textBox.SelectionStart, e.Text);
+                
+                // Ensure resulting text parses as non-negative decimal (0 allowed while typing)
                 if (!decimal.TryParse(proposedText, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out decimal value))
                 {
                     e.Handled = true;
