@@ -1172,27 +1172,31 @@ namespace Photobooth.Services
                 unsafe
                 {
                     byte* ptr = (byte*)data.Scan0;
-                    int bytes = Math.Abs(data.Stride) * bitmap.Height;
+                    int width = bitmap.Width;
+                    int height = bitmap.Height;
                     
-                    for (int i = 0; i < bytes; i += bytesPerPixel)
+                    for (int y = 0; y < height; y++)
                     {
-                        // Apply brightness and contrast to each color channel (skip alpha if present)
-                        const int colorChannels = 3; // RGB only
-                        
-                        for (int channel = 0; channel < colorChannels; channel++)
+                        byte* row = ptr + (y * data.Stride); // handles negative stride as well
+                        for (int x = 0; x < width; x++)
                         {
-                            float pixel = ptr[i + channel];
-                            
-                            // Apply contrast
-                            pixel = ((pixel / 255.0f - 0.5f) * contrast + 0.5f) * 255.0f;
-                            // Apply brightness
-                            pixel += brightness * 255.0f;
-                            // Clamp
-                            pixel = Math.Max(0, Math.Min(255, pixel));
-                            
-                            ptr[i + channel] = (byte)pixel;
+                            int idx = x * bytesPerPixel;
+                            // Apply brightness and contrast to each color channel (skip alpha if present)
+                            for (int channel = 0; channel < 3; channel++) // RGB only
+                            {
+                                float pixel = row[idx + channel];
+                                
+                                // Apply contrast
+                                pixel = ((pixel / 255.0f - 0.5f) * contrast + 0.5f) * 255.0f;
+                                // Apply brightness
+                                pixel += brightness * 255.0f;
+                                // Clamp
+                                pixel = Math.Max(0, Math.Min(255, pixel));
+                                
+                                row[idx + channel] = (byte)pixel;
+                            }
+                            // Alpha remains unmodified when bytesPerPixel == 4
                         }
-                        // Alpha remains unmodified when bytesPerPixel == 4
                     }
                 }
             }
