@@ -1142,30 +1142,32 @@ namespace Photobooth.Services
         /// </summary>
         private void ApplyBrightnessContrast(Bitmap bitmap, float brightness, float contrast)
         {
+            BitmapData? data = null;
+            int bytesPerPixel;
+            PixelFormat lockFormat;
+            
+            // Choose supported pixel format
+            if (bitmap.PixelFormat == PixelFormat.Format32bppArgb)
+            {
+                lockFormat = PixelFormat.Format32bppArgb;
+                bytesPerPixel = 4;
+            }
+            else if (bitmap.PixelFormat == PixelFormat.Format24bppRgb)
+            {
+                lockFormat = PixelFormat.Format24bppRgb;
+                bytesPerPixel = 3;
+            }
+            else
+            {
+                LoggingService.Hardware.Warning("Camera", "Unsupported pixel format for brightness/contrast", 
+                    ("PixelFormat", bitmap.PixelFormat.ToString()));
+                return;
+            }
+
             try
             {
-                BitmapData data;
-                int bytesPerPixel;
-                
-                // Handle different pixel formats
-                if (bitmap.PixelFormat == PixelFormat.Format32bppArgb)
-                {
-                    data = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height),
-                        ImageLockMode.ReadWrite, PixelFormat.Format32bppArgb);
-                    bytesPerPixel = 4; // ARGB = 4 bytes per pixel
-                }
-                else if (bitmap.PixelFormat == PixelFormat.Format24bppRgb)
-                {
-                    data = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height),
-                        ImageLockMode.ReadWrite, PixelFormat.Format24bppRgb);
-                    bytesPerPixel = 3; // RGB = 3 bytes per pixel
-                }
-                else
-                {
-                    LoggingService.Hardware.Warning("Camera", "Unsupported pixel format for brightness/contrast", 
-                        ("PixelFormat", bitmap.PixelFormat.ToString()));
-                    return;
-                }
+                data = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height),
+                                       ImageLockMode.ReadWrite, lockFormat);
 
                 unsafe
                 {
@@ -1175,7 +1177,7 @@ namespace Photobooth.Services
                     for (int i = 0; i < bytes; i += bytesPerPixel)
                     {
                         // Apply brightness and contrast to each color channel (skip alpha if present)
-                        int colorChannels = bytesPerPixel == 4 ? 3 : 3; // RGB channels only, skip Alpha
+                        const int colorChannels = 3; // RGB only
                         
                         for (int channel = 0; channel < colorChannels; channel++)
                         {
@@ -1183,26 +1185,25 @@ namespace Photobooth.Services
                             
                             // Apply contrast
                             pixel = ((pixel / 255.0f - 0.5f) * contrast + 0.5f) * 255.0f;
-                            
                             // Apply brightness
                             pixel += brightness * 255.0f;
-                            
-                            // Clamp to valid range
+                            // Clamp
                             pixel = Math.Max(0, Math.Min(255, pixel));
                             
                             ptr[i + channel] = (byte)pixel;
                         }
-                        
-                        // For ARGB format, preserve the Alpha channel (don't modify it)
-                        // Alpha channel is at index 3, we skip it in the loop above
+                        // Alpha remains unmodified when bytesPerPixel == 4
                     }
                 }
-                
-                bitmap.UnlockBits(data);
             }
             catch (Exception ex)
             {
                 LoggingService.Hardware.Error("Camera", "Failed to apply brightness/contrast", ex);
+            }
+            finally
+            {
+                if (data != null)
+                    bitmap.UnlockBits(data);
             }
         }
 
