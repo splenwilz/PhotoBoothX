@@ -958,7 +958,9 @@ namespace Photobooth.Services
 
                 if (_videoSource != null && _isCapturing)
                 {
-                    LoggingService.Hardware.Information("Camera", "Brightness adjusted", 
+                    // Note: Using software-based brightness adjustment
+                    // Hardware brightness control would require COM interface implementation
+                    LoggingService.Hardware.Information("Camera", "Brightness adjusted (software-based)", 
                         ("Brightness", brightness));
                     return true;
                 }
@@ -1016,7 +1018,9 @@ namespace Photobooth.Services
 
                 if (_videoSource != null && _isCapturing)
                 {
-                    LoggingService.Hardware.Information("Camera", "Contrast adjusted", 
+                    // Note: Using software-based contrast adjustment
+                    // Hardware contrast control would require COM interface implementation
+                    LoggingService.Hardware.Information("Camera", "Contrast adjusted (software-based)", 
                         ("Contrast", contrast));
                     return true;
                 }
@@ -1138,49 +1142,72 @@ namespace Photobooth.Services
         /// </summary>
         private void ApplyBrightnessContrast(Bitmap bitmap, float brightness, float contrast)
         {
+            BitmapData? data = null;
+            int bytesPerPixel;
+            PixelFormat lockFormat;
+            
+            // Choose supported pixel format
+            if (bitmap.PixelFormat == PixelFormat.Format32bppArgb)
+            {
+                lockFormat = PixelFormat.Format32bppArgb;
+                bytesPerPixel = 4;
+            }
+            else if (bitmap.PixelFormat == PixelFormat.Format24bppRgb)
+            {
+                lockFormat = PixelFormat.Format24bppRgb;
+                bytesPerPixel = 3;
+            }
+            else
+            {
+                LoggingService.Hardware.Warning("Camera", "Unsupported pixel format for brightness/contrast", 
+                    ("PixelFormat", bitmap.PixelFormat.ToString()));
+                return;
+            }
+
             try
             {
-                // Ensure we're working with the expected format
-                if (bitmap.PixelFormat != PixelFormat.Format24bppRgb)
-                {
-                    LoggingService.Hardware.Warning("Camera", "Unexpected pixel format for brightness/contrast", 
-                        ("PixelFormat", bitmap.PixelFormat.ToString()));
-                    return;
-                }
-                var data = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height),
-                    ImageLockMode.ReadWrite, PixelFormat.Format24bppRgb);
+                data = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height),
+                                       ImageLockMode.ReadWrite, lockFormat);
 
                 unsafe
                 {
                     byte* ptr = (byte*)data.Scan0;
-                    int bytes = Math.Abs(data.Stride) * bitmap.Height;
+                    int width = bitmap.Width;
+                    int height = bitmap.Height;
                     
-                    for (int i = 0; i < bytes; i += 3)
+                    for (int y = 0; y < height; y++)
                     {
-                        // Apply brightness and contrast to each color channel
-                        for (int channel = 0; channel < 3; channel++)
+                        byte* row = ptr + (y * data.Stride); // handles negative stride as well
+                        for (int x = 0; x < width; x++)
                         {
-                            float pixel = ptr[i + channel];
-                            
-                            // Apply contrast
-                            pixel = ((pixel / 255.0f - 0.5f) * contrast + 0.5f) * 255.0f;
-                            
-                            // Apply brightness
-                            pixel += brightness * 255.0f;
-                            
-                            // Clamp to valid range
-                            pixel = Math.Max(0, Math.Min(255, pixel));
-                            
-                            ptr[i + channel] = (byte)pixel;
+                            int idx = x * bytesPerPixel;
+                            // Apply brightness and contrast to each color channel (skip alpha if present)
+                            for (int channel = 0; channel < 3; channel++) // RGB only
+                            {
+                                float pixel = row[idx + channel];
+                                
+                                // Apply contrast
+                                pixel = ((pixel / 255.0f - 0.5f) * contrast + 0.5f) * 255.0f;
+                                // Apply brightness
+                                pixel += brightness * 255.0f;
+                                // Clamp
+                                pixel = Math.Max(0, Math.Min(255, pixel));
+                                
+                                row[idx + channel] = (byte)pixel;
+                            }
+                            // Alpha remains unmodified when bytesPerPixel == 4
                         }
                     }
                 }
-                
-                bitmap.UnlockBits(data);
             }
             catch (Exception ex)
             {
                 LoggingService.Hardware.Error("Camera", "Failed to apply brightness/contrast", ex);
+            }
+            finally
+            {
+                if (data != null)
+                    bitmap.UnlockBits(data);
             }
         }
 

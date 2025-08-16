@@ -2274,11 +2274,305 @@
                     </Grid>
 
                     <!-- System Tab Content -->
-                    <Grid Name="SystemTabContent" Visibility="Collapsed" Margin="24">
-                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                            <TextBlock Text="💻" FontSize="48" HorizontalAlignment="Center" Margin="0,0,0,16"/>
-                            <TextBlock Text="System" FontSize="32" FontWeight="Bold" HorizontalAlignment="Center" Foreground="#1E293B" Margin="0,0,0,8"/>
-                            <TextBlock Text="System management coming soon..." FontSize="16" HorizontalAlignment="Center" Foreground="#64748B"/>
+                    <Grid Name="SystemTabContent" Visibility="Collapsed">
+                        <StackPanel Margin="0,0,0,32">
+                            
+                            <!-- Header Section -->
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,24">
+                                <StackPanel>
+                                    <TextBlock Text="System Configuration" FontSize="32" FontWeight="Bold" Foreground="#0F172A" Margin="0,0,0,8"/>
+                                    <TextBlock Text="Configure payment hardware, printer settings, and system preferences" FontSize="16" Foreground="#64748B"/>
+                                </StackPanel>
+                            </StackPanel>
+
+
+
+                            <!-- Payment System Configuration -->
+                            <Border Background="White" CornerRadius="12" BorderBrush="#E5E7EB" BorderThickness="1" Padding="24" Margin="0,0,0,24">
+                                <Border.Effect>
+                                    <DropShadowEffect Color="#000000" BlurRadius="8" ShadowDepth="2" Opacity="0.1"/>
+                                </Border.Effect>
+                                <StackPanel>
+                                    <!-- Header -->
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,20">
+                                        <Border Width="36" Height="36" Background="#FEF3C7" CornerRadius="8" Margin="0,0,12,0">
+                                            <TextBlock Text="💳" FontSize="18" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                        <StackPanel>
+                                            <TextBlock Text="Payment System" FontSize="18" FontWeight="SemiBold" Foreground="#0F172A"/>
+                                            <TextBlock Text="Configure payment hardware parameters" FontSize="14" Foreground="#64748B"/>
+                                        </StackPanel>
+                                    </StackPanel>
+
+                                    <!-- Payment Configuration Grid -->
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="32"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="20"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+
+                                        <!-- Pulses Per Credit -->
+                                        <Border Grid.Row="0" Grid.Column="0" Background="#F8FAFC" CornerRadius="8" BorderBrush="#E2E8F0" BorderThickness="1" Padding="16">
+                                            <StackPanel>
+                                                <TextBlock Text="Pulses Per Credit" FontSize="14" FontWeight="SemiBold" Foreground="#374151" Margin="0,0,0,8"/>
+                                                <TextBlock Text="Arduino pulses required per $1 credit" FontSize="12" Foreground="#6B7280" Margin="0,0,0,12"/>
+                                                <Border Background="White" CornerRadius="6" BorderBrush="#D1D5DB" BorderThickness="1" Padding="12,8">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBox Name="PulsesPerCreditTextBox" Grid.Column="0" Text="1" FontSize="14" BorderThickness="0" Background="Transparent" VerticalAlignment="Center"
+                                                                 behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True"
+                                                                 PreviewTextInput="NumericOnly_PreviewTextInput"
+                                                                 DataObject.Pasting="NumericOnly_Pasting"/>
+                                                        <TextBlock Grid.Column="1" Text="pulses" FontSize="12" Foreground="#6B7280" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                                    </Grid>
+                                                </Border>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- Credit Value -->
+                                        <Border Grid.Row="0" Grid.Column="2" Background="#F8FAFC" CornerRadius="8" BorderBrush="#E2E8F0" BorderThickness="1" Padding="16">
+                                            <StackPanel>
+                                                <TextBlock Text="Credit Value" FontSize="14" FontWeight="SemiBold" Foreground="#374151" Margin="0,0,0,8"/>
+                                                <TextBlock Text="Dollar value per credit unit" FontSize="12" Foreground="#6B7280" Margin="0,0,0,12"/>
+                                                <Border Background="White" CornerRadius="6" BorderBrush="#D1D5DB" BorderThickness="1" Padding="12,8">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                            <ColumnDefinition Width="*"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Grid.Column="0" Text="$" FontSize="14" Foreground="#6B7280" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                                        <TextBox Name="CreditValueTextBox" Grid.Column="1" Text="1.00" FontSize="14" BorderThickness="0" Background="Transparent" VerticalAlignment="Center"
+                                                                 behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True"
+                                                                 PreviewTextInput="DecimalOnly_PreviewTextInput"
+                                                                 DataObject.Pasting="DecimalOnly_Pasting"/>
+                                                    </Grid>
+                                                </Border>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- Bill Acceptor Settings -->
+                                        <Border Grid.Row="2" Grid.Column="0" Background="#F8FAFC" CornerRadius="8" BorderBrush="#E2E8F0" BorderThickness="1" Padding="16">
+                                            <StackPanel>
+                                                <Grid Margin="0,0,0,12">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <StackPanel Grid.Column="0">
+                                                        <TextBlock Text="Bill Acceptor" FontSize="14" FontWeight="SemiBold" Foreground="#374151"/>
+                                                        <TextBlock Text="Enable cash payment acceptance" FontSize="12" Foreground="#6B7280"/>
+                                                    </StackPanel>
+                                                    <ToggleButton Name="BillAcceptorToggle" Grid.Column="1" Style="{StaticResource ModernToggleSwitchStyle}" Width="48" Height="24" IsChecked="True" VerticalAlignment="Center"/>
+                                                </Grid>
+                                                <TextBlock Text="Accepts $1, $5, $10, $20 bills" FontSize="11" Foreground="#9CA3AF"/>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- Credit Card Reader Settings -->
+                                        <Border Grid.Row="2" Grid.Column="2" Background="#F8FAFC" CornerRadius="8" BorderBrush="#E2E8F0" BorderThickness="1" Padding="16">
+                                            <StackPanel>
+                                                <Grid Margin="0,0,0,12">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <StackPanel Grid.Column="0">
+                                                        <TextBlock Text="Credit Card Reader" FontSize="14" FontWeight="SemiBold" Foreground="#374151"/>
+                                                        <TextBlock Text="Enable credit/debit card payments" FontSize="12" Foreground="#6B7280"/>
+                                                    </StackPanel>
+                                                    <ToggleButton Name="CreditCardReaderToggle" Grid.Column="1" Style="{StaticResource ModernToggleSwitchStyle}" Width="48" Height="24" IsChecked="True" VerticalAlignment="Center"/>
+                                                </Grid>
+                                                <TextBlock Text="Cantaloupe Engage compatible" FontSize="11" Foreground="#9CA3AF"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Hardware Configuration -->
+                            <Border Background="White" CornerRadius="12" BorderBrush="#E5E7EB" BorderThickness="1" Padding="24" Margin="0,0,0,24">
+                                <Border.Effect>
+                                    <DropShadowEffect Color="#000000" BlurRadius="8" ShadowDepth="2" Opacity="0.1"/>
+                                </Border.Effect>
+                                <StackPanel>
+                                    <!-- Header -->
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,20">
+                                        <Border Width="36" Height="36" Background="#F3E8FF" CornerRadius="8" Margin="0,0,12,0">
+                                            <TextBlock Text="🔧" FontSize="18" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                        <StackPanel>
+                                            <TextBlock Text="Hardware Configuration" FontSize="18" FontWeight="SemiBold" Foreground="#0F172A"/>
+                                            <TextBlock Text="Configure printer, camera, and lighting settings" FontSize="14" Foreground="#64748B"/>
+                                        </StackPanel>
+                                    </StackPanel>
+
+                                    <!-- Hardware Settings Grid -->
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="16"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="16"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <!-- Print Supply Settings -->
+                                        <Border Grid.Column="0" Background="#F8FAFC" CornerRadius="8" BorderBrush="#E2E8F0" BorderThickness="1" Padding="16">
+                                            <StackPanel>
+                                                <TextBlock Text="Print Supply Tracking" FontSize="14" FontWeight="SemiBold" Foreground="#374151" Margin="0,0,0,8"/>
+                                                <TextBlock Text="Prints per roll (700 for DNP RX1hs)" FontSize="12" Foreground="#6B7280" Margin="0,0,0,12"/>
+                                                <Border Background="White" CornerRadius="6" BorderBrush="#D1D5DB" BorderThickness="1" Padding="12,8" Margin="0,0,0,16">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBox Name="PrintsPerRollTextBox" Grid.Column="0" Text="700" FontSize="14" BorderThickness="0" Background="Transparent" VerticalAlignment="Center"
+                                                                 behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True"
+                                                                 PreviewTextInput="NumericOnly_PreviewTextInput"
+                                                                 DataObject.Pasting="NumericOnly_Pasting"/>
+                                                        <TextBlock Grid.Column="1" Text="prints" FontSize="12" Foreground="#6B7280" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                                    </Grid>
+                                                </Border>
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <StackPanel Grid.Column="0">
+                                                        <TextBlock Text="RFID Detection" FontSize="12" FontWeight="Medium" Foreground="#374151"/>
+                                                        <TextBlock Text="Auto-detect new paper rolls" FontSize="11" Foreground="#6B7280"/>
+                                                    </StackPanel>
+                                                    <ToggleButton Name="SystemRFIDToggle" Grid.Column="1" Style="{StaticResource ModernToggleSwitchStyle}" Width="40" Height="20" IsChecked="True" VerticalAlignment="Center"/>
+                                                </Grid>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- Camera Flash Settings -->
+                                        <Border Grid.Column="2" Background="#F8FAFC" CornerRadius="8" BorderBrush="#E2E8F0" BorderThickness="1" Padding="16">
+                                            <StackPanel>
+                                                <TextBlock Text="Camera Flash" FontSize="14" FontWeight="SemiBold" Foreground="#374151" Margin="0,0,0,8"/>
+                                                <TextBlock Text="LED lighting control settings" FontSize="12" Foreground="#6B7280" Margin="0,0,0,16"/>
+                                                <Grid Margin="0,0,0,12">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <StackPanel Grid.Column="0">
+                                                        <TextBlock Text="Flash Enabled" FontSize="12" FontWeight="Medium" Foreground="#374151"/>
+                                                        <TextBlock Text="Auto flash during capture" FontSize="11" Foreground="#6B7280"/>
+                                                    </StackPanel>
+                                                    <ToggleButton Name="SystemFlashToggle" Grid.Column="1" Style="{StaticResource ModernToggleSwitchStyle}" Width="40" Height="20" IsChecked="True" VerticalAlignment="Center"/>
+                                                </Grid>
+                                                <TextBlock Text="Flash Duration" FontSize="12" FontWeight="Medium" Foreground="#374151" Margin="0,0,0,4"/>
+                                                <Border Background="White" CornerRadius="6" BorderBrush="#D1D5DB" BorderThickness="1" Padding="12,8">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <Slider Name="FlashDurationSlider" Grid.Column="0" 
+                                                                Minimum="1" Maximum="10" Value="3" 
+                                                                TickFrequency="1" IsSnapToTickEnabled="True" 
+                                                                VerticalAlignment="Center" Margin="0,0,12,0"
+                                                                ValueChanged="FlashDurationSlider_ValueChanged"/>
+                                                        <TextBlock Name="FlashDurationValueText" Grid.Column="1" Text="3" FontSize="14" Foreground="#374151" VerticalAlignment="Center" MinWidth="20" TextAlignment="Center"/>
+                                                        <TextBlock Grid.Column="2" Text="sec" FontSize="12" Foreground="#6B7280" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                                                    </Grid>
+                                                </Border>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- Date & Time Settings -->
+                                        <Border Grid.Column="4" Background="#F8FAFC" CornerRadius="8" BorderBrush="#E2E8F0" BorderThickness="1" Padding="16">
+                                            <StackPanel>
+                                                <TextBlock Text="System Date &amp; Time" FontSize="14" FontWeight="SemiBold" Foreground="#374151" Margin="0,0,0,8"/>
+                                                <TextBlock Text="System clock and seasonal templates" FontSize="12" Foreground="#6B7280" Margin="0,0,0,16"/>
+                                                <Grid Margin="0,0,0,12">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <StackPanel Grid.Column="0">
+                                                        <TextBlock Text="Auto Seasonal Templates" FontSize="12" FontWeight="Medium" Foreground="#374151"/>
+                                                        <TextBlock Text="Enable by calendar date" FontSize="11" Foreground="#6B7280"/>
+                                                    </StackPanel>
+                                                    <ToggleButton Name="SystemSeasonalToggle" Grid.Column="1" Style="{StaticResource ModernToggleSwitchStyle}" Width="40" Height="20" IsChecked="True" VerticalAlignment="Center"/>
+                                                </Grid>
+                                                <Button Name="SetSystemDateButton" Content="Set Date &amp; Time" Style="{StaticResource ModernButtonStyle}" Background="#F3F4F6" Foreground="#374151" Padding="12,8" Click="SetSystemDate_Click" HorizontalAlignment="Stretch"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- System Actions -->
+                            <Border Background="White" CornerRadius="12" BorderBrush="#E5E7EB" BorderThickness="1" Padding="24">
+                                <Border.Effect>
+                                    <DropShadowEffect Color="#000000" BlurRadius="8" ShadowDepth="2" Opacity="0.1"/>
+                                </Border.Effect>
+                                <StackPanel>
+                                    <!-- Header -->
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,20">
+                                        <Border Width="36" Height="36" Background="#FEE2E2" CornerRadius="8" Margin="0,0,12,0">
+                                            <TextBlock Text="🔄" FontSize="18" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                        <StackPanel>
+                                            <TextBlock Text="System Actions" FontSize="18" FontWeight="SemiBold" Foreground="#0F172A"/>
+                                            <TextBlock Text="System maintenance and restart functions" FontSize="14" Foreground="#64748B"/>
+                                        </StackPanel>
+                                    </StackPanel>
+
+                                    <!-- Action Buttons -->
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="16"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="16"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <!-- Restart Application -->
+                                        <Button Name="RestartApplicationButton" Grid.Column="0" Style="{StaticResource ModernButtonStyle}" Background="#F59E0B" Foreground="White" Padding="16,12" Click="RestartApplication_Click">
+                                            <StackPanel>
+                                                <TextBlock Text="🔄" FontSize="20" HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                                                <TextBlock Text="Restart App" FontSize="14" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                                                <TextBlock Text="Restart photobooth software" FontSize="11" Foreground="#FEF3C7" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                                            </StackPanel>
+                                        </Button>
+
+                                        <!-- Restart Computer -->
+                                        <Button Name="RestartComputerButton" Grid.Column="2" Style="{StaticResource ModernButtonStyle}" Background="#EF4444" Foreground="White" Padding="16,12" Click="RestartComputer_Click">
+                                            <StackPanel>
+                                                <TextBlock Text="💻" FontSize="20" HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                                                <TextBlock Text="Restart PC" FontSize="14" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                                                <TextBlock Text="Restart entire computer" FontSize="11" Foreground="#FEE2E2" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                                            </StackPanel>
+                                        </Button>
+
+                                        <!-- Save All Settings -->
+                                        <Button Name="SaveSystemSettingsButton" Grid.Column="4" Style="{StaticResource ModernButtonStyle}" Background="#10B981" Foreground="White" Padding="16,12" Click="SaveSystemSettings_Click">
+                                            <StackPanel>
+                                                <TextBlock Text="💾" FontSize="20" HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                                                <TextBlock Text="Save Settings" FontSize="14" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                                                <TextBlock Text="Apply all changes" FontSize="11" Foreground="#D1FAE5" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                                            </StackPanel>
+                                        </Button>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
                         </StackPanel>
                     </Grid>
 

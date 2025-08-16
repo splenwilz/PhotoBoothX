@@ -44,8 +44,8 @@
         </Style>
     </UserControl.Resources>
 
-            <Border Background="#F8FAFC" CornerRadius="16" Padding="24" Width="620" MaxWidth="700" >
-        <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="600">
+            <Border Background="#F8FAFC" CornerRadius="16" Padding="24" >
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
             <StackPanel Margin="0,0,16,0">
                 <!-- Header -->
                 <Grid Margin="0,0,0,24">

@@ -6,8 +6,10 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows;
+using PhotoBooth.Controls;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Data;
@@ -702,6 +704,7 @@ namespace Photobooth
                         case "SystemTab":
                             SystemTabContent.Visibility = Visibility.Visible;
                             BreadcrumbText.Text = "System";
+                            await LoadSystemTabSettings();
                             break;
                         case "CreditsTab":
                             CreditsTabContent.Visibility = Visibility.Visible;
@@ -1967,7 +1970,6 @@ namespace Photobooth
         {
             await LoadSalesData();
             await LoadSupplyStatus();
-            await LoadSystemSettings();
             await LoadBusinessInformation();
             await LoadOperationModeFromSettings();
             await LoadSystemPreferences();
@@ -1975,6 +1977,7 @@ namespace Photobooth
             await LoadUsersList(); // Load the users list
             await LoadCreditsAsync(); // Load the credit system data
             await LoadTransactionHistory(); // Load transaction history for sales tab
+            await LoadSystemTabSettings(); // Load system configuration settings
         }
 
         private async System.Threading.Tasks.Task LoadBusinessInformation()
@@ -5043,13 +5046,12 @@ namespace Photobooth
                     // Give time for log to be written
                     await Task.Delay(1000);
                     
-                    // Restart the computer
-                    var startInfo = new System.Diagnostics.ProcessStartInfo
+                    // Restart the computer with proper elevation
+                    var startInfo = new System.Diagnostics.ProcessStartInfo("shutdown.exe", "/r /t 0")
                     {
-                        FileName = "shutdown",
-                        Arguments = "/r /t 0",
-                        UseShellExecute = false,
-                        CreateNoWindow = true
+                        UseShellExecute = true, // Required for elevation
+                        Verb = "runas", // Prompt for elevation if required
+                        WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden // CreateNoWindow equivalent
                     };
                     
                     System.Diagnostics.Process.Start(startInfo);
@@ -5084,6 +5086,514 @@ namespace Photobooth
         }
 
 
+
+        #endregion
+
+        #region System Tab Event Handlers
+
+
+
+        /// <summary>
+        /// Set system date and time
+        /// </summary>
+        private async void SetSystemDate_Click(object sender, RoutedEventArgs e)
+        {
+            SetSystemDateButton.IsEnabled = false;
+            try
+            {
+                // Use the built-in async overlay and data-load logic
+                var owner = Window.GetWindow(this) ?? Application.Current.MainWindow;
+                if (owner == null)
+                {
+                    NotificationService.Instance.ShowError("System Configuration", "Unable to locate main window for dialog.");
+                    return;
+                }
+                
+                await SystemDateDialog.ShowSystemDateDialogAsync(owner, _databaseService);
+                
+                // Reflect any normalization from the database
+                await LoadSystemTabSettings();
+                
+                LoggingService.Application.Information("System date dialog completed");
+                // Success/error feedback is handled within the dialog
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("System date setting failed", ex);
+                NotificationService.Instance.ShowError("System Configuration", $"Failed to set system date: {ex.Message}");
+            }
+            finally
+            {
+                SetSystemDateButton.IsEnabled = true;
+            }
+        }
+
+        /// <summary>
+        /// Restart the photobooth application
+        /// </summary>
+        private async void RestartApplication_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button button) return;
+            button.IsEnabled = false;
+            try
+            {
+                var result = ConfirmationDialog.ShowConfirmation(
+                    "Restart Application",
+                    "This will restart the PhotoBooth application.\n\nAny unsaved settings will be lost.\n\nContinue?",
+                    "Restart App",
+                    "Cancel");
+
+                if (result)
+                {
+                    LoggingService.Application.Warning("Application restart initiated by user");
+                    
+                    // Save any pending settings first
+                    var saved = await SaveSystemSettings();
+                    if (!saved)
+                    {
+                        var proceed = ConfirmationDialog.ShowConfirmation(
+                            "Restart Application",
+                            "Some settings could not be saved. Do you still want to restart the application?\n\nUnsaved settings will be lost during restart.",
+                            "Restart Anyway",
+                            "Cancel");
+                        
+                        if (!proceed)
+                        {
+                            NotificationService.Instance.ShowWarning("System Configuration", "Application restart cancelled.");
+                            return;
+                        }
+                    }
+                    
+                    // Give time for save to complete
+                    await Task.Delay(1000);
+                    
+                    // Resolve executable path reliably with fallbacks
+                    var currentProcess = System.Diagnostics.Process.GetCurrentProcess();
+                    var exePath = Environment.ProcessPath
+                                  ?? currentProcess.MainModule?.FileName
+                                  ?? System.Reflection.Assembly.GetEntryAssembly()?.Location
+                                  ?? string.Empty;
+                    
+                    if (string.IsNullOrWhiteSpace(exePath))
+                    {
+                        NotificationService.Instance.ShowError(
+                            "System Configuration",
+                            "Unable to determine application path to restart.");
+                        return;
+                    }
+                    
+                    // Notify user immediately that restart is in progress
+                    NotificationService.Instance.ShowInfo(
+                        "System Configuration",
+                        "Restarting application...");
+                    
+                    var startInfo = new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = exePath,
+                        UseShellExecute = true
+                    };
+                    
+                    System.Diagnostics.Process.Start(startInfo);
+                    Application.Current.Shutdown();
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Application restart failed", ex);
+                NotificationService.Instance.ShowError("System Configuration", $"Failed to restart application: {ex.Message}");
+            }
+            finally
+            {
+                // If the app isn't shutting down, restore the button
+                button.IsEnabled = true;
+            }
+        }
+
+        /// <summary>
+        /// Restart the computer
+        /// </summary>
+        private async void RestartComputer_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button button) return;
+            button.IsEnabled = false;
+            try
+            {
+                var result = ConfirmationDialog.ShowConfirmation(
+                    "Restart Computer",
+                    "This will restart the entire computer.\n\nAll unsaved work will be lost.\n\nAre you sure?",
+                    "Restart Computer",
+                    "Cancel");
+
+                if (result)
+                {
+                    LoggingService.Application.Warning("Computer restart initiated by user");
+                    
+                    // Save any pending settings first
+                    var saved = await SaveSystemSettings();
+                    if (!saved)
+                    {
+                        var proceed = ConfirmationDialog.ShowConfirmation(
+                            "Restart Computer",
+                            "Some settings could not be saved. Do you still want to restart the computer?\n\nUnsaved settings will be lost during restart.",
+                            "Restart Anyway",
+                            "Cancel");
+                        
+                        if (!proceed)
+                        {
+                            NotificationService.Instance.ShowWarning("System Configuration", "Computer restart cancelled.");
+                            return;
+                        }
+                    }
+                    
+                    // Give time for save to complete
+                    await Task.Delay(1000);
+                    
+                    // Restart the computer with proper elevation
+                    var startInfo = new System.Diagnostics.ProcessStartInfo("shutdown.exe", "/r /t 5")
+                    {
+                        UseShellExecute = true, // Required for elevation
+                        Verb = "runas", // Prompt for elevation if required
+                        WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden // CreateNoWindow equivalent
+                    };
+                    
+                    NotificationService.Instance.ShowInfo("System Tools", "System is restarting now...");
+                    System.Diagnostics.Process.Start(startInfo);
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Computer restart failed", ex);
+                NotificationService.Instance.ShowError("System Configuration", $"Failed to restart computer: {ex.Message}");
+            }
+            finally
+            {
+                // If the restart was cancelled or failed, restore the button
+                button.IsEnabled = true;
+            }
+        }
+
+        /// <summary>
+        /// Save all system settings
+        /// </summary>
+        private async void SaveSystemSettings_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var saved = await SaveSystemSettings();
+                // Success/failure messages are already handled within SaveSystemSettings()
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Save system settings failed", ex);
+                NotificationService.Instance.ShowError("System Configuration", $"Failed to save settings: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Save system settings to database
+        /// </summary>
+        /// <returns>True if all settings were saved successfully, false otherwise</returns>
+        private async Task<bool> SaveSystemSettings()
+        {
+            var errors = new List<string>();
+            
+            try
+            {
+                if (string.IsNullOrEmpty(_currentUserId))
+                {
+                    NotificationService.Instance.ShowWarning("System Configuration", "User session invalid, please login again.");
+                    return false; // Cannot save without valid user session
+                }
+                
+                LoggingService.Application.Information("Saving system settings");
+                
+                // Validate and save Payment Settings
+                if (PulsesPerCreditTextBox?.Text != null && int.TryParse(PulsesPerCreditTextBox.Text.Trim(), out var ppc) && ppc > 0)
+                {
+                    var result = await _databaseService.SetSettingValueAsync("Payment", "PulsesPerCredit", ppc, _currentUserId);
+                    if (!result.Success)
+                        errors.Add($"Payment.PulsesPerCredit: {result.ErrorMessage ?? "Unknown error"}");
+                }
+                else
+                {
+                    errors.Add("Pulses per credit must be a positive whole number.");
+                }
+                
+                if (CreditValueTextBox?.Text != null && decimal.TryParse(CreditValueTextBox.Text.Trim(), NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out decimal creditValue) && creditValue >= 0)
+                {
+                    var result = await _databaseService.SetSettingValueAsync("Payment", "CreditValue", creditValue, _currentUserId);
+                    if (!result.Success)
+                        errors.Add($"Payment.CreditValue: {result.ErrorMessage ?? "Unknown error"}");
+                }
+                else
+                {
+                    errors.Add("Credit value must be a non-negative decimal number using a dot as the separator.");
+                }
+                
+                // Save Hardware Settings with error checking
+                if (BillAcceptorToggle != null)
+                {
+                    var result = await _databaseService.SetSettingValueAsync("Payment", "BillAcceptorEnabled", BillAcceptorToggle.IsChecked == true, _currentUserId);
+                    if (!result.Success)
+                        errors.Add($"Payment.BillAcceptorEnabled: {result.ErrorMessage ?? "Unknown error"}");
+                }
+                
+                if (CreditCardReaderToggle != null)
+                {
+                    var result = await _databaseService.SetSettingValueAsync("Payment", "CreditCardReaderEnabled", CreditCardReaderToggle.IsChecked == true, _currentUserId);
+                    if (!result.Success)
+                        errors.Add($"Payment.CreditCardReaderEnabled: {result.ErrorMessage ?? "Unknown error"}");
+                }
+                
+                if (PrintsPerRollTextBox?.Text != null && int.TryParse(PrintsPerRollTextBox.Text.Trim(), out var ppr) && ppr > 0)
+                {
+                    var result = await _databaseService.SetSettingValueAsync("Printer", "PrintsPerRoll", ppr, _currentUserId);
+                    if (!result.Success)
+                        errors.Add($"Printer.PrintsPerRoll: {result.ErrorMessage ?? "Unknown error"}");
+                }
+                else
+                {
+                    errors.Add("Prints per roll must be a positive whole number.");
+                }
+                
+                if (SystemRFIDToggle != null)
+                {
+                    var result = await _databaseService.SetSettingValueAsync("RFID", "Enabled", SystemRFIDToggle.IsChecked == true, _currentUserId);
+                    if (!result.Success)
+                        errors.Add($"RFID.Enabled: {result.ErrorMessage ?? "Unknown error"}");
+                }
+                
+                if (SystemFlashToggle != null)
+                {
+                    var result = await _databaseService.SetSettingValueAsync("System", "LightsEnabled", SystemFlashToggle.IsChecked == true, _currentUserId);
+                    if (!result.Success)
+                        errors.Add($"System.LightsEnabled: {result.ErrorMessage ?? "Unknown error"}");
+                }
+                
+                // Flash duration validation and save
+                if (FlashDurationSlider != null)
+                {
+                    int flashDuration = (int)FlashDurationSlider.Value;
+                    if (flashDuration >= 1 && flashDuration <= 10)
+                    {
+                        var result = await _databaseService.SetSettingValueAsync("System", "FlashDuration", flashDuration, _currentUserId);
+                        if (!result.Success)
+                            errors.Add($"System.FlashDuration: {result.ErrorMessage ?? "Unknown error"}");
+                    }
+                    else
+                    {
+                        errors.Add("Flash duration must be between 1 and 10 seconds.");
+                    }
+                }
+                
+                if (SystemSeasonalToggle != null)
+                {
+                    var result = await _databaseService.SetSettingValueAsync("Seasonal", "AutoTemplates", SystemSeasonalToggle.IsChecked == true, _currentUserId);
+                    if (!result.Success)
+                        errors.Add($"Seasonal.AutoTemplates: {result.ErrorMessage ?? "Unknown error"}");
+                }
+                
+                // Report results to user
+                if (errors.Count > 0)
+                {
+                    LoggingService.Application.Warning($"System settings saved with {errors.Count} errors: {string.Join(", ", errors)}");
+                    NotificationService.Instance.ShowError("System Configuration", 
+                        $"Some settings could not be saved:\n• " + string.Join("\n• ", errors));
+                    return false; // Some settings failed to save
+                }
+                else
+                {
+                    LoggingService.Application.Information("System settings saved successfully");
+                    NotificationService.Instance.ShowSuccess("System Configuration", "All settings saved successfully");
+                    
+                    // Reflect any normalization from the database
+                    await LoadSystemTabSettings();
+                    return true; // All settings saved successfully
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to save system settings", ex);
+                return false; // Return false instead of throwing to prevent duplicate error notifications
+            }
+        }
+
+        /// <summary>
+        /// Load system settings for the System tab from database
+        /// </summary>
+        private async Task LoadSystemTabSettings()
+        {
+            try
+            {
+                LoggingService.Application.Information("Loading system tab settings");
+                
+                // Payment Settings
+                var pulsesResult = await _databaseService.GetSettingValueAsync<int>("Payment", "PulsesPerCredit");
+                if (pulsesResult.Success)
+                {
+                    PulsesPerCreditTextBox.Text = pulsesResult.Data.ToString();
+                }
+                
+                var creditValueResult = await _databaseService.GetSettingValueAsync<decimal>("Payment", "CreditValue");
+                if (creditValueResult.Success)
+                {
+                    CreditValueTextBox.Text = creditValueResult.Data.ToString("F2", CultureInfo.InvariantCulture);
+                }
+                
+                // Hardware Settings
+                var billAcceptorResult = await _databaseService.GetSettingValueAsync<bool>("Payment", "BillAcceptorEnabled");
+                if (billAcceptorResult.Success)
+                {
+                    BillAcceptorToggle.IsChecked = billAcceptorResult.Data;
+                }
+                
+                var creditCardResult = await _databaseService.GetSettingValueAsync<bool>("Payment", "CreditCardReaderEnabled");
+                if (creditCardResult.Success)
+                {
+                    CreditCardReaderToggle.IsChecked = creditCardResult.Data;
+                }
+                
+                var printsPerRollResult = await _databaseService.GetSettingValueAsync<int>("Printer", "PrintsPerRoll");
+                if (printsPerRollResult.Success)
+                {
+                    PrintsPerRollTextBox.Text = printsPerRollResult.Data.ToString();
+                }
+                
+                var rfidResult = await _databaseService.GetSettingValueAsync<bool>("RFID", "Enabled");
+                if (rfidResult.Success)
+                {
+                    SystemRFIDToggle.IsChecked = rfidResult.Data;
+                }
+                
+                var lightsResult = await _databaseService.GetSettingValueAsync<bool>("System", "LightsEnabled");
+                if (lightsResult.Success)
+                {
+                    SystemFlashToggle.IsChecked = lightsResult.Data;
+                }
+                
+                var flashDurationResult = await _databaseService.GetSettingValueAsync<int>("System", "FlashDuration");
+                if (flashDurationResult.Success)
+                {
+                    // Ensure the value is within valid range (1-10 seconds)
+                    int flashValue = Math.Max(1, Math.Min(10, flashDurationResult.Data));
+                    FlashDurationSlider.Value = flashValue;
+                    FlashDurationValueText.Text = flashValue.ToString();
+                }
+                
+                var seasonalResult = await _databaseService.GetSettingValueAsync<bool>("Seasonal", "AutoTemplates");
+                if (seasonalResult.Success)
+                {
+                    SystemSeasonalToggle.IsChecked = seasonalResult.Data;
+                }
+                
+                LoggingService.Application.Information("System tab settings loaded successfully");
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to load system tab settings", ex);
+            }
+        }
+
+        #endregion
+
+        #region Slider Event Handlers
+
+        /// <summary>
+        /// Update flash duration display when slider value changes
+        /// </summary>
+        private void FlashDurationSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (FlashDurationValueText != null)
+            {
+                FlashDurationValueText.Text = ((int)e.NewValue).ToString();
+            }
+        }
+
+        #endregion
+
+        #region Input Validation Event Handlers
+
+        // Regex pattern for numeric-only input (positive integers)
+        private static readonly Regex _numericRegex = new Regex("^[0-9]+$");
+
+        /// <summary>
+        /// Validates numeric input for TextBoxes that should only accept integers > 0
+        /// </summary>
+        private void NumericOnly_PreviewTextInput(object sender, TextCompositionEventArgs e)
+        {
+            e.Handled = !_numericRegex.IsMatch(e.Text);
+        }
+
+        /// <summary>
+        /// Validates decimal input for TextBoxes that should only accept decimals > 0
+        /// </summary>
+        private void DecimalOnly_PreviewTextInput(object sender, TextCompositionEventArgs e)
+        {
+            // Allow digits and one decimal point (invariant culture uses '.' as decimal separator)
+            if (e.Text.Any(ch => !char.IsDigit(ch) && ch != '.'))
+            {
+                e.Handled = true;
+                return;
+            }
+
+            if (sender is TextBox textBox)
+            {
+                // Build the resulting text considering current selection
+                var proposedText = textBox.Text.Remove(textBox.SelectionStart, textBox.SelectionLength)
+                                               .Insert(textBox.SelectionStart, e.Text);
+                
+                // Reject if more than one decimal point would result
+                if (proposedText.Count(ch => ch == '.') > 1)
+                {
+                    e.Handled = true;
+                    return;
+                }
+                
+                // Ensure resulting text parses as non-negative decimal (0 allowed while typing)
+                if (!decimal.TryParse(proposedText, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out decimal value))
+                {
+                    e.Handled = true;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Handles paste operations for numeric-only TextBoxes
+        /// </summary>
+        private void NumericOnly_Pasting(object sender, DataObjectPastingEventArgs e)
+        {
+            if (e.DataObject.GetDataPresent(typeof(string)))
+            {
+                string? text = e.DataObject.GetData(typeof(string)) as string;
+                if (!_numericRegex.IsMatch(text ?? string.Empty))
+                {
+                    e.CancelCommand();
+                }
+            }
+            else
+            {
+                e.CancelCommand();
+            }
+        }
+
+        /// <summary>
+        /// Handles paste operations for decimal-only TextBoxes
+        /// </summary>
+        private void DecimalOnly_Pasting(object sender, DataObjectPastingEventArgs e)
+        {
+            if (e.DataObject.GetDataPresent(typeof(string)))
+            {
+                var pastedText = ((string)e.DataObject.GetData(typeof(string))).Trim();
+                if (!decimal.TryParse(pastedText, NumberStyles.AllowDecimalPoint | NumberStyles.AllowLeadingWhite | NumberStyles.AllowTrailingWhite, CultureInfo.InvariantCulture, out decimal value) || value < 0)
+                {
+                    e.CancelCommand();
+                }
+            }
+            else
+            {
+                e.CancelCommand();
+            }
+        }
 
         #endregion
 
