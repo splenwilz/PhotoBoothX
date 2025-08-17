@@ -2308,7 +2308,10 @@ namespace Photobooth.Views
             
             // Add hover triggers for subtle feedback
             var hoverTrigger = new Trigger { Property = Button.IsMouseOverProperty, Value = true };
-            hoverTrigger.Setters.Add(new Setter(Button.ForegroundProperty, new SolidColorBrush(Color.FromRgb(75, 85, 99)), "ButtonBorder"));
+            // Change the button's foreground on hover (affects the "⋮" text)
+            hoverTrigger.Setters.Add(new Setter(Button.ForegroundProperty, new SolidColorBrush(Color.FromRgb(75, 85, 99))));
+            // Optional: subtle hover background on the border
+            hoverTrigger.Setters.Add(new Setter(Border.BackgroundProperty, new SolidColorBrush(Color.FromRgb(248, 250, 252)), "ButtonBorder"));
             buttonTemplate.Triggers.Add(hoverTrigger);
             hamburgerButton.Template = buttonTemplate;
             

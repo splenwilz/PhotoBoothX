@@ -661,6 +661,8 @@ namespace Photobooth.Services
                 _activeInput = null;
                 _parentWindow = null;
                 _isManipulatingText = false;
+                _textBoxBindingExpressions.Clear();
+                _bindingReenabled = false;
                 
                 System.Diagnostics.Debug.WriteLine("All state cleared");
                 LoggingService.Application.Debug("Virtual keyboard service state reset complete");
@@ -858,14 +860,14 @@ namespace Photobooth.Services
         {
 #if DEBUG
             Console.WriteLine($"=== VirtualKeyboardService.HandleKeyPressed CALLED ===");
-            Console.WriteLine($"Key pressed: '{key}'");
+            Console.WriteLine($"Key pressed: {(_activeInput is PasswordBox ? "<hidden>" : $"'{key}'")}");
             Console.WriteLine($"Active input: {_activeInput?.GetType().Name ?? "null"} '{_activeInput?.Name ?? "null"}'");
 #endif
             
             if (_activeInput != null)
                         {
 #if DEBUG
-                Console.WriteLine($"Active input current text: '{GetInputText(_activeInput)}'");
+                Console.WriteLine($"Active input current text: '{(_activeInput is PasswordBox ? "<hidden>" : GetInputText(_activeInput))}'");
                 Console.WriteLine("Sending key to active input...");
 #endif
                     
@@ -873,7 +875,7 @@ namespace Photobooth.Services
                 SendKeyToInput(key);
                 
 #if DEBUG
-                Console.WriteLine($"Active input text after key: '{GetInputText(_activeInput)}'");
+                Console.WriteLine($"Active input text after key: '{(_activeInput is PasswordBox ? "<hidden>" : GetInputText(_activeInput))}'");
 #endif
                         }
             else
@@ -1149,14 +1151,14 @@ namespace Photobooth.Services
                     textBox.Text = newText;
                     textBox.CaretIndex = caretIndex + 1;
                     
-                    Console.WriteLine($"SendKeyToInput - Inserted '{key}' at position {caretIndex}, new text: '{newText}'");
+                    Console.WriteLine($"SendKeyToInput - Inserted character at position {caretIndex}, new text length: {newText.Length}");
                 }
                 else if (_activeInput is PasswordBox passwordBox)
                 {
                     // For password boxes, just append (can't get caret position easily)
                     passwordBox.Password += key;
                     
-                    Console.WriteLine($"SendKeyToInput - Added '{key}' to password, new length: {passwordBox.Password?.Length ?? 0}");
+                    Console.WriteLine($"SendKeyToInput - Added character to password, new length: {passwordBox.Password?.Length ?? 0}");
                 }
             }
             catch (Exception ex)
@@ -1186,7 +1188,7 @@ namespace Photobooth.Services
             }
             else if (inputControl is PasswordBox passwordBox)
             {
-                return passwordBox.Password;
+                return "<hidden>";
             }
             return "N/A";
         }

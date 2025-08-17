@@ -108,6 +108,21 @@ namespace Photobooth.Services
             _connectionString = $"Data Source={_databasePath}";
         }
 
+        /// <summary>
+        /// Create and open a SQLite connection with foreign keys enabled
+        /// </summary>
+        private async Task<SqliteConnection> CreateConnectionAsync()
+        {
+            var connection = new SqliteConnection(_connectionString);
+            await connection.OpenAsync();
+            
+            // Enable foreign key constraints for this connection
+            using var fkCmd = new SqliteCommand("PRAGMA foreign_keys = ON;", connection);
+            await fkCmd.ExecuteNonQueryAsync();
+            
+            return connection;
+        }
+
         public async Task<DatabaseResult> InitializeAsync()
         {
             try
@@ -125,8 +140,7 @@ namespace Photobooth.Services
                     Directory.CreateDirectory(directory);
                 }
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
 
                 // Check if database is already initialized
                 Console.WriteLine("=== CHECKING IF DATABASE EXISTS ===");
@@ -392,8 +406,7 @@ namespace Photobooth.Services
                 var tableName = GetTableName<T>();
                 var query = $"SELECT * FROM {tableName}";
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
                 using var reader = await command.ExecuteReaderAsync();
 
@@ -426,8 +439,7 @@ namespace Photobooth.Services
                 
                 var query = $"SELECT * FROM {tableName} WHERE Id = @id";
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
                 command.Parameters.AddWithValue("@id", id);
                 using var reader = await command.ExecuteReaderAsync();
@@ -453,8 +465,7 @@ namespace Photobooth.Services
                 var tableName = GetTableName<T>();
                 var query = $"SELECT * FROM {tableName} WHERE UserId = @userId";
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
                 command.Parameters.AddWithValue("@userId", userId);
                 using var reader = await command.ExecuteReaderAsync();
@@ -516,8 +527,7 @@ namespace Photobooth.Services
                     Console.WriteLine($"--- DATABASE DEBUG: Inserting Transaction with {parameters.Count} parameters ---");
                 }
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
 
                 for (int i = 0; i < parameters.Count; i++)
@@ -592,8 +602,7 @@ namespace Photobooth.Services
                     Console.WriteLine($"Query: {query}");
                 }
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
 
                 command.Parameters.AddWithValue("@Id", idValue);
@@ -629,8 +638,7 @@ namespace Photobooth.Services
                 var tableName = GetTableName<T>();
                 var query = $"DELETE FROM {tableName} WHERE Id = @id";
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
                 command.Parameters.AddWithValue("@id", id);
 
@@ -651,8 +659,7 @@ namespace Photobooth.Services
             {
                 var query = "SELECT * FROM AdminUsers WHERE Username = @username AND IsActive = 1";
                 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 
                 using var command = new SqliteCommand(query, connection);
                 command.Parameters.AddWithValue("@username", username);
@@ -673,8 +680,7 @@ namespace Photobooth.Services
                         {
                             try
                             {
-                                using var updateConnection = new SqliteConnection(_connectionString);
-                                await updateConnection.OpenAsync();
+                                using var updateConnection = await CreateConnectionAsync();
                                 var updateQuery = "UPDATE AdminUsers SET LastLoginAt = @now WHERE UserId = @userId";
                                 using var updateCommand = new SqliteCommand(updateQuery, updateConnection);
                                 updateCommand.Parameters.AddWithValue("@now", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
@@ -710,8 +716,7 @@ namespace Photobooth.Services
 
                 var query = "SELECT PasswordHash, CreatedBy FROM AdminUsers WHERE Username = @username AND IsActive = 1";
                 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 
                 using var command = new SqliteCommand(query, connection);
                 command.Parameters.AddWithValue("@username", username);
@@ -748,8 +753,7 @@ namespace Photobooth.Services
             {
                 var query = "UPDATE AdminUsers SET PasswordHash = @newPassword WHERE AccessLevel = @accessLevel";
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
                 command.Parameters.AddWithValue("@newPassword", HashPassword(newPassword));
                 command.Parameters.AddWithValue("@accessLevel", accessLevel.ToString());
@@ -781,8 +785,7 @@ namespace Photobooth.Services
                                  CreatedBy = COALESCE(CreatedBy, @updatedBy)
                              WHERE UserId = @userId";
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
                 command.Parameters.AddWithValue("@newPassword", HashPassword(newPassword));
                 command.Parameters.AddWithValue("@userId", userId);
@@ -813,8 +816,7 @@ namespace Photobooth.Services
                     INSERT INTO AdminUsers (UserId, Username, DisplayName, PasswordHash, AccessLevel, IsActive, CreatedAt, UpdatedAt, CreatedBy, UpdatedBy)
                     VALUES (@userId, @username, @displayName, @passwordHash, @accessLevel, @isActive, @createdAt, @updatedAt, @createdBy, @updatedBy)";
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
                 command.Parameters.AddWithValue("@userId", user.UserId);
                 command.Parameters.AddWithValue("@username", user.Username);
@@ -871,8 +873,7 @@ namespace Photobooth.Services
                     GROUP BY DATE(t.CreatedAt), pc.Name
                     ORDER BY SaleDate DESC, pc.Name";
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
 
                 if (startDate.HasValue)
@@ -934,8 +935,7 @@ namespace Photobooth.Services
 
                 // First, let's debug what transactions exist
                 var debugQuery = "SELECT Id, TransactionCode, CreatedAt, PaymentStatus, TotalPrice FROM Transactions ORDER BY CreatedAt DESC LIMIT 5";
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 
                 using var debugCommand = new SqliteCommand(debugQuery, connection);
                 using var debugReader = await debugCommand.ExecuteReaderAsync();
@@ -1003,8 +1003,7 @@ namespace Photobooth.Services
                     ORDER BY TimesUsed DESC
                     LIMIT @limit";
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
                 command.Parameters.AddWithValue("@limit", limit);
                 using var reader = await command.ExecuteReaderAsync();
@@ -1077,9 +1076,8 @@ namespace Photobooth.Services
                         -- Finally: Template sort order within category
                         t.SortOrder ASC";
 
-                using (var connection = new SqliteConnection(_connectionString))
-                {
-                    await connection.OpenAsync();
+                            using (var connection = await CreateConnectionAsync())
+            {
                     using (var command = new SqliteCommand(query, connection))
                     {
                         using (var reader = await command.ExecuteReaderAsync())
@@ -1237,9 +1235,8 @@ namespace Photobooth.Services
                         -- Finally: Template sort order within category
                         t.SortOrder ASC";
 
-                using (var connection = new SqliteConnection(_connectionString))
-                {
-                    await connection.OpenAsync();
+                            using (var connection = await CreateConnectionAsync())
+            {
                     using (var command = new SqliteCommand(query, connection))
                     {
                         command.Parameters.AddWithValue("@TemplateType", (int)templateType);
@@ -1372,8 +1369,7 @@ namespace Photobooth.Services
                             @Description, @UploadedAt, @UploadedBy, @TemplateType);
                     SELECT last_insert_rowid();";
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
                 
                 command.Parameters.AddWithValue("@Name", template.Name);
@@ -1465,8 +1461,7 @@ namespace Photobooth.Services
                     
                     SELECT * FROM Templates WHERE Id = @Id;";
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
                 
                 command.Parameters.AddWithValue("@Id", templateId);
@@ -1509,8 +1504,7 @@ namespace Photobooth.Services
                     SET CategoryId = @CategoryId
                     WHERE Id IN ({placeholders})";
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
                 
                 command.Parameters.AddWithValue("@CategoryId", categoryId);
@@ -1548,8 +1542,7 @@ namespace Photobooth.Services
                     SET FolderPath = @FolderPath, TemplatePath = @TemplatePath, PreviewPath = @PreviewPath
                     WHERE Id = @Id";
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
                 
                 command.Parameters.AddWithValue("@Id", templateId);
@@ -1575,8 +1568,7 @@ namespace Photobooth.Services
                     SET FileSize = @FileSize
                     WHERE Id = @Id";
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
                 
                 command.Parameters.AddWithValue("@Id", templateId);
@@ -1597,8 +1589,7 @@ namespace Photobooth.Services
             {
                 var query = "DELETE FROM Templates WHERE Id = @Id";
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
                 command.Parameters.AddWithValue("@Id", templateId);
 
@@ -1637,8 +1628,7 @@ namespace Photobooth.Services
                         END DESC,
                         SortOrder, Name";
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
                 
                 using var reader = await command.ExecuteReaderAsync();
@@ -1695,8 +1685,7 @@ namespace Photobooth.Services
                         END DESC,
                         SortOrder, Name";
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
                 
                 using var reader = await command.ExecuteReaderAsync();
@@ -1750,8 +1739,7 @@ namespace Photobooth.Services
                     VALUES (@Name, @Description, 1, @IsPremium, 0, @IsSeasonalCategory, @SeasonStartDate, @SeasonEndDate, @SeasonalPriority, @CreatedAt);
                     SELECT * FROM TemplateCategories WHERE Id = last_insert_rowid();";
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
                 command.Parameters.AddWithValue("@Name", name);
                 command.Parameters.AddWithValue("@Description", description);
@@ -1822,8 +1810,7 @@ namespace Photobooth.Services
                         IsSeasonalCategory = @isSeasonalCategory, SeasonStartDate = @seasonStartDate, SeasonEndDate = @seasonEndDate, SeasonalPriority = @seasonalPriority
                     WHERE Id = @id";
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
                 command.Parameters.AddWithValue("@name", name);
                 command.Parameters.AddWithValue("@description", description);
@@ -1892,8 +1879,7 @@ namespace Photobooth.Services
             {
 
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var transaction = connection.BeginTransaction();
 
                 try
@@ -1966,8 +1952,7 @@ namespace Photobooth.Services
             {
                 var query = "DELETE FROM TemplateCategories WHERE Id = @id";
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
                 command.Parameters.AddWithValue("@id", categoryId);
 
@@ -2000,8 +1985,7 @@ namespace Photobooth.Services
                     WHERE t.CategoryId = @categoryId 
                     ORDER BY t.Name";
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
                 command.Parameters.AddWithValue("@categoryId", categoryId);
                 using var reader = await command.ExecuteReaderAsync();
@@ -2042,8 +2026,7 @@ namespace Photobooth.Services
                     WHERE tl.IsActive = 1
                     ORDER BY tl.SortOrder, tl.Name";
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
                 
                 using var reader = await command.ExecuteReaderAsync();
@@ -2095,8 +2078,7 @@ namespace Photobooth.Services
                     LEFT JOIN ProductCategories pc ON tl.ProductCategoryId = pc.Id
                     WHERE tl.Id = @layoutId";
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
                 command.Parameters.AddWithValue("@layoutId", layoutId);
                 
@@ -2156,8 +2138,7 @@ namespace Photobooth.Services
                     LEFT JOIN ProductCategories pc ON tl.ProductCategoryId = pc.Id
                     WHERE tl.LayoutKey = @layoutKey";
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
                 command.Parameters.AddWithValue("@layoutKey", layoutKey);
                 
@@ -2219,8 +2200,7 @@ namespace Photobooth.Services
                     WHERE LayoutId = @layoutId
                     ORDER BY PhotoIndex";
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
                 command.Parameters.AddWithValue("@layoutId", layoutId);
                 
@@ -2272,8 +2252,7 @@ namespace Photobooth.Services
                     WHERE LayoutId IN ({placeholders})
                     ORDER BY LayoutId, PhotoIndex";
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
                 
                 // Add parameters for each layout ID
@@ -2336,8 +2315,7 @@ namespace Photobooth.Services
                     FROM HardwareStatus
                     ORDER BY ComponentName";
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
                 using var reader = await command.ExecuteReaderAsync();
 
@@ -2368,8 +2346,7 @@ namespace Photobooth.Services
             {
                 var query = "SELECT * FROM PrintSupplies WHERE SupplyType = @supplyType ORDER BY InstalledAt DESC LIMIT 1";
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
                 command.Parameters.AddWithValue("@supplyType", supplyType.ToString());
                 using var reader = await command.ExecuteReaderAsync();
@@ -2394,8 +2371,7 @@ namespace Photobooth.Services
             {
                 var query = "UPDATE PrintSupplies SET CurrentCount = @newCount WHERE SupplyType = @supplyType";
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
                 command.Parameters.AddWithValue("@newCount", newCount);
                 command.Parameters.AddWithValue("@supplyType", supplyType.ToString());
@@ -2425,8 +2401,7 @@ namespace Photobooth.Services
                     LEFT JOIN ProductCategories pc ON p.CategoryId = pc.Id 
                     ORDER BY p.SortOrder, p.Name";
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
                 using var reader = await command.ExecuteReaderAsync();
 
@@ -2483,8 +2458,7 @@ namespace Photobooth.Services
             {
                 var query = "UPDATE Products SET IsActive = @isActive, UpdatedAt = @updatedAt WHERE Id = @id";
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
                 command.Parameters.AddWithValue("@isActive", isActive);
                 command.Parameters.AddWithValue("@updatedAt", DateTime.Now);
@@ -2517,8 +2491,7 @@ namespace Photobooth.Services
             {
                 var query = "UPDATE Products SET Price = @price, UpdatedAt = @updatedAt WHERE Id = @id";
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
                 command.Parameters.AddWithValue("@price", price);
                 command.Parameters.AddWithValue("@updatedAt", DateTime.Now);
@@ -2584,8 +2557,7 @@ namespace Photobooth.Services
 
             try
             {
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 
                 // Use transaction for atomic operation
                 using var transaction = connection.BeginTransaction();
@@ -2738,8 +2710,7 @@ namespace Photobooth.Services
             {
                 var query = "SELECT * FROM Settings WHERE Category = @category ORDER BY Key";
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
                 command.Parameters.AddWithValue("@category", category);
                 using var reader = await command.ExecuteReaderAsync();
@@ -2764,8 +2735,7 @@ namespace Photobooth.Services
             {
                 var query = "SELECT Value, DataType FROM Settings WHERE Category = @category AND Key = @key";
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
                 command.Parameters.AddWithValue("@category", category);
                 command.Parameters.AddWithValue("@key", key);
@@ -2801,8 +2771,7 @@ namespace Photobooth.Services
 
                 // Check if setting exists
                 var checkQuery = "SELECT COUNT(*) FROM Settings WHERE Category = @category AND Key = @key";
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
 
                 using var checkCommand = new SqliteCommand(checkQuery, connection);
                 checkCommand.Parameters.AddWithValue("@category", category);
@@ -2879,8 +2848,7 @@ namespace Photobooth.Services
                         SELECT 'Product_' || Id || '_Price' FROM Products
                     )";
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
                 
                 var deletedCount = await command.ExecuteNonQueryAsync();
@@ -2959,8 +2927,7 @@ namespace Photobooth.Services
                     VALUES (@amount, @transactionType, @description, @balanceAfter, @createdAt, @createdBy, @relatedTransactionId);
                     SELECT last_insert_rowid();";
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
                 
                 command.Parameters.AddWithValue("@amount", transaction.Amount);
@@ -2992,8 +2959,7 @@ namespace Photobooth.Services
                     ORDER BY CreatedAt DESC 
                     LIMIT @limit";
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
                 command.Parameters.AddWithValue("@limit", limit);
                 using var reader = await command.ExecuteReaderAsync();
@@ -3038,8 +3004,7 @@ namespace Photobooth.Services
                         LIMIT @keepCount
                     )";
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
                 command.Parameters.AddWithValue("@keepCount", keepCount);
                 
@@ -3069,8 +3034,7 @@ namespace Photobooth.Services
                     ORDER BY CreatedAt DESC 
                     LIMIT @limit";
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
                 command.Parameters.AddWithValue("@limit", limit);
                 using var reader = await command.ExecuteReaderAsync();
@@ -3122,8 +3086,7 @@ namespace Photobooth.Services
                     END
                     WHERE Price = 0";
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
                 
                 var updatedCount = await command.ExecuteNonQueryAsync();
@@ -3154,8 +3117,7 @@ namespace Photobooth.Services
                 
                 var username = userResult.Data.Username;
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var transaction = connection.BeginTransaction();
 
                 try
@@ -3525,8 +3487,35 @@ namespace Photobooth.Services
                 Console.WriteLine("=== CALLING WriteInitialCredentialsSecurely ===");
                 Console.WriteLine($"Master password length: {masterPassword.Length}");
                 Console.WriteLine($"User password length: {userPassword.Length}");
-                await WriteInitialCredentialsSecurely(masterPassword, userPassword);
-                Console.WriteLine("=== WriteInitialCredentialsSecurely COMPLETED ===");
+                
+                // Check if credential file creation is enabled (default: DEBUG only)
+                var createCredentialFiles = false;
+#if DEBUG
+                createCredentialFiles = true; // Allow in DEBUG builds
+#endif
+                
+                // Allow override via environment variable for special deployment scenarios
+                if (Environment.GetEnvironmentVariable("PHOTOBOOTH_ENABLE_CREDENTIAL_FILES") == "true")
+                {
+                    createCredentialFiles = true;
+                    LoggingService.Application.Warning("Credential file creation enabled via environment variable - use with caution");
+                }
+                
+                if (createCredentialFiles)
+                {
+                    await WriteInitialCredentialsSecurely(masterPassword, userPassword);
+                    Console.WriteLine("=== WriteInitialCredentialsSecurely COMPLETED ===");
+                }
+                else
+                {
+                    // Production mode: Log credentials only to secure application logs
+                    LoggingService.Application.Warning("Initial admin credentials generated - check secure logs for recovery",
+                        ("MasterUsername", "admin"),
+                        ("UserUsername", "user"),
+                        ("Note", "Contact support if admin access is lost"),
+                        ("SecurityNote", "Credential files disabled in production build"));
+                    Console.WriteLine("=== Production mode: Credentials not written to files ===");
+                }
 
 
             }
@@ -3542,19 +3531,13 @@ namespace Photobooth.Services
             try
             {
                 Console.WriteLine("=== CREATING INITIAL CREDENTIALS ===");
-                // Create setup folder on Desktop - highly visible and clearly temporary
+                // Create credentials file on Desktop for easy user access
                 var desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
-                var setupDir = Path.Combine(desktopPath, "PhotoBoothX-Setup-Credentials");
-                var credentialsFile = Path.Combine(setupDir, "LOGIN-CREDENTIALS.txt");
-                var readmeFile = Path.Combine(setupDir, "README-DELETE-AFTER-SETUP.txt");
+                var credentialsFile = Path.Combine(desktopPath, "PhotoBoothX-LOGIN-CREDENTIALS.txt");
                 
                 Console.WriteLine($"Desktop path: {desktopPath}");
-                Console.WriteLine($"Setup directory: {setupDir}");
                 Console.WriteLine($"Credentials file: {credentialsFile}");
-
-                Console.WriteLine("Creating setup directory...");
-                Directory.CreateDirectory(setupDir);
-                Console.WriteLine("Setup directory created successfully");
+                Console.WriteLine("Creating credentials file on Desktop...");
 
                 Console.WriteLine("Generating credentials content...");
                 var credentialsContent = $@"PhotoBoothX - Initial Setup Credentials
@@ -3581,7 +3564,7 @@ Setup Instructions:
 2. Tap 5 times in top-left corner of welcome screen
 3. Login with credentials above
 4. Immediately change both passwords
-5. Application will auto-delete this folder after successful setup
+5. Delete this file after successful setup
 
 Security Best Practices:
 - Use strong passwords (12+ characters, mixed case, numbers, symbols)
@@ -3589,50 +3572,19 @@ Security Best Practices:
 - Limit operator account permissions
 - Regularly backup admin settings
 
-⚠️  This folder will be automatically deleted after first successful admin login.
+⚠️  Please delete this file after completing admin setup.
 ";
 
-                // Create README file explaining the folder purpose
-                var readmeContent = @"📋 PhotoBoothX Setup Credentials Folder
-
-🎯 PURPOSE:
-This folder contains your one-time setup credentials for PhotoBoothX.
-
-📁 CONTENTS:
-- LOGIN-CREDENTIALS.txt - Your admin usernames and passwords
-
-⚠️  IMPORTANT:
-- This folder is TEMPORARY and will be automatically deleted
-- Complete your admin setup BEFORE this folder disappears
-- If you need the credentials again, check before the folder auto-deletes
-
-🔧 SETUP STEPS:
-1. Open PhotoBoothX application
-2. Tap 5 times in top-left corner of welcome screen  
-3. Use credentials from LOGIN-CREDENTIALS.txt
-4. Change passwords immediately after login
-5. This folder deletes itself after successful setup
-
-🗑️  SAFE TO DELETE:
-If setup is complete, you can safely delete this entire folder manually.
-It contains no important application files.
-
-✅ Generated: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-
                 await File.WriteAllTextAsync(credentialsFile, credentialsContent);
-                await File.WriteAllTextAsync(readmeFile, readmeContent);
 
-                LoggingService.Application.Information("Setup credentials folder created successfully on desktop",
-                    ("SetupDir", setupDir),
-                    ("CredentialsFile", credentialsFile),
-                    ("ReadmeFile", readmeFile));
+                LoggingService.Application.Information("Setup credentials file created successfully on Desktop",
+                    ("CredentialsFile", credentialsFile));
 
             }
             catch (Exception ex)
             {
-                LoggingService.Application.Error("Failed to create setup credentials folder on desktop", ex,
-                    ("DesktopPath", Environment.GetFolderPath(Environment.SpecialFolder.Desktop)),
-                    ("SetupDir", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "PhotoBoothX-Setup-Credentials")));
+                LoggingService.Application.Error("Failed to create setup credentials file on Desktop", ex,
+                    ("DesktopPath", Environment.GetFolderPath(Environment.SpecialFolder.Desktop)));
 
                 // Don't throw - this is not critical for application startup
                 // The user can still access admin panel and change passwords manually
@@ -3640,21 +3592,21 @@ It contains no important application files.
         }
 
         public static void CleanupSetupCredentials()
-            {
-                var desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
-                var setupDir = Path.Combine(desktopPath, "PhotoBoothX-Setup-Credentials");
+        {
+            var desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+            var credentialsFile = Path.Combine(desktopPath, "PhotoBoothX-LOGIN-CREDENTIALS.txt");
 
             try
             {
-                if (Directory.Exists(setupDir))
+                if (File.Exists(credentialsFile))
                 {
-                    Directory.Delete(setupDir, true);
-                    LoggingService.Application.Information("Setup credentials folder deleted successfully", ("SetupDir", setupDir));
+                    File.Delete(credentialsFile);
+                    LoggingService.Application.Information("Setup credentials file deleted successfully", ("CredentialsFile", credentialsFile));
                 }
             }
             catch (Exception ex)
             {
-                LoggingService.Application.Error("Failed to delete setup credentials folder", ex, ("SetupDir", setupDir));
+                LoggingService.Application.Error("Failed to delete setup credentials file", ex, ("CredentialsFile", credentialsFile));
                 // Don't throw - cleanup failure is not critical
             }
         }
@@ -3662,21 +3614,21 @@ It contains no important application files.
         public static async Task CleanupSetupCredentialsAsync()
         {
             await Task.Run(() =>
-                {
-                    var desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
-                    var setupDir = Path.Combine(desktopPath, "PhotoBoothX-Setup-Credentials");
+            {
+                var desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+                var credentialsFile = Path.Combine(desktopPath, "PhotoBoothX-LOGIN-CREDENTIALS.txt");
 
                 try
                 {
-                    if (Directory.Exists(setupDir))
+                    if (File.Exists(credentialsFile))
                     {
-                        Directory.Delete(setupDir, true);
-                        LoggingService.Application.Information("Setup credentials folder deleted successfully (async)", ("SetupDir", setupDir));
+                        File.Delete(credentialsFile);
+                        LoggingService.Application.Information("Setup credentials file deleted successfully (async)", ("CredentialsFile", credentialsFile));
                     }
                 }
                 catch (Exception ex)
                 {
-                    LoggingService.Application.Error("Failed to delete setup credentials folder (async)", ex, ("SetupDir", setupDir));
+                    LoggingService.Application.Error("Failed to delete setup credentials file (async)", ex, ("CredentialsFile", credentialsFile));
                     // Don't throw - cleanup failure is not critical
                 }
             });
@@ -3737,8 +3689,7 @@ It contains no important application files.
                 Console.WriteLine("DatabaseService: Getting all camera settings");
                 var query = "SELECT * FROM CameraSettings ORDER BY SettingName";
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
                 using var reader = await command.ExecuteReaderAsync();
 
@@ -3773,8 +3724,7 @@ It contains no important application files.
                 Console.WriteLine($"DatabaseService: Getting camera setting '{settingName}'");
                 var query = "SELECT * FROM CameraSettings WHERE SettingName = @settingName";
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
                 command.Parameters.AddWithValue("@settingName", settingName);
                 using var reader = await command.ExecuteReaderAsync();
@@ -3817,8 +3767,7 @@ It contains no important application files.
                         SettingValue = excluded.SettingValue,
                         UpdatedAt = excluded.UpdatedAt";
 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
                 command.Parameters.AddWithValue("@settingName", settingName);
                 command.Parameters.AddWithValue("@settingValue", settingValue);
@@ -3842,8 +3791,7 @@ It contains no important application files.
             {
                 Console.WriteLine($"DatabaseService: Saving all camera settings - Brightness:{brightness}, Zoom:{zoom}, Contrast:{contrast}");
                 
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var connection = await CreateConnectionAsync();
                 using var transaction = connection.BeginTransaction();
                 
                 try

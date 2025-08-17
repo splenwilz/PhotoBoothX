@@ -213,39 +213,8 @@ namespace Photobooth
         {
             try
             {
-                LoggingService.Application.Information("Attempting to update smartphone print price", ("Price", price));
-                
-                // Force the button to update its visual tree first
-                PhonePrintButton.UpdateLayout();
-                
-                // Find the TextBlock within the button's visual tree
-                var textBlock = FindVisualChild<TextBlock>(PhonePrintButton, "PhonePrintPriceText");
-                if (textBlock != null)
-                {
-                    textBlock.Text = $"Print from Phone • ${price:F0}";
-                    LoggingService.Application.Information("Successfully updated Smartphone Print price in UI", ("Price", price));
-                }
-                else
-                {
-                    LoggingService.Application.Warning("Could not find PhonePrintPriceText TextBlock in button visual tree");
-                    
-                    // Try to find any TextBlock in the button
-                    var anyTextBlock = FindVisualChild<TextBlock>(PhonePrintButton, null);
-                    if (anyTextBlock != null)
-                    {
-                        LoggingService.Application.Information("Found TextBlock in button", ("Name", anyTextBlock.Name), ("Text", anyTextBlock.Text));
-                        
-                        // Try to update this TextBlock if it contains the price
-                        if (anyTextBlock.Text.Contains("Print from Phone"))
-                        {
-                            anyTextBlock.Text = $"Print from Phone • ${price:F0}";
-                        }
-                    }
-                    else
-                    {
-                        LoggingService.Application.Warning("No TextBlock found in button visual tree at all");
-                    }
-                }
+                PhonePrintButton.Content = $"Print from Phone • ${price:F0}";
+                LoggingService.Application.Information("Successfully updated Smartphone Print price in UI", ("Price", price));
             }
             catch (Exception ex)
             {

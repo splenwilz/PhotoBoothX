@@ -44,7 +44,8 @@ namespace Photobooth.Tests.Screens
 
             Application.Current.Dispatcher.Invoke(() =>
             {
-                _upsellScreen = new UpsellScreen(new DatabaseService());
+                _upsellScreen = new UpsellScreen(
+                    new DatabaseService(Path.Combine(_testDirectory, "upsell.db")));
             });
         }
 

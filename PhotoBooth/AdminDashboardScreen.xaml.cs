@@ -3480,9 +3480,30 @@ namespace Photobooth
         /// </summary>
         private void UpdateCreditsDisplay()
         {
-            if (CurrentCreditsText != null)
+            try
             {
-                CurrentCreditsText.Text = $"${_currentCredits:F0}";
+                if (!Dispatcher.CheckAccess())
+                {
+                    Dispatcher.Invoke(UpdateCreditsDisplay);
+                    return;
+                }
+                if (CurrentCreditsText != null)
+                {
+                    string displayText;
+                    if (_mainWindow?.IsFreePlayMode == true)
+                    {
+                        displayText = "Free Play Mode";
+                    }
+                    else
+                    {
+                        displayText = $"Credits: ${_currentCredits:F0}";
+                    }
+                    CurrentCreditsText.Text = displayText;
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to update credits display", ex);
             }
         }
 

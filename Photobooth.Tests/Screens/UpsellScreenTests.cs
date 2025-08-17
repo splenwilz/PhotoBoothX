@@ -72,10 +72,16 @@ namespace Photobooth.Tests.Screens
                 Price = 5.00m
             };
 
-            // Initialize UpsellScreen on UI thread
-            Application.Current.Dispatcher.Invoke(() =>
+            // Initialize UpsellScreen on UI thread with test database
+            Application.Current.Dispatcher.Invoke(async () =>
             {
-                _upsellScreen = new UpsellScreen(new DatabaseService());
+                var testDbService = new DatabaseService(Path.Combine(_testDirectory, "upsell.db"));
+                await testDbService.InitializeAsync();
+                
+                // Seed test database with known products for deterministic testing
+                await SeedTestDatabase(testDbService);
+                
+                _upsellScreen = new UpsellScreen(testDbService);
             });
         }
 
@@ -234,7 +240,7 @@ namespace Photobooth.Tests.Screens
                 crossSellProduct.Should().NotBeNull();
                 crossSellProduct!.Type.Should().Be("4x6");
                 crossSellProduct.Name.Should().Be("4x6 Photos");
-                crossSellProduct.Price.Should().Be(7.00m); // Updated to use actual database price
+                crossSellProduct.Price.Should().Be(6.00m); // Updated to match database schema price
             });
         }
 
@@ -704,6 +710,52 @@ namespace Photobooth.Tests.Screens
         #endregion
 
         #region Helper Methods
+
+        /// <summary>
+        /// Seed the test database with known products for deterministic testing
+        /// </summary>
+        private async Task SeedTestDatabase(IDatabaseService databaseService)
+        {
+            // First, ensure we have a default category
+            var category = new ProductCategory
+            {
+                Name = "Test Category",
+                Description = "Test category for automated tests",
+                IsActive = true
+            };
+            var categoryResult = await databaseService.InsertAsync(category);
+            var categoryId = categoryResult.Data; // This returns the inserted ID
+
+            // Add test products with known prices using the Product model
+            var testProducts = new[]
+            {
+                new Product 
+                { 
+                    CategoryId = categoryId,
+                    Name = "Photo Strips", 
+                    Description = "4 photos in classic strip format", 
+                    Price = 6.00m, 
+                    IsActive = true,
+                    PhotoCount = 4,
+                    ProductType = ProductType.PhotoStrips
+                },
+                new Product 
+                { 
+                    CategoryId = categoryId,
+                    Name = "4x6 Photos", 
+                    Description = "Single high-quality 4x6 print", 
+                    Price = 6.00m, 
+                    IsActive = true,
+                    PhotoCount = 1,
+                    ProductType = ProductType.Photo4x6
+                }
+            };
+
+            foreach (var product in testProducts)
+            {
+                await databaseService.InsertAsync(product);
+            }
+        }
 
         /// <summary>
         /// Creates a mock image file for testing

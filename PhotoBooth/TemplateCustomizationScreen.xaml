@@ -239,7 +239,7 @@
                         </Border.Effect>
                         
                         <Image Name="TemplatePreviewImage" 
-                               Stretch="Fill"
+                               Stretch="Uniform"
                                RenderOptions.BitmapScalingMode="HighQuality"/>
                     </Border>
                 </Viewbox>

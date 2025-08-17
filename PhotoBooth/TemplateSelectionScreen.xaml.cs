@@ -682,9 +682,14 @@ namespace Photobooth
                 VerticalAlignment = VerticalAlignment.Stretch
             };
 
+            var previewBitmap = new BitmapImage();
+            previewBitmap.BeginInit();
+            previewBitmap.CacheOption = BitmapCacheOption.OnLoad; // Prevents file locking
+            previewBitmap.UriSource = new Uri(template.PreviewImagePath, UriKind.RelativeOrAbsolute);
+            previewBitmap.EndInit();
             var previewImage = new Image
             {
-                Source = new BitmapImage(new Uri(template.PreviewImagePath, UriKind.RelativeOrAbsolute)),
+                Source = previewBitmap,
                 Stretch = Stretch.UniformToFill,
                 HorizontalAlignment = HorizontalAlignment.Stretch,
                 VerticalAlignment = VerticalAlignment.Stretch,
@@ -1158,14 +1163,14 @@ namespace Photobooth
             _currentCredits = credits;
             try
             {
-                System.Diagnostics.Debug.WriteLine($"Credits updated to: ${credits:F2}");
+                LoggingService.Application.Debug("Credits updated", ("Credits", credits));
                 UpdateCreditsDisplay();
                 // Refresh template display to update affordability indicators
                 UpdateTemplateDisplay();
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error updating credits display: {ex.Message}");
+                LoggingService.Application.Error("Error updating credits display", ex);
             }
         }
 
@@ -1176,6 +1181,11 @@ namespace Photobooth
         {
             try
             {
+                if (!Dispatcher.CheckAccess())
+                {
+                    Dispatcher.Invoke(UpdateCreditsDisplay);
+                    return;
+                }
                 if (CreditsDisplay != null)
                 {
                     string displayText;
@@ -1193,7 +1203,6 @@ namespace Photobooth
             catch (Exception ex)
             {
                 LoggingService.Application.Error("Failed to update credits display", ex);
-                System.Diagnostics.Debug.WriteLine($"Failed to update credits display: {ex.Message}");
             }
         }
 
