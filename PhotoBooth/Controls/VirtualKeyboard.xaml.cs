@@ -430,12 +430,25 @@ namespace Photobooth.Controls
         /// </summary>
         private void CloseButton_Click(object sender, RoutedEventArgs e)
         {
-            Console.WriteLine("=== VirtualKeyboard.CloseButton_Click CALLED ===");
-            Console.WriteLine($"Keyboard instance ID sending close event: {this.GetHashCode()}");
-            Console.WriteLine($"OnKeyboardClosed event has subscribers: {OnKeyboardClosed != null}");
-            Console.WriteLine("Invoking OnKeyboardClosed event...");
-            OnKeyboardClosed?.Invoke();
-            Console.WriteLine("=== VirtualKeyboard.CloseButton_Click COMPLETED ===");
+            LoggingService.Application.Information(
+                "VirtualKeyboard.CloseButton_Click invoked",
+                ("InstanceId", this.GetHashCode()),
+                ("HasSubscribers", OnKeyboardClosed != null));
+
+            try
+            {
+                OnKeyboardClosed?.Invoke();
+                LoggingService.Application.Information(
+                    "VirtualKeyboard.CloseButton_Click completed",
+                    ("InstanceId", this.GetHashCode()));
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error(
+                    "OnKeyboardClosed handler threw",
+                    ex,
+                    ("InstanceId", this.GetHashCode()));
+            }
         }
 
         #endregion

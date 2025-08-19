@@ -424,6 +424,11 @@ namespace Photobooth
         {
             try
             {
+                if (!Dispatcher.CheckAccess())
+                {
+                    Dispatcher.Invoke(UpdateCreditsDisplay);
+                    return;
+                }
                 if (CreditsDisplay != null)
                 {
                     string displayText;

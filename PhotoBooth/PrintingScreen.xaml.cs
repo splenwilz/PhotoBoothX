@@ -618,10 +618,12 @@ namespace Photobooth
                     Quantity = _totalCopies,
                     BasePrice = GetBasePrice(),
                     TotalPrice = _totalOrderCost,
-                    PaymentMethod = PaymentMethod.Credit, // Since we're using credits
-                    PaymentStatus = creditDeductionSuccess ? PaymentStatus.Completed : PaymentStatus.Pending,
+                    PaymentMethod = (_mainWindow?.IsFreePlayMode == true) ? PaymentMethod.Free : PaymentMethod.Credit,
+                    PaymentStatus = creditDeductionSuccess || (_mainWindow?.IsFreePlayMode == true) 
+                        ? PaymentStatus.Completed 
+                        : PaymentStatus.Pending,
                     CreatedAt = DateTime.Now,
-                    CompletedAt = creditDeductionSuccess ? DateTime.Now : null,
+                    CompletedAt = creditDeductionSuccess || (_mainWindow?.IsFreePlayMode == true) ? DateTime.Now : null,
                     Notes = BuildOrderDescription()
                 };
 

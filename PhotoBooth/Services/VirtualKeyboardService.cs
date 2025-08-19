@@ -1208,7 +1208,9 @@ namespace Photobooth.Services
                     var currentText = textBox.Text; // Store current text value
                     
                     var textBoxId = string.IsNullOrEmpty(textBox.Name) ? textBox.Tag?.ToString() ?? "Unknown" : textBox.Name;
-                    Console.WriteLine($"About to disable binding for TextBox: {textBoxId}, current text: '{currentText}'");
+#if DEBUG
+                    Console.WriteLine($"About to disable binding for TextBox: {textBoxId}");
+#endif
                     
                     // Actually remove the binding by setting to null
                     BindingOperations.ClearBinding(textBox, TextBox.TextProperty);
@@ -1216,12 +1218,16 @@ namespace Photobooth.Services
                     // Restore the current text value after clearing binding
                     textBox.Text = currentText;
                     
-                    Console.WriteLine($"Temporarily disabled binding for TextBox: {textBoxId}, preserved text: '{currentText}'");
+#if DEBUG
+                    Console.WriteLine($"Temporarily disabled binding for TextBox: {textBoxId}");
+#endif
                 }
                 else
                 {
                     var textBoxId = string.IsNullOrEmpty(textBox.Name) ? textBox.Tag?.ToString() ?? "Unknown" : textBox.Name;
+#if DEBUG
                     Console.WriteLine($"No binding found for TextBox: {textBoxId}");
+#endif
                 }
             }
         }
@@ -1238,7 +1244,9 @@ namespace Photobooth.Services
                 {
                     // Preserve the current user input before restoring binding
                     var currentUserInput = textBox.Text;
-                    Console.WriteLine($"Preserving user input before binding restore: '{currentUserInput}'");
+#if DEBUG
+                    Console.WriteLine($"Preserving user input before binding restore");
+#endif
                     
                     // Restore the original binding
                     var binding = bindingExpression.ParentBinding;
@@ -1246,7 +1254,9 @@ namespace Photobooth.Services
                     
                     // Set the user's input back to prevent ViewModel overwrite
                     var currentTextAfterBinding = textBox.Text;
-                    Console.WriteLine($"Text after binding restore: '{currentTextAfterBinding}', setting back to user input: '{currentUserInput}'");
+#if DEBUG
+                    Console.WriteLine($"Text after binding restore, setting back to user input");
+#endif
                     textBox.Text = currentUserInput;
                     
                     // CRITICAL FIX: Force binding to update the source (ViewModel) IMMEDIATELY
@@ -1255,12 +1265,16 @@ namespace Photobooth.Services
                     if (newBindingExpression != null)
                     {
                         var textBoxId = string.IsNullOrEmpty(textBox.Name) ? textBox.Tag?.ToString() ?? "Unknown" : textBox.Name;
-                        Console.WriteLine($"Manually updating binding source for TextBox: {textBoxId} with value: '{currentUserInput}'");
+#if DEBUG
+                        Console.WriteLine($"Manually updating binding source for TextBox: {textBoxId}");
+#endif
                         newBindingExpression.UpdateSource();
                     }
                     
                     var textBoxId2 = string.IsNullOrEmpty(textBox.Name) ? textBox.Tag?.ToString() ?? "Unknown" : textBox.Name;
-                    Console.WriteLine($"Re-enabled binding for TextBox: {textBoxId2}, restored user input: '{currentUserInput}'");
+#if DEBUG
+                    Console.WriteLine($"Re-enabled binding for TextBox: {textBoxId2}, restored user input");
+#endif
                 }
                 _textBoxBindingExpressions.Remove(textBox);
             }

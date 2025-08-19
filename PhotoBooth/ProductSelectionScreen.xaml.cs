@@ -178,6 +178,12 @@ namespace Photobooth
         {
             try
             {
+                if (!Dispatcher.CheckAccess())
+                {
+                    Dispatcher.Invoke(UpdateProductPricesInUI);
+                    return;
+                }
+
                 var photoStrips = _products.FirstOrDefault(p => p.ProductType == ProductType.PhotoStrips);
                 var photo4x6 = _products.FirstOrDefault(p => p.ProductType == ProductType.Photo4x6);
                 var smartphonePrint = _products.FirstOrDefault(p => p.ProductType == ProductType.SmartphonePrint);
@@ -213,6 +219,12 @@ namespace Photobooth
         {
             try
             {
+                if (!Dispatcher.CheckAccess())
+                {
+                    Dispatcher.Invoke(() => UpdateSmartphonePrintPriceInUI(price));
+                    return;
+                }
+                
                 PhonePrintButton.Content = $"Print from Phone • ${price:F0}";
                 LoggingService.Application.Information("Successfully updated Smartphone Print price in UI", ("Price", price));
             }
@@ -475,6 +487,11 @@ namespace Photobooth
         {
             try
             {
+                if (!Dispatcher.CheckAccess())
+                {
+                    Dispatcher.Invoke(UpdateCreditsDisplay);
+                    return;
+                }
                 if (CreditsDisplay != null)
                 {
                     string displayText;

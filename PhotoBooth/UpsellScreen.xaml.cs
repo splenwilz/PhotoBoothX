@@ -609,13 +609,21 @@ namespace Photobooth
         private void UpdatePricingDisplays()
         {
             // Update copy pricing using configurable values from admin dashboard
-            // Round UP to nearest dollar for display (no decimals in photo booth pricing)
-            OneCopyPrice.Text = $"${Math.Ceiling(_extraCopyPrice1)}";
-            TwoCopyPrice.Text = $"${Math.Ceiling(_extraCopyPrice2)}";
+            // Round UP to nearest dollar for both display AND billing consistency
+            var roundedPrice1 = Math.Ceiling(_extraCopyPrice1);
+            var roundedPrice2 = Math.Ceiling(_extraCopyPrice2);
+            
+            OneCopyPrice.Text = $"${roundedPrice1:F0}";
+            TwoCopyPrice.Text = $"${roundedPrice2:F0}";
             
             // Calculate 3+ copy price using simplified pricing model
             decimal threeCopyPrice = CalculateExtraCopyPrice(3);
-            ThreeCopyPrice.Text = $"${Math.Ceiling(threeCopyPrice)}";
+            var roundedPrice3 = Math.Ceiling(threeCopyPrice);
+            ThreeCopyPrice.Text = $"${roundedPrice3:F0}";
+            
+            // Update internal pricing to match displayed values (prevents display vs. charge mismatch)
+            _extraCopyPrice1 = roundedPrice1;
+            _extraCopyPrice2 = roundedPrice2;
         }
 
         /// <summary>
@@ -688,6 +696,7 @@ namespace Photobooth
 
         /// <summary>
         /// Calculate extra copy pricing based on quantity using configurable pricing
+        /// Returns rounded-up values for display and billing consistency
         /// </summary>
         public decimal CalculateExtraCopyPrice(int copies)
         {
@@ -699,7 +708,8 @@ namespace Photobooth
                 _ => 0
             };
             
-            return result;
+            // Round UP to nearest dollar for consistent display and billing
+            return Math.Ceiling(result);
         }
 
         /// <summary>
@@ -873,8 +883,9 @@ namespace Photobooth
             {
                 CardQuantityDisplay.Text = _currentQuantity.ToString();
                 var price = CalculateExtraCopyPrice(_currentQuantity);
-                // Round UP to nearest dollar for display (no decimals in photo booth pricing)
-                ThreeCopyPrice.Text = $"${Math.Ceiling(price)}";
+                // Round UP to nearest dollar for display AND billing consistency
+                var roundedPrice = Math.Ceiling(price);
+                ThreeCopyPrice.Text = $"${roundedPrice:F0}";
                 ConfirmQuantityButton.Content = $"Select {_currentQuantity} Copies";
             }
             catch (Exception ex)

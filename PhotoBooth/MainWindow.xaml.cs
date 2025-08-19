@@ -1390,8 +1390,23 @@ namespace Photobooth
         {
             try
             {
-                // Use the centralized pricing service
-                return _pricingService.GetTemplateBasePrice(currentProduct?.Type ?? "");
+                if (currentProduct != null)
+                {
+                    // Let overload resolution pick the right method:
+                    // - if Type is ProductType (enum), enum overload will be chosen
+                    // - if Type is string, string overload will be chosen  
+                    return _pricingService.GetTemplateBasePrice(currentProduct.Type);
+                }
+                
+                // Fallback: infer via template metadata if possible (category/type alias)
+                var alias = template?.Category ?? template?.TemplateName ?? string.Empty;
+                if (!string.IsNullOrWhiteSpace(alias))
+                {
+                    return _pricingService.GetTemplateBasePrice(alias);
+                }
+                
+                // Final fallback
+                return _pricingService.GetTemplateBasePrice(string.Empty);
             }
             catch (Exception ex)
             {

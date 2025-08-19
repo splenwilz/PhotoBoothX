@@ -72,15 +72,13 @@ namespace Photobooth.Tests.Screens
                 Price = 5.00m
             };
 
-            // Initialize UpsellScreen on UI thread with test database
-            Application.Current.Dispatcher.Invoke(async () =>
+            // Initialize test DB off the UI thread, then construct UI on UI thread
+            var testDbService = new DatabaseService(Path.Combine(_testDirectory, "upsell.db"));
+            testDbService.InitializeAsync().GetAwaiter().GetResult();
+            SeedTestDatabase(testDbService).GetAwaiter().GetResult();
+
+            Application.Current.Dispatcher.Invoke(() =>
             {
-                var testDbService = new DatabaseService(Path.Combine(_testDirectory, "upsell.db"));
-                await testDbService.InitializeAsync();
-                
-                // Seed test database with known products for deterministic testing
-                await SeedTestDatabase(testDbService);
-                
                 _upsellScreen = new UpsellScreen(testDbService);
             });
         }
@@ -259,7 +257,7 @@ namespace Photobooth.Tests.Screens
                 crossSellProduct.Should().NotBeNull();
                 crossSellProduct!.Type.Should().Be("strips");
                 crossSellProduct.Name.Should().Be("Photo Strips");
-                crossSellProduct.Price.Should().Be(8.00m); // Updated to use actual database price
+                crossSellProduct.Price.Should().Be(6.00m); // Matches seeded database price
             });
         }
 
