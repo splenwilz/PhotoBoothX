@@ -126,7 +126,7 @@ namespace Photobooth.Services
                 // Apply multiple copy discount if applicable
                 if (extraCopies >= 2 && product.StripsMultipleCopyDiscount.HasValue)
                 {
-                    var discount = product.StripsMultipleCopyDiscount.Value / 100m;
+                    var discount = ClampPercentage(product.StripsMultipleCopyDiscount.Value) / 100m;
                     baseExtraPrice *= (1 - discount);
                 }
                 
@@ -145,7 +145,7 @@ namespace Photobooth.Services
                 // Apply multiple copy discount if applicable
                 if (extraCopies >= 2 && product.Photo4x6MultipleCopyDiscount.HasValue)
                 {
-                    var discount = product.Photo4x6MultipleCopyDiscount.Value / 100m;
+                    var discount = ClampPercentage(product.Photo4x6MultipleCopyDiscount.Value) / 100m;
                     baseExtraPrice *= (1 - discount);
                 }
                 
@@ -164,7 +164,7 @@ namespace Photobooth.Services
                 // Apply multiple copy discount if applicable
                 if (extraCopies >= 2 && product.SmartphoneMultipleCopyDiscount.HasValue)
                 {
-                    var discount = product.SmartphoneMultipleCopyDiscount.Value / 100m;
+                    var discount = ClampPercentage(product.SmartphoneMultipleCopyDiscount.Value) / 100m;
                     baseExtraPrice *= (1 - discount);
                 }
                 
@@ -185,6 +185,16 @@ namespace Photobooth.Services
                 ProductType = productType,
                 UseCustomExtraCopyPricing = false
             };
+        }
+
+        /// <summary>
+        /// Helper to clamp percentage values to [0, 100] to avoid negative pricing
+        /// </summary>
+        private static decimal ClampPercentage(decimal value)
+        {
+            if (value < 0m) return 0m;
+            if (value > 100m) return 100m;
+            return value;
         }
     }
 

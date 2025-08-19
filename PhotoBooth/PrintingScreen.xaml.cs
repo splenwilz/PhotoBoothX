@@ -67,7 +67,7 @@ namespace Photobooth
         /// Initialize the printing screen with order details
         /// </summary>
         public async Task InitializePrintJob(Template template, ProductInfo product, string composedImagePath, 
-            int extraCopies = 0, ProductInfo? crossSellProduct = null)
+            int extraCopies = 0, ProductInfo? crossSellProduct = null, decimal? totalOrderCostOverride = null)
         {
             try
             {
@@ -87,8 +87,8 @@ namespace Photobooth
                 _crossSellProduct = crossSellProduct;
                 _totalCopies = 1 + extraCopies + (crossSellProduct != null ? 1 : 0);
 
-                // Calculate total order cost
-                _totalOrderCost = CalculateTotalOrderCost();
+                // Calculate total order cost (prefer caller-provided to keep billing consistent with UpsellScreen)
+                _totalOrderCost = totalOrderCostOverride ?? CalculateTotalOrderCost();
                 Console.WriteLine($"CALCULATED TOTAL ORDER COST: ${_totalOrderCost}");
 
                 // Update UI with order details
@@ -725,11 +725,19 @@ namespace Photobooth
                 
                 if (productsResult.Success && productsResult.Data != null)
                 {
-                    var productType = _product?.Type?.ToLowerInvariant();
-                    var matchingProduct = productsResult.Data.FirstOrDefault(p => 
-                        p.ProductType.ToString().ToLowerInvariant().Contains(productType ?? ""));
+                    var targetType = (_product?.Type?.ToLowerInvariant()) switch
+                    {
+                        "strips" or "photostrips" => ProductType.PhotoStrips,
+                        "4x6" or "photo4x6"       => ProductType.Photo4x6,
+                        "phone" or "smartphoneprint" => ProductType.SmartphonePrint,
+                        _ => (ProductType?)null
+                    };
+
+                    var matchingProduct = targetType.HasValue
+                        ? productsResult.Data.FirstOrDefault(p => p.ProductType == targetType.Value)
+                        : null;
                     
-                    Console.WriteLine($"--- PRODUCT DEBUG: Found product ID {matchingProduct?.Id ?? 0} ({matchingProduct?.Name}) ---");
+                    Console.WriteLine($"--- PRODUCT DEBUG: Found product ID {matchingProduct?.Id ?? 0} ({matchingProduct?.Name}) via precise ProductType mapping ---");
                     
                     return matchingProduct?.Id ?? 1;
                 }

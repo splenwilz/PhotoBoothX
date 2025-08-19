@@ -14,6 +14,7 @@ namespace Photobooth.Tests.Services
     public class DatabaseServiceTests
     {
         private DatabaseService _databaseService = null!;
+        private string _tempDbPath = null!;
         private static SqliteConnection? _sharedConnection;
         private static string _connectionString = "Data Source=:memory:";
 
@@ -38,31 +39,20 @@ namespace Photobooth.Tests.Services
             // Use the shared connection for testing by creating a custom database path
             // that will be used by all methods. Since we can't easily inject the connection,
             // we'll use a temporary file that gets cleaned up
-            var tempPath = System.IO.Path.GetTempFileName();
-            _databaseService = new DatabaseService(tempPath);
+            _tempDbPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"db_{Guid.NewGuid()}.db");
+            _databaseService = new DatabaseService(_tempDbPath);
             await _databaseService.InitializeAsync();
         }
 
         [TestCleanup]
         public void Cleanup()
         {
-            // Clean up temp database files
+            // Clean up temp database file created in Setup
             try
             {
-                var tempFiles = System.IO.Directory.GetFiles(System.IO.Path.GetTempPath(), "tmp*.tmp");
-                foreach (var file in tempFiles)
+                if (!string.IsNullOrEmpty(_tempDbPath) && System.IO.File.Exists(_tempDbPath))
                 {
-                    try
-                    {
-                        if (file.Contains("tmp") && System.IO.File.Exists(file))
-                        {
-                            System.IO.File.Delete(file);
-                        }
-                    }
-                    catch
-                    {
-                        // Ignore cleanup errors
-                    }
+                    System.IO.File.Delete(_tempDbPath);
                 }
             }
             catch

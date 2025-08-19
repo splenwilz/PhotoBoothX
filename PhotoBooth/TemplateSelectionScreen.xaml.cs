@@ -1080,6 +1080,7 @@ namespace Photobooth
                 {
                     _currentCredits = _adminDashboard.GetCurrentCredits();
                     UpdateCreditsDisplay();
+                    UpdateTemplateDisplay(); // refresh affordability indicators
                     return;
                 }
 
@@ -1095,12 +1096,14 @@ namespace Photobooth
                     _currentCredits = 0;
                 }
                 UpdateCreditsDisplay();
+                UpdateTemplateDisplay(); // refresh affordability indicators
             }
             catch (Exception ex)
             {
                 LoggingService.Application.Error("Error refreshing credits", ex);
                 _currentCredits = 0;
                 UpdateCreditsDisplay();
+                UpdateTemplateDisplay(); // refresh affordability indicators
             }
         }
 

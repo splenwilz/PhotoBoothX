@@ -959,7 +959,7 @@ namespace Photobooth
         /// Navigate to printing after upselling is complete or skipped
         /// </summary>
         private async Task NavigateToPrinting(Template template, ProductInfo originalProduct, string composedImagePath, 
-            List<string> capturedPhotosPaths, int extraCopies, ProductInfo? crossSellProduct, decimal totalAdditionalCost, bool crossSellAccepted)
+            List<string> capturedPhotosPaths, int extraCopies, ProductInfo? crossSellProduct, decimal totalAdditionalCost, bool crossSellAccepted, decimal? totalOrderCostOverride = null)
         {
             try
             {
@@ -980,7 +980,7 @@ namespace Photobooth
                 }
 
                 // Navigate to printing screen
-                await NavigateToPrintingScreen(template, originalProduct, composedImagePath, extraCopies, crossSellProduct);
+                await NavigateToPrintingScreen(template, originalProduct, composedImagePath, extraCopies, crossSellProduct, totalOrderCostOverride);
             }
             catch (Exception ex)
             {
@@ -997,7 +997,7 @@ namespace Photobooth
         /// Navigate to the printing screen with progress tracking
         /// </summary>
         private async Task NavigateToPrintingScreen(Template template, ProductInfo originalProduct, string composedImagePath, 
-            int extraCopies, ProductInfo? crossSellProduct)
+            int extraCopies, ProductInfo? crossSellProduct, decimal? totalOrderCostOverride = null)
         {
             try
             {
@@ -1016,7 +1016,7 @@ namespace Photobooth
                 CurrentScreenContainer.Content = printingScreen;
 
                 // Initialize with print job details
-                await printingScreen.InitializePrintJob(template, originalProduct, composedImagePath, extraCopies, crossSellProduct);
+                await printingScreen.InitializePrintJob(template, originalProduct, composedImagePath, extraCopies, crossSellProduct, totalOrderCostOverride);
 
                 LoggingService.Application.Information("Printing screen loaded successfully");
             }
@@ -1867,7 +1867,8 @@ namespace Photobooth
                     e.Result.ExtraCopies,
                     e.Result.CrossSellProduct,
                     e.Result.TotalAdditionalCost,
-                    e.Result.CrossSellAccepted
+                    e.Result.CrossSellAccepted,
+                    e.Result.TotalOrderCost  // Pass the precomputed total from UpsellScreen
                 );
                 }
                 else

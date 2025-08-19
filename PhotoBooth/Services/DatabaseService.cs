@@ -882,7 +882,7 @@ namespace Photobooth.Services
                     SELECT 
                         DATE(t.CreatedAt) as SaleDate,
                         pc.Name as ProductCategory,
-                        COUNT(*) as TransactionCount,
+                        COUNT(DISTINCT t.Id) as TransactionCount,
                         SUM(t.TotalPrice) as Revenue,
                         COALESCE(SUM(pj.Copies), 0) as TotalCopies,
                         COALESCE(SUM(pj.PrintsUsed), 0) as PrintsUsed
@@ -944,7 +944,7 @@ namespace Photobooth.Services
                     SELECT 
                         @date as Date,
                         COALESCE(SUM(t.TotalPrice), 0) as TotalRevenue,
-                        COALESCE(COUNT(t.Id), 0) as TotalTransactions,
+                        COALESCE(COUNT(DISTINCT t.Id), 0) as TotalTransactions,
                         COALESCE(SUM(CASE WHEN pc.Name = 'Strips' THEN 1 ELSE 0 END), 0) as StripSales,
                         COALESCE(SUM(CASE WHEN pc.Name = '4x6' THEN 1 ELSE 0 END), 0) as Photo4x6Sales,
                         COALESCE(SUM(CASE WHEN pc.Name = 'Smartphone' THEN 1 ELSE 0 END), 0) as SmartphonePrintSales,
@@ -1069,7 +1069,7 @@ namespace Photobooth.Services
                         t.FolderPath, t.TemplatePath, t.PreviewPath,
                         t.IsActive, t.Price, t.SortOrder, t.FileSize,
                         t.Description, t.UploadedAt, t.UploadedBy, t.TemplateType,
-                        tc.Name as CategoryName, tc.IsSeasonalCategory, tc.SeasonStartDate, tc.SeasonEndDate, tc.SeasonalPriority, tc.SortOrder as CategorySortOrder,
+                        tc.Name as CategoryName, tc.IsSeasonalCategory, tc.SeasonStartDate, tc.SeasonEndDate, tc.SeasonalPriority, tc.IsPremium, tc.SortOrder as CategorySortOrder,
                         tl.Name as LayoutName, tl.LayoutKey, tl.Width, tl.Height, tl.PhotoCount, tl.ProductCategoryId,
                         pc.Name as ProductCategoryName,
                         -- Calculate effective priority for seasonal ordering
@@ -1227,7 +1227,7 @@ namespace Photobooth.Services
                         t.FolderPath, t.TemplatePath, t.PreviewPath,
                         t.IsActive, t.Price, t.SortOrder, t.FileSize,
                         t.Description, t.UploadedAt, t.UploadedBy, t.TemplateType,
-                        tc.Name as CategoryName, tc.IsSeasonalCategory, tc.SeasonStartDate, tc.SeasonEndDate, tc.SeasonalPriority, tc.SortOrder as CategorySortOrder,
+                        tc.Name as CategoryName, tc.IsSeasonalCategory, tc.SeasonStartDate, tc.SeasonEndDate, tc.SeasonalPriority, tc.IsPremium, tc.SortOrder as CategorySortOrder,
                         tl.Name as LayoutName, tl.LayoutKey, tl.Width, tl.Height, tl.PhotoCount, tl.ProductCategoryId,
                         pc.Name as ProductCategoryName,
                         -- Calculate effective priority for seasonal ordering
@@ -2997,14 +2997,14 @@ namespace Photobooth.Services
                 {
                     var transaction = new CreditTransaction
                     {
-                        Id = reader.GetInt32("Id"),
-                        Amount = reader.GetDecimal("Amount"),
-                        TransactionType = Enum.Parse<CreditTransactionType>(reader.GetString("TransactionType")),
-                        Description = reader.GetString("Description"),
-                        BalanceAfter = reader.GetDecimal("BalanceAfter"),
-                        CreatedAt = DateTime.Parse(reader.GetString("CreatedAt")),
-                        CreatedBy = reader.IsDBNull("CreatedBy") ? null : reader.GetString("CreatedBy"),
-                        RelatedTransactionId = reader.IsDBNull("RelatedTransactionId") ? null : reader.GetInt32("RelatedTransactionId")
+                        Id = GetIntValue(reader, "Id"),
+                        Amount = GetDecimalValue(reader, "Amount"),
+                        TransactionType = Enum.Parse<CreditTransactionType>(GetStringValue(reader, "TransactionType")),
+                        Description = GetStringValue(reader, "Description"),
+                        BalanceAfter = GetDecimalValue(reader, "BalanceAfter"),
+                        CreatedAt = DateTime.Parse(GetStringValue(reader, "CreatedAt")),
+                        CreatedBy = IsDBNullValue(reader, "CreatedBy") ? null : GetStringValue(reader, "CreatedBy"),
+                        RelatedTransactionId = IsDBNullValue(reader, "RelatedTransactionId") ? null : GetIntValue(reader, "RelatedTransactionId")
                     };
                     transactions.Add(transaction);
                 }
@@ -3072,20 +3072,20 @@ namespace Photobooth.Services
                 {
                     var transaction = new Transaction
                     {
-                        Id = reader.GetInt32("Id"),
-                        TransactionCode = reader.IsDBNull("TransactionCode") ? string.Empty : reader.GetString("TransactionCode"),
-                        ProductId = reader.GetInt32("ProductId"),
-                        TemplateId = reader.IsDBNull("TemplateId") ? null : reader.GetInt32("TemplateId"),
-                        Quantity = reader.GetInt32("Quantity"),
-                        BasePrice = reader.GetDecimal("BasePrice"),
-                        TotalPrice = reader.GetDecimal("TotalPrice"),
-                        PaymentStatus = Enum.Parse<PaymentStatus>(reader.GetString("PaymentStatus")),
-                        PaymentMethod = Enum.Parse<PaymentMethod>(reader.GetString("PaymentMethod")),
-                        CustomerEmail = reader.IsDBNull("CustomerEmail") ? null : reader.GetString("CustomerEmail"),
-                        SessionId = reader.IsDBNull("SessionId") ? null : reader.GetString("SessionId"),
-                        CreatedAt = DateTime.Parse(reader.GetString("CreatedAt")),
-                        CompletedAt = reader.IsDBNull("CompletedAt") ? null : DateTime.Parse(reader.GetString("CompletedAt")),
-                        Notes = reader.IsDBNull("Notes") ? null : reader.GetString("Notes")
+                        Id = GetIntValue(reader, "Id"),
+                        TransactionCode = IsDBNullValue(reader, "TransactionCode") ? string.Empty : GetStringValue(reader, "TransactionCode"),
+                        ProductId = GetIntValue(reader, "ProductId"),
+                        TemplateId = IsDBNullValue(reader, "TemplateId") ? null : GetIntValue(reader, "TemplateId"),
+                        Quantity = GetIntValue(reader, "Quantity"),
+                        BasePrice = GetDecimalValue(reader, "BasePrice"),
+                        TotalPrice = GetDecimalValue(reader, "TotalPrice"),
+                        PaymentStatus = Enum.Parse<PaymentStatus>(GetStringValue(reader, "PaymentStatus")),
+                        PaymentMethod = Enum.Parse<PaymentMethod>(GetStringValue(reader, "PaymentMethod")),
+                        CustomerEmail = IsDBNullValue(reader, "CustomerEmail") ? null : GetStringValue(reader, "CustomerEmail"),
+                        SessionId = IsDBNullValue(reader, "SessionId") ? null : GetStringValue(reader, "SessionId"),
+                        CreatedAt = DateTime.Parse(GetStringValue(reader, "CreatedAt")),
+                        CompletedAt = IsDBNullValue(reader, "CompletedAt") ? null : DateTime.Parse(GetStringValue(reader, "CompletedAt")),
+                        Notes = IsDBNullValue(reader, "Notes") ? null : GetStringValue(reader, "Notes")
                     };
                     transactions.Add(transaction);
                 }
@@ -3433,6 +3433,32 @@ namespace Photobooth.Services
             }
         }
 
+        private decimal GetDecimalValue(System.Data.Common.DbDataReader reader, string columnName, decimal defaultValue = 0m)
+        {
+            try
+            {
+                var ordinal = reader.GetOrdinal(columnName);
+                return reader.IsDBNull(ordinal) ? defaultValue : reader.GetDecimal(ordinal);
+            }
+            catch
+            {
+                return defaultValue;
+            }
+        }
+
+        private bool IsDBNullValue(System.Data.Common.DbDataReader reader, string columnName)
+        {
+            try
+            {
+                var ordinal = reader.GetOrdinal(columnName);
+                return reader.IsDBNull(ordinal);
+            }
+            catch
+            {
+                return true; // Assume null if column doesn't exist
+            }
+        }
+
         private string GenerateSecurePassword(int length = 16)
         {
             const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
@@ -3726,10 +3752,10 @@ Security Best Practices:
                 {
                     settings.Add(new CameraSettings
                     {
-                        Id = reader.GetInt32("Id"),
-                        SettingName = reader.GetString("SettingName"),
-                        SettingValue = reader.GetInt32("SettingValue"),
-                        Description = reader.IsDBNull("Description") ? null : reader.GetString("Description"),
+                        Id = GetIntValue(reader, "Id"),
+                        SettingName = GetStringValue(reader, "SettingName"),
+                        SettingValue = GetIntValue(reader, "SettingValue"),
+                        Description = IsDBNullValue(reader, "Description") ? null : GetStringValue(reader, "Description"),
                         CreatedAt = reader.GetDateTime("CreatedAt"),
                         UpdatedAt = reader.GetDateTime("UpdatedAt")
                     });
@@ -3761,10 +3787,10 @@ Security Best Practices:
                 {
                     var setting = new CameraSettings
                     {
-                        Id = reader.GetInt32("Id"),
-                        SettingName = reader.GetString("SettingName"),
-                        SettingValue = reader.GetInt32("SettingValue"),
-                        Description = reader.IsDBNull("Description") ? null : reader.GetString("Description"),
+                        Id = GetIntValue(reader, "Id"),
+                        SettingName = GetStringValue(reader, "SettingName"),
+                        SettingValue = GetIntValue(reader, "SettingValue"),
+                        Description = IsDBNullValue(reader, "Description") ? null : GetStringValue(reader, "Description"),
                         CreatedAt = reader.GetDateTime("CreatedAt"),
                         UpdatedAt = reader.GetDateTime("UpdatedAt")
                     };

@@ -392,6 +392,7 @@ namespace Photobooth
                     CrossSellProduct = _crossSellAccepted ? _crossSellProduct : null, // Only pass if accepted
                     CrossSellPrice = _crossSellPrice,
                     TotalAdditionalCost = totalAdditionalCost,
+                    TotalOrderCost = totalOrderCost,
                     SelectedPhotoForCrossSell = _selectedPhotoForCrossSell
                 };
 
@@ -911,6 +912,7 @@ namespace Photobooth
                 CrossSellProduct = null, // Always null for fallback
                 CrossSellPrice = 0,
                 TotalAdditionalCost = 0,
+                TotalOrderCost = _originalProduct?.Price ?? 0,  // Just original price for fallback
                 SelectedPhotoForCrossSell = null
             };
         }
@@ -1371,6 +1373,7 @@ namespace Photobooth
         public ProductInfo? CrossSellProduct { get; set; }
         public decimal CrossSellPrice { get; set; }
         public decimal TotalAdditionalCost { get; set; }
+        public decimal TotalOrderCost { get; set; } // Complete order total (original + additional) - used to keep billing consistent with display
         public string? SelectedPhotoForCrossSell { get; set; } // Path to the specific photo selected for cross-sell
     }
 
