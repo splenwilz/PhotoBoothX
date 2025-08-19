@@ -60,15 +60,15 @@ CREATE TABLE Products (
     -- Simplified product-specific extra copy pricing configuration
     -- Photo Strips extra copy pricing
     StripsExtraCopyPrice DECIMAL(10,2), -- Price per extra strip copy
-    StripsMultipleCopyDiscount DECIMAL(5,2) DEFAULT 0.00, -- Discount percentage for 2+ copies (0-100)
+    StripsMultipleCopyDiscount DECIMAL(5,2) DEFAULT 0.00 CHECK (StripsMultipleCopyDiscount >= 0 AND StripsMultipleCopyDiscount <= 100), -- Discount percentage for 2+ copies (0-100)
     
     -- 4x6 Photos extra copy pricing
     Photo4x6ExtraCopyPrice DECIMAL(10,2), -- Price per extra 4x6 copy
-    Photo4x6MultipleCopyDiscount DECIMAL(5,2) DEFAULT 0.00, -- Discount percentage for 2+ copies (0-100)
+    Photo4x6MultipleCopyDiscount DECIMAL(5,2) DEFAULT 0.00 CHECK (Photo4x6MultipleCopyDiscount >= 0 AND Photo4x6MultipleCopyDiscount <= 100), -- Discount percentage for 2+ copies (0-100)
     
     -- Smartphone Print extra copy pricing
     SmartphoneExtraCopyPrice DECIMAL(10,2), -- Price per extra smartphone print copy
-    SmartphoneMultipleCopyDiscount DECIMAL(5,2) DEFAULT 0.00, -- Discount percentage for 2+ copies (0-100)
+    SmartphoneMultipleCopyDiscount DECIMAL(5,2) DEFAULT 0.00 CHECK (SmartphoneMultipleCopyDiscount >= 0 AND SmartphoneMultipleCopyDiscount <= 100), -- Discount percentage for 2+ copies (0-100)
     CreatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UpdatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (CategoryId) REFERENCES ProductCategories(Id),
@@ -446,6 +446,10 @@ INSERT INTO TemplateCategories (Name, Description, SortOrder, IsSeasonalCategory
     ('Christmas', 'Holiday and winter celebration templates', 22, 1, '12-01', '12-26', 95);
 
 -- Insert template layouts (predefined photo area configurations)
+-- 4x6 template layouts (1864x1228 dimension)
+INSERT INTO TemplateLayouts (Id, LayoutKey, Name, Description, Width, Height, PhotoCount, ProductCategoryId, SortOrder) VALUES
+    ('4x6-550e8400-e29b-41d4-a716-446655440001', '4x6-1864x1228', 'Standard 4x6 Photo', 'Single photo 4x6 landscape layout', 1864, 1228, 1, 2, 1);
+
 -- Strip template layouts (614x1864 dimension only)
 INSERT INTO TemplateLayouts (Id, LayoutKey, Name, Description, Width, Height, PhotoCount, ProductCategoryId, SortOrder) VALUES
     ('550e8400-e29b-41d4-a716-446655440001', 'strip-614x1864a', 'Standard Photo Strip A', '3-photo vertical strip layout with circular photos', 614, 1864, 3, 1, 1),
@@ -460,6 +464,10 @@ INSERT INTO TemplateLayouts (Id, LayoutKey, Name, Description, Width, Height, Ph
     ('550e8400-e29b-41d4-a716-446655440010', 'strip-614x1864j', 'Standard Photo Strip J', '3-photo regular rectangle layout', 614, 1864, 3, 1, 10),
     ('550e8400-e29b-41d4-a716-446655440011', 'strip-614x1864k', 'Standard Photo Strip K', '3-photo regular rectangle layout', 614, 1864, 3, 1, 11),
     ('550e8400-e29b-41d4-a716-446655440012', 'strip-614x1864l', 'Standard Photo Strip L', '3-photo regular rectangle layout', 614, 1864, 3, 1, 12);
+
+-- Photo area definitions for 4x6-1864x1228 templates
+INSERT INTO TemplatePhotoAreas (LayoutId, PhotoIndex, X, Y, Width, Height, Rotation, BorderRadius, ShapeType) VALUES
+    ('4x6-550e8400-e29b-41d4-a716-446655440001', 1, 100, 100, 1664, 1028, 0, 0, 'Rectangle');
 
 -- Photo area definitions for strip-614x1864 templates only
 
@@ -617,3 +625,10 @@ SELECT
     LastCheckAt
 FROM HardwareStatus
 ORDER BY ComponentName; 
+
+-- =============================================
+-- INDEXES FOR PERFORMANCE
+-- =============================================
+
+-- Helpful index for filtering by product type (often used by pricing logic)
+CREATE INDEX IF NOT EXISTS IX_Products_ProductType ON Products(ProductType);

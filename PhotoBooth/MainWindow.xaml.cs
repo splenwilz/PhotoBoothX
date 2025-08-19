@@ -105,8 +105,7 @@ namespace Photobooth
             // Initialize modal service with the modal overlay containers
             ModalService.Instance.Initialize(ModalOverlayContainer, ModalContentContainer, ModalBackdrop);
 
-            InitializeDatabaseAsync();
-            // Application initialization moved to MainWindow_Loaded event for proper async handling
+            // Database initialization moved to MainWindow_Loaded event for proper async handling
         }
 
         /// <summary>
@@ -118,6 +117,8 @@ namespace Photobooth
             {
                 LoggingService.Application.Information("MainWindow loaded, starting application initialization");
                 
+                // Ensure database is initialized before using settings/credits
+                await InitializeDatabaseAsync();
                 // Initialize the application with proper async/await handling
                 await InitializeApplication();
                 
@@ -140,7 +141,7 @@ namespace Photobooth
         /// <summary>
         /// Initialize the database asynchronously
         /// </summary>
-        private async void InitializeDatabaseAsync()
+        private async Task InitializeDatabaseAsync()
         {
             try
             {

@@ -589,15 +589,18 @@ namespace Photobooth.Services
             }
             else if (isRoundedRectangle && borderRadius > 0)
             {
-                Console.WriteLine($"    🔲 Creating rounded corner mask with radius: {borderRadius}");
-                
-                // Create a rounded rectangle clipping region
+                // Create a rounded rectangle clipping region with clamped radius
                 using var path = new GraphicsPath();
                 var rect = new RectangleF(0, 0, targetRect.Width, targetRect.Height);
-                path.AddArc(rect.X, rect.Y, borderRadius * 2, borderRadius * 2, 180, 90); // Top-left
-                path.AddArc(rect.Right - borderRadius * 2, rect.Y, borderRadius * 2, borderRadius * 2, 270, 90); // Top-right
-                path.AddArc(rect.Right - borderRadius * 2, rect.Bottom - borderRadius * 2, borderRadius * 2, borderRadius * 2, 0, 90); // Bottom-right
-                path.AddArc(rect.X, rect.Bottom - borderRadius * 2, borderRadius * 2, borderRadius * 2, 90, 90); // Bottom-left
+                var maxRadius = (int)Math.Floor(Math.Min(rect.Width, rect.Height) / 2f);
+                var r = Math.Max(0, Math.Min(borderRadius, maxRadius));
+                
+                Console.WriteLine($"    🔲 Creating rounded corner mask with radius: {borderRadius} (clamped to {r})");
+                var d = r * 2;
+                path.AddArc(rect.X, rect.Y, d, d, 180, 90); // Top-left
+                path.AddArc(rect.Right - d, rect.Y, d, d, 270, 90); // Top-right
+                path.AddArc(rect.Right - d, rect.Bottom - d, d, d, 0, 90); // Bottom-right
+                path.AddArc(rect.X, rect.Bottom - d, d, d, 90, 90); // Bottom-left
                 path.CloseFigure();
                 
                 // Set the clipping region to the rounded rectangle

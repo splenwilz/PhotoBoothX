@@ -4758,8 +4758,17 @@ namespace Photobooth
                 // For now, simulate printer detection
                 await Task.Delay(1000);
                 
-                // Simulate printer detection logic
-                bool printerFound = System.IO.Ports.SerialPort.GetPortNames().Length > 0; // Simple check
+                // Simulate printer detection logic with robust error handling
+                bool printerFound = false;
+                try
+                {
+                    printerFound = System.IO.Ports.SerialPort.GetPortNames().Length > 0;
+                }
+                catch (Exception ex)
+                {
+                    LoggingService.Application.Warning("Failed to enumerate serial ports for printer detection", ("Error", ex.Message));
+                    printerFound = false; // Assume no printer if serial port access fails
+                }
                 
                 if (printerFound)
                 {
@@ -4863,7 +4872,18 @@ namespace Photobooth
                 // For now, simulate Arduino detection
                 await Task.Delay(1000);
                 
-                var availablePorts = System.IO.Ports.SerialPort.GetPortNames();
+                string[] availablePorts = Array.Empty<string>();
+                try
+                {
+                    availablePorts = System.IO.Ports.SerialPort.GetPortNames();
+                }
+                catch (Exception ex)
+                {
+                    LoggingService.Application.Warning("Failed to enumerate serial ports for Arduino detection", ("Error", ex.Message));
+                    LogToDiagnostics($"Arduino test failed: Unable to access serial ports - {ex.Message}");
+                    return;
+                }
+                
                 if (availablePorts.Length > 0)
                 {
                     var arduinoPort = availablePorts.FirstOrDefault(p => p.StartsWith("COM"));
