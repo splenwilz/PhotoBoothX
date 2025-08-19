@@ -99,7 +99,7 @@ namespace PhotoBooth.Controls
         /// <summary>
         /// Load system date and seasonal data
         /// </summary>
-        private async Task LoadSystemDateDataAsync()
+        public async Task LoadSystemDateDataAsync()
         {
             try
             {

@@ -12,10 +12,45 @@ namespace Photobooth.Controls
 {
     public partial class CategoryManagementModal : UserControl
     {
+        private static class ThemeColors
+        {
+            public const string ActiveBackground = "#FFFFFF";
+            public const string InactiveBackground = "#F9FAFB";
+            public const string ActiveBorder = "#E5E7EB";
+            public const string InactiveBorder = "#D1D5DB";
+            public const string ActiveText = "#374151";
+            public const string InactiveText = "#9CA3AF";
+            public const string SuccessBadge = "#10B981";
+            public const string InactiveBadge = "#6B7280";
+            public const string SecondaryText = "#6B7280";
+            public const string PrimaryBlue = "#1E40AF";
+            public const string DateControlText = "#4B5563";
+            public const string LightBlue = "#BFDBFE";
+            public const string MediumBlue = "#3B82F6";
+            public const string LightGray = "#F8FAFC";
+            public const string SlateGray = "#F1F5F9";
+            public const string DropdownBorder = "#E2E8F0";
+            public const string InfoBackground = "#DBEAFE";
+        }
+
+        private static System.Windows.Media.Brush GetBrushFromColor(string colorString, System.Windows.Media.Brush fallback)
+        {
+            return (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFromString(colorString) ?? fallback);
+        }
+
+        private static int GetDaysInMonth(int month)
+        {
+            return DateTime.DaysInMonth(REFERENCE_YEAR, month);
+        }
+
+        private const string DEFAULT_SEASON_START = "01-01";
+        private const string DEFAULT_SEASON_END = "12-31";
+        private const int REFERENCE_YEAR = 2023; // Non-leap year for consistent date validation
+        private static readonly string[] MONTH_NAMES = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
+
         private readonly IDatabaseService _databaseService;
-        private int _editingCategoryId = -1;
-        private bool _isEditMode = false;
-        private ScrollViewer? _dialogScrollViewer;
+        private TemplateCategory? _currentlyEditingCategory = null;
+        private Border? _currentEditDropdown = null;
 
         public bool CategoriesChanged { get; private set; } = false;
 
@@ -26,33 +61,11 @@ namespace Photobooth.Controls
         {
             try
             {
-
-
                 InitializeComponent();
-
-
                 _databaseService = new DatabaseService();
-
-                // Find the ScrollViewer for smooth scrolling to edit form
-                Loaded += (s, e) => {
-                    try
-                    {
-
-                        _dialogScrollViewer = FindChild<ScrollViewer>(this);
-
-
-                        PopulateDayComboBoxes();
-
-                    }
-                    catch (Exception ex)
-                    {
-                        LoggingService.Application.Error("Error initializing category modal controls", ex);
-                    }
-                };
-
-                LoadCategories();
-
-
+                
+                // Load categories when the control is loaded
+                Loaded += OnLoadedAsync;
             }
             catch (Exception ex)
             {
@@ -61,463 +74,174 @@ namespace Photobooth.Controls
             }
         }
 
-        // Helper method to find child elements
-        private T? FindChild<T>(DependencyObject parent) where T : DependencyObject
-        {
-            if (parent == null) return null;
-
-            for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
-            {
-                var child = VisualTreeHelper.GetChild(parent, i);
-                if (child is T result)
-                    return result;
-
-                var childOfChild = FindChild<T>(child);
-                if (childOfChild != null)
-                    return childOfChild;
-            }
-            return null;
-        }
-
-        private void PopulateDayComboBoxes()
+        /// <summary>
+        /// Handle Loaded event with proper async/await pattern
+        /// </summary>
+        private async void OnLoadedAsync(object sender, RoutedEventArgs e)
         {
             try
             {
-
-                // Populate months
-                var months = new string[]
-                {
-                    "January", "February", "March", "April", "May", "June",
-                    "July", "August", "September", "October", "November", "December"
-                };
-
-                StartMonthComboBox.ItemsSource = months;
-                EndMonthComboBox.ItemsSource = months;
-
-                // Populate days (initial population with 31 days)
-
-                PopulateDaysForMonth(StartDayComboBox, 31);
-                PopulateDaysForMonth(EndDayComboBox, 31);
-
-
+                await LoadCategoriesAsync();
             }
             catch (Exception ex)
             {
-                LoggingService.Application.Error("Error populating day combo boxes", ex);
+                LoggingService.Application.Error("Failed to load categories on control load", ex);
+                NotificationService.Instance.ShowError("Loading Error", "Error loading categories. Please try again.");
             }
         }
 
-        private void PopulateDaysForMonth(ComboBox dayComboBox, int daysInMonth)
+        private async Task LoadCategoriesAsync()
         {
             try
             {
-                // Store current selection
-                int currentSelection = dayComboBox.SelectedIndex;
-                
-                // Clear and repopulate
-                dayComboBox.Items.Clear();
-                for (int i = 1; i <= daysInMonth; i++)
-                {
-                    dayComboBox.Items.Add(i.ToString());
-                }
-                
-                // Restore selection if valid
-                if (currentSelection >= 0 && currentSelection < daysInMonth)
-                {
-                    dayComboBox.SelectedIndex = currentSelection;
-                }
-                else if (currentSelection >= daysInMonth)
-                {
-                    // If previous selection was beyond the new month's days, select the last valid day
-                    dayComboBox.SelectedIndex = daysInMonth - 1;
-                    
-                    // Show validation warning
-                    if (dayComboBox == StartDayComboBox || dayComboBox == EndDayComboBox)
-                    {
-                        NotificationService.Instance.ShowWarning("Date Adjusted", 
-                            $"Day adjusted to {daysInMonth} (last day of selected month)");
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                LoggingService.Application.Error("Error populating days for month", ex);
-            }
-        }
-
-        private int GetDaysInMonth(int monthIndex)
-        {
-            // monthIndex is 0-based (0 = January, 11 = December)
-            if (monthIndex >= 0 && monthIndex < 12)
-            {
-                // Use current year or a leap year for maximum days
-                return DateTime.DaysInMonth(DateTime.Now.Year, monthIndex + 1);
-            }
-            
-            return 31; // Default fallback
-        }
-
-        private void StartMonthComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
-        {
-            try
-            {
-                if (StartMonthComboBox.SelectedIndex >= 0)
-                {
-                    int daysInMonth = GetDaysInMonth(StartMonthComboBox.SelectedIndex);
-                    PopulateDaysForMonth(StartDayComboBox, daysInMonth);
-                    UpdateSeasonPreview();
-                }
-            }
-            catch (Exception ex)
-            {
-                LoggingService.Application.Error("Error in StartMonthComboBox selection change", ex);
-            }
-        }
-
-        private void EndMonthComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
-        {
-            try
-            {
-                if (EndMonthComboBox.SelectedIndex >= 0)
-                {
-                    int daysInMonth = GetDaysInMonth(EndMonthComboBox.SelectedIndex);
-                    PopulateDaysForMonth(EndDayComboBox, daysInMonth);
-                    UpdateSeasonPreview();
-                }
-            }
-            catch (Exception ex)
-            {
-                LoggingService.Application.Error("Error in EndMonthComboBox selection change", ex);
-            }
-        }
-
-        private void DateComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
-        {
-            UpdateSeasonPreview();
-        }
-
-        private void UpdateSeasonPreview()
-        {
-            try
-            {
-                if (StartMonthComboBox.SelectedIndex >= 0 && StartDayComboBox.SelectedIndex >= 0 &&
-                    EndMonthComboBox.SelectedIndex >= 0 && EndDayComboBox.SelectedIndex >= 0)
-                {
-                    string startMonth = StartMonthComboBox.SelectedItem?.ToString() ?? "";
-                    string startDay = (StartDayComboBox.SelectedIndex + 1).ToString();
-                    string endMonth = EndMonthComboBox.SelectedItem?.ToString() ?? "";
-                    string endDay = (EndDayComboBox.SelectedIndex + 1).ToString();
-                    
-                    SeasonPreviewText.Text = $"Active from {startMonth} {startDay} to {endMonth} {endDay}";
-                }
-                else
-                {
-                    SeasonPreviewText.Text = "Set dates to see preview";
-                }
-            }
-            catch (Exception ex)
-            {
-                LoggingService.Application.Error("Error updating season preview", ex);
-                SeasonPreviewText.Text = "Error updating preview";
-            }
-        }
-
-        private void IsSeasonalCheckBox_Checked(object sender, RoutedEventArgs e)
-        {
-            SeasonalSettingsPanel.Visibility = Visibility.Visible;
-            UpdateSeasonPreview();
-        }
-
-        private void IsSeasonalCheckBox_Unchecked(object sender, RoutedEventArgs e)
-        {
-            SeasonalSettingsPanel.Visibility = Visibility.Collapsed;
-        }
-
-        private void CategoryDescription_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
-        {
-            if (DescriptionCharCount != null && CategoryDescriptionTextBox != null)
-            {
-                int charCount = CategoryDescriptionTextBox.Text?.Length ?? 0;
-                DescriptionCharCount.Text = $"{charCount}/200";
-                
-                // Change color based on character count
-                if (charCount > 180)
-                {
-                    DescriptionCharCount.Foreground = (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFrom("#EF4444") ?? System.Windows.Media.Brushes.Red);
-                }
-                else if (charCount > 150)
-                {
-                    DescriptionCharCount.Foreground = (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFrom("#F59E0B") ?? System.Windows.Media.Brushes.Orange);
-                }
-                else
-                {
-                    DescriptionCharCount.Foreground = (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFrom("#9CA3AF") ?? System.Windows.Media.Brushes.Gray);
-                }
-            }
-        }
-
-        private void SeasonPriority_PreviewTextInput(object sender, System.Windows.Input.TextCompositionEventArgs e)
-        {
-            try
-            {
-                // Only allow numeric input
-                if (!char.IsDigit(e.Text, 0))
-                {
-                    e.Handled = true;
-                    return;
-                }
-
-                var textBox = sender as TextBox;
-                if (textBox != null)
-                {
-                    // Get what the text would be after this input
-                    string newText = textBox.Text.Insert(textBox.SelectionStart, e.Text);
-                    
-                    // Remove any selected text
-                    if (textBox.SelectionLength > 0)
-                    {
-                        newText = textBox.Text.Remove(textBox.SelectionStart, textBox.SelectionLength);
-                        newText = newText.Insert(textBox.SelectionStart, e.Text);
-                    }
-                    
-                    // Check if the resulting number would be valid (1-100)
-                    if (int.TryParse(newText, out int value))
-                    {
-                        if (value < 1 || value > 100)
-                        {
-                            e.Handled = true;
-                        }
-                    }
-                    else
-                    {
-                        e.Handled = true;
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                LoggingService.Application.Error("Error validating season priority input", ex);
-                e.Handled = true;
-            }
-        }
-
-        private void SeasonPriority_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
-        {
-            try
-            {
-                var textBox = sender as TextBox;
-                if (textBox != null)
-                {
-                    // If text is empty, that's okay (will default to 100)
-                    if (string.IsNullOrEmpty(textBox.Text))
-                    {
-                        return;
-                    }
-
-                    // Validate the current text
-                    if (int.TryParse(textBox.Text, out int value))
-                    {
-                        if (value < 1 || value > 100)
-                        {
-                            // Invalid value, revert to previous valid value or default
-                            textBox.Text = "100";
-                            textBox.SelectionStart = textBox.Text.Length;
-                        }
-                    }
-                    else
-                    {
-                        // Not a valid number, revert to default
-                        textBox.Text = "100";
-                        textBox.SelectionStart = textBox.Text.Length;
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                LoggingService.Application.Error("Error handling season priority text change", ex);
-            }
-        }
-
-        private async void AddCategory_Click(object sender, RoutedEventArgs e)
-        {
-            try
-            {
-                // Validate required fields
-                if (string.IsNullOrWhiteSpace(CategoryNameTextBox.Text))
-                {
-                    NotificationService.Instance.ShowError("Validation Error", "Category name is required.");
-                    CategoryNameTextBox.Focus();
-                    return;
-                }
-
-                // Prepare seasonal data
-                bool isSeasonal = IsSeasonalCheckBox.IsChecked == true;
-                string? seasonStartDate = null;
-                string? seasonEndDate = null;
-                int seasonalPriority = 100;
-
-                if (isSeasonal)
-                {
-                    // Validate seasonal fields
-                    if (StartMonthComboBox.SelectedIndex < 0 || StartDayComboBox.SelectedIndex < 0 ||
-                        EndMonthComboBox.SelectedIndex < 0 || EndDayComboBox.SelectedIndex < 0)
-                    {
-                        NotificationService.Instance.ShowError("Validation Error", "Please select complete start and end dates for seasonal category.");
-                        return;
-                    }
-
-                    seasonStartDate = $"{StartMonthComboBox.SelectedIndex + 1:D2}-{StartDayComboBox.SelectedIndex + 1:D2}";
-                    seasonEndDate = $"{EndMonthComboBox.SelectedIndex + 1:D2}-{EndDayComboBox.SelectedIndex + 1:D2}";
-                    
-                    if (!int.TryParse(SeasonPriorityTextBox.Text, out seasonalPriority))
-                    {
-                        seasonalPriority = 100;
-                    }
-                    
-                    // Validate priority range
-                    if (seasonalPriority < 1 || seasonalPriority > 100)
-                    {
-                        NotificationService.Instance.ShowError("Validation Error", "Season priority must be between 1 and 100.");
-                        SeasonPriorityTextBox.Focus();
-                        return;
-                    }
-                }
-
-                // Save category
-                if (_isEditMode)
-                {
-                    var result = await _databaseService.UpdateTemplateCategoryAsync(
-                        _editingCategoryId, 
-                        CategoryNameTextBox.Text.Trim(), 
-                        CategoryDescriptionTextBox.Text?.Trim() ?? string.Empty,
-                        isSeasonal,
-                        seasonStartDate,
-                        seasonEndDate,
-                        seasonalPriority);
-                        
-                    if (result.Success)
-                    {
-                        NotificationService.Instance.ShowSuccess("Category Updated", "Category updated successfully!");
-                    }
-                    else
-                    {
-                        NotificationService.Instance.ShowError("Update Failed", $"Failed to update category: {result.ErrorMessage}");
-                        return;
-                    }
-                }
-                else
-                {
-                    var result = await _databaseService.CreateTemplateCategoryAsync(
-                        CategoryNameTextBox.Text.Trim(), 
-                        CategoryDescriptionTextBox.Text?.Trim() ?? string.Empty,
-                        isSeasonal,
-                        seasonStartDate,
-                        seasonEndDate,
-                        seasonalPriority);
-                        
-                    if (result.Success)
-                    {
-                        NotificationService.Instance.ShowSuccess("Category Created", "Category created successfully!");
-                    }
-                    else
-                    {
-                        NotificationService.Instance.ShowError("Creation Failed", $"Failed to create category: {result.ErrorMessage}");
-                        return;
-                    }
-                }
-
-                CategoriesChanged = true;
-                ClearForm();
-                LoadCategories();
-
-                LoggingService.Application.Information(_isEditMode ? "Category updated successfully: {CategoryName}" : "Category created successfully: {CategoryName}", 
-                    ("CategoryName", CategoryNameTextBox.Text.Trim()));
-            }
-            catch (Exception ex)
-            {
-                LoggingService.Application.Error("Error saving category", ex);
-                NotificationService.Instance.ShowError("Unexpected Error", "Error saving category. Please try again.");
-            }
-        }
-
-        private async void LoadCategories()
-        {
-            try
-            {
-
-
                 var result = await _databaseService.GetAllTemplateCategoriesAsync();
-                int dataCount = result.Data?.Count ?? 0;
-
-
+                
                 CategoriesListPanel.Children.Clear();
 
                 if (result.Success && result.Data != null)
                 {
-
                     foreach (var category in result.Data)
                     {
-
                         var categoryItem = CreateCategoryListItem(category);
                         CategoriesListPanel.Children.Add(categoryItem);
-
                     }
-
                 }
                 else
                 {
-
                     NotificationService.Instance.ShowError("Loading Failed", $"Failed to load categories: {result.ErrorMessage}");
                 }
-
             }
             catch (Exception ex)
             {
-
-
                 LoggingService.Application.Error("Error loading categories", ex);
                 NotificationService.Instance.ShowError("Loading Error", "Error loading categories. Please try again.");
             }
         }
 
-        private Border CreateCategoryListItem(TemplateCategory category)
+        private StackPanel CreateCategoryListItem(TemplateCategory category)
         {
-            var border = new Border
+            var container = new StackPanel { Margin = new Thickness(0, 0, 0, 12) };
+            
+            // Create category border with styling
+            var border = CreateCategoryBorder(category);
+            
+            // Create main grid layout
+            var grid = CreateCategoryGrid(category);
+            
+            border.Child = grid;
+            container.Children.Add(border);
+            return container;
+        }
+
+        private Border CreateCategoryBorder(TemplateCategory category)
+        {
+            return new Border
             {
-                Background = System.Windows.Media.Brushes.White,
-                BorderBrush = (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFrom("#E5E7EB") ?? System.Windows.Media.Brushes.LightGray),
+                Background = category.IsActive ? 
+                    GetBrushFromColor(ThemeColors.ActiveBackground, System.Windows.Media.Brushes.White) : 
+                    GetBrushFromColor(ThemeColors.InactiveBackground, System.Windows.Media.Brushes.WhiteSmoke),
+                BorderBrush = category.IsActive ?
+                    GetBrushFromColor(ThemeColors.ActiveBorder, System.Windows.Media.Brushes.LightGray) :
+                    GetBrushFromColor(ThemeColors.InactiveBorder, System.Windows.Media.Brushes.Gray),
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(8),
-                Padding = new Thickness(16),
-                Margin = new Thickness(0, 0, 0, 12)
+                Padding = new Thickness(20),
+                Tag = category,
+                Opacity = category.IsActive ? 1.0 : 0.7
             };
+        }
 
+        private Grid CreateCategoryGrid(TemplateCategory category)
+        {
             var grid = new Grid();
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
+            // Create info panel (left side)
+            var infoPanel = CreateCategoryInfo(category);
+            Grid.SetColumn(infoPanel, 0);
+            grid.Children.Add(infoPanel);
+
+            // Create button panel (right side)
+            var buttonPanel = CreateCategoryButtons(category);
+            Grid.SetColumn(buttonPanel, 1);
+            grid.Children.Add(buttonPanel);
+
+            return grid;
+        }
+
+        private StackPanel CreateCategoryInfo(TemplateCategory category)
+        {
             var infoPanel = new StackPanel();
             
-            // Category name with status indicator
+            // Create name panel with seasonal indicator and status badge
+            var namePanel = CreateCategoryNamePanel(category);
+            infoPanel.Children.Add(namePanel);
+
+            // Add description if available
+            if (!string.IsNullOrEmpty(category.Description))
+            {
+                var descBlock = CreateDescriptionBlock(category);
+                infoPanel.Children.Add(descBlock);
+            }
+
+            // Add seasonal info if applicable
+            if (category.IsSeasonalCategory && !string.IsNullOrEmpty(category.SeasonStartDate) && !string.IsNullOrEmpty(category.SeasonEndDate))
+            {
+                var seasonalInfo = CreateSeasonalInfoBlock(category);
+                infoPanel.Children.Add(seasonalInfo);
+            }
+
+            return infoPanel;
+        }
+
+        private StackPanel CreateCategoryNamePanel(TemplateCategory category)
+        {
             var namePanel = new StackPanel { Orientation = Orientation.Horizontal };
             
+            // Add seasonal emoji for seasonal categories
+            if (category.IsSeasonalCategory)
+            {
+                var seasonalIcon = new TextBlock
+                {
+                    Text = "📅",
+                    FontSize = 18,
+                    Margin = new Thickness(0, 0, 8, 0),
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                namePanel.Children.Add(seasonalIcon);
+            }
+            
+            // Category name
             var nameBlock = new TextBlock
             {
                 Text = category.Name,
-                FontSize = 16,
+                FontSize = 18,
                 FontWeight = FontWeights.Medium,
-                Foreground = (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFrom("#374151") ?? System.Windows.Media.Brushes.Black),
+                Foreground = category.IsActive ?
+                    GetBrushFromColor(ThemeColors.ActiveText, System.Windows.Media.Brushes.Black) :
+                    GetBrushFromColor(ThemeColors.InactiveText, System.Windows.Media.Brushes.Gray),
                 VerticalAlignment = VerticalAlignment.Center
             };
             namePanel.Children.Add(nameBlock);
             
+            // Status badge
+            var statusBadge = CreateStatusBadge(category);
+            namePanel.Children.Add(statusBadge);
+            
+            namePanel.Margin = new Thickness(0, 0, 0, 8);
+            return namePanel;
+        }
+
+        private Border CreateStatusBadge(TemplateCategory category)
+        {
             var statusBadge = new Border
             {
                 Background = category.IsActive ? 
-                    (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFrom("#10B981") ?? System.Windows.Media.Brushes.Green) :
-                    (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFrom("#6B7280") ?? System.Windows.Media.Brushes.Gray),
+                    GetBrushFromColor(ThemeColors.SuccessBadge, System.Windows.Media.Brushes.Green) :
+                    GetBrushFromColor(ThemeColors.InactiveBadge, System.Windows.Media.Brushes.Gray),
                 CornerRadius = new CornerRadius(12),
-                Padding = new Thickness(8, 2, 8, 2),
+                Padding = new Thickness(10, 4, 10, 4),
                 Margin = new Thickness(12, 0, 0, 0),
                 VerticalAlignment = VerticalAlignment.Center
             };
@@ -525,136 +249,735 @@ namespace Photobooth.Controls
             var statusText = new TextBlock
             {
                 Text = category.IsActive ? "Active" : "Inactive",
-                FontSize = 11,
+                FontSize = 12,
                 FontWeight = FontWeights.Medium,
                 Foreground = System.Windows.Media.Brushes.White
             };
             statusBadge.Child = statusText;
-            namePanel.Children.Add(statusBadge);
-            namePanel.Margin = new Thickness(0, 0, 0, 4);
             
-            infoPanel.Children.Add(namePanel);
+            return statusBadge;
+        }
 
-            if (!string.IsNullOrEmpty(category.Description))
+        private TextBlock CreateDescriptionBlock(TemplateCategory category)
+        {
+            return new TextBlock
             {
-                var descBlock = new TextBlock
-                {
-                    Text = category.Description,
-                    FontSize = 14,
-                    Foreground = (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFrom("#6B7280") ?? System.Windows.Media.Brushes.Gray),
-                    TextWrapping = TextWrapping.Wrap
-                };
-                infoPanel.Children.Add(descBlock);
-            }
+                Text = category.Description,
+                FontSize = 14,
+                Foreground = GetBrushFromColor(ThemeColors.SecondaryText, System.Windows.Media.Brushes.Gray),
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 8)
+            };
+        }
 
-            Grid.SetColumn(infoPanel, 0);
-            grid.Children.Add(infoPanel);
+        private TextBlock CreateSeasonalInfoBlock(TemplateCategory category)
+        {
+            return new TextBlock
+            {
+                Text = $"Season: {FormatSeasonDate(category.SeasonStartDate ?? "")} - {FormatSeasonDate(category.SeasonEndDate ?? "")}",
+                FontSize = 13,
+                FontWeight = FontWeights.Medium,
+                Foreground = GetBrushFromColor(ThemeColors.PrimaryBlue, System.Windows.Media.Brushes.DarkBlue),
+                Margin = new Thickness(0, 0, 0, 0)
+            };
+        }
 
+        private StackPanel CreateCategoryButtons(TemplateCategory category)
+        {
             var buttonPanel = new StackPanel { Orientation = Orientation.Horizontal };
 
-            // Edit Button
+            // Only show edit button for seasonal categories
+            if (category.IsSeasonalCategory)
+            {
+                var editButton = CreateEditDatesButton(category);
+                buttonPanel.Children.Add(editButton);
+            }
+
+            // Toggle Active/Inactive Button  
+            var toggleButton = CreateToggleButton(category);
+            buttonPanel.Children.Add(toggleButton);
+
+            return buttonPanel;
+        }
+
+        private Button CreateEditDatesButton(TemplateCategory category)
+        {
             var editButton = new Button
             {
-                Content = "EDIT",
+                Content = "EDIT DATES",
                 Style = (Style)FindResource("ModernActionButtonStyle"),
-                Background = (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFrom("#10B981") ?? System.Windows.Media.Brushes.Green),
-                Foreground = System.Windows.Media.Brushes.White,
-                ToolTip = "Edit this category"
+                Background = GetBrushFromColor(ThemeColors.LightBlue, System.Windows.Media.Brushes.LightBlue),
+                Foreground = GetBrushFromColor(ThemeColors.PrimaryBlue, System.Windows.Media.Brushes.DarkBlue),
+                FontSize = 14,
+                Height = 44,
+                MinWidth = 120,
+                ToolTip = "Edit the date range for this seasonal category"
             };
-            editButton.Click += (s, e) => EditCategory(category);
-            buttonPanel.Children.Add(editButton);
+            editButton.Click += (s, e) => EditCategoryDates(category);
+            return editButton;
+        }
 
-            // Toggle Active/Inactive Button
+        private Button CreateToggleButton(TemplateCategory category)
+        {
             var toggleButton = new Button
             {
                 Content = category.IsActive ? "DISABLE" : "ENABLE",
                 Style = (Style)FindResource("ModernActionButtonStyle"),
                 Background = category.IsActive ? 
-                    (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFrom("#F59E0B") ?? System.Windows.Media.Brushes.Orange) :
-                    (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFrom("#059669") ?? System.Windows.Media.Brushes.Green),
-                Foreground = System.Windows.Media.Brushes.White,
+                    GetBrushFromColor(ThemeColors.ActiveBorder, System.Windows.Media.Brushes.LightGray) :
+                    GetBrushFromColor(ThemeColors.LightBlue, System.Windows.Media.Brushes.LightBlue),
+                Foreground = GetBrushFromColor(ThemeColors.ActiveText, System.Windows.Media.Brushes.DarkGray),
+                FontSize = 14,
+                Height = 44,
+                MinWidth = 100,
                 ToolTip = category.IsActive ? "Disable this category" : "Enable this category"
             };
             toggleButton.Click += (s, e) => ToggleCategory(category);
-            buttonPanel.Children.Add(toggleButton);
-
-            // Delete Button
-            var deleteButton = new Button
-            {
-                Content = "DELETE",
-                Style = (Style)FindResource("ModernActionButtonStyle"),
-                Background = (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFrom("#EF4444") ?? System.Windows.Media.Brushes.Red),
-                Foreground = System.Windows.Media.Brushes.White,
-                ToolTip = "Delete this category permanently"
-            };
-            deleteButton.Click += (s, e) => DeleteCategory(category);
-            buttonPanel.Children.Add(deleteButton);
-
-            Grid.SetColumn(buttonPanel, 1);
-            grid.Children.Add(buttonPanel);
-
-            border.Child = grid;
-            return border;
+            return toggleButton;
         }
 
-        private void EditCategory(TemplateCategory category)
+        private string FormatSeasonDate(string dateString)
         {
-            _isEditMode = true;
-            _editingCategoryId = category.Id;
+            if (string.IsNullOrEmpty(dateString)) return "";
             
-            // Fill the form with category data
-            CategoryNameTextBox.Text = category.Name;
-            CategoryDescriptionTextBox.Text = category.Description ?? string.Empty;
+            var parts = dateString.Split('-');
+            if (parts.Length != 2) return dateString;
             
-            // Fill seasonal data
-            IsSeasonalCheckBox.IsChecked = category.IsSeasonalCategory;
-            
-            if (category.IsSeasonalCategory && !string.IsNullOrEmpty(category.SeasonStartDate) && !string.IsNullOrEmpty(category.SeasonEndDate))
+            if (int.TryParse(parts[0], out int month) && int.TryParse(parts[1], out int day))
             {
-                // Parse season dates (format: MM-DD)
-                var startParts = category.SeasonStartDate.Split('-');
-                var endParts = category.SeasonEndDate.Split('-');
-                
-                if (startParts.Length == 2 && endParts.Length == 2 &&
-                    int.TryParse(startParts[0], out int startMonth) && int.TryParse(startParts[1], out int startDay) &&
-                    int.TryParse(endParts[0], out int endMonth) && int.TryParse(endParts[1], out int endDay))
+                if (month >= 1 && month <= 12)
                 {
-                    SetSeasonalData(startMonth.ToString(), startDay.ToString(), endMonth.ToString(), endDay.ToString(), category.SeasonalPriority);
+                    return $"{MONTH_NAMES[month - 1]} {day}";
                 }
             }
             
-            // Update UI for edit mode
-            CancelEditButton.Visibility = Visibility.Visible;
-            ((TextBlock)((StackPanel)AddButtonContent).Children[1]).Text = "Update Category";
-            ((TextBlock)((StackPanel)AddButtonContent).Children[0]).Text = "💾";
-            
-            // Scroll to the form
-            if (_dialogScrollViewer != null)
-            {
-                _dialogScrollViewer.ScrollToTop();
-            }
-            
-            // Focus on the name field for immediate editing
-            CategoryNameTextBox.Focus();
-            CategoryNameTextBox.SelectAll();
+            return dateString;
         }
 
-        private void SetSeasonalData(string startMonth, string startDay, string endMonth, string endDay, int priority)
+        private void EditCategoryDates(TemplateCategory category)
         {
-            IsSeasonalCheckBox.IsChecked = true;
-            SeasonalSettingsPanel.Visibility = Visibility.Visible;
+            try
+            {
+                // If we're already editing this category, close the dropdown
+                if (_currentlyEditingCategory?.Id == category.Id && _currentEditDropdown != null)
+                {
+                    CloseEditDropdown();
+                    return;
+                }
+
+                // Close any existing dropdown first
+                CloseEditDropdown();
+
+                // Find the container for this category
+                var container = FindCategoryContainer(category);
+                if (container == null) return;
+
+                // Create and show the dropdown
+                _currentEditDropdown = CreateEditDropdown(category);
+                _currentlyEditingCategory = category;
+                
+                container.Children.Add(_currentEditDropdown);
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Error showing edit dropdown", ex);
+                NotificationService.Instance.ShowError("Error", "Error showing date editor. Please try again.");
+            }
+        }
+
+        private StackPanel? FindCategoryContainer(TemplateCategory category)
+        {
+            // Find the container for this specific category
+            foreach (var child in CategoriesListPanel.Children)
+            {
+                if (child is StackPanel container)
+                {
+                    // Check if this container's first child (the border) has our category
+                    if (container.Children.Count > 0 && container.Children[0] is Border border)
+                    {
+                        if (border.Tag is TemplateCategory cat && cat.Id == category.Id)
+                        {
+                            return container;
+                        }
+                    }
+                }
+            }
+            return null;
+        }
+
+        private void CloseEditDropdown()
+        {
+            if (_currentEditDropdown != null && _currentlyEditingCategory != null)
+            {
+                var container = FindCategoryContainer(_currentlyEditingCategory);
+                if (container != null && container.Children.Contains(_currentEditDropdown))
+                {
+                    container.Children.Remove(_currentEditDropdown);
+                }
+                
+                _currentEditDropdown = null;
+                _currentlyEditingCategory = null;
+            }
+        }
+
+        private Border CreateEditDropdown(TemplateCategory category)
+        {
+            // Create dropdown container
+            var dropdownBorder = CreateDropdownContainer();
             
-            // Set months (index is month number - 1)
-            StartMonthComboBox.SelectedIndex = int.Parse(startMonth) - 1;
-            EndMonthComboBox.SelectedIndex = int.Parse(endMonth) - 1;
+            // Create main panel with all content
+            var mainPanel = CreateDropdownMainPanel(category);
             
-            // Set days (index is day number - 1)
-            StartDayComboBox.SelectedIndex = int.Parse(startDay) - 1;
-            EndDayComboBox.SelectedIndex = int.Parse(endDay) - 1;
+            dropdownBorder.Child = mainPanel;
+            return dropdownBorder;
+        }
+
+        private Border CreateDropdownContainer()
+        {
+            return new Border
+            {
+                Background = GetBrushFromColor(ThemeColors.LightGray, System.Windows.Media.Brushes.AliceBlue),
+                BorderBrush = GetBrushFromColor(ThemeColors.DropdownBorder, System.Windows.Media.Brushes.LightGray),
+                BorderThickness = new Thickness(1, 0, 1, 1),
+                CornerRadius = new CornerRadius(0, 0, 8, 8),
+                Padding = new Thickness(20),
+                Margin = new Thickness(0, -1, 0, 0)
+            };
+        }
+
+        private StackPanel CreateDropdownMainPanel(TemplateCategory category)
+        {
+            var mainPanel = new StackPanel();
             
-            SeasonPriorityTextBox.Text = priority.ToString();
+            // Create header section
+            var headerGrid = CreateDropdownHeader(category);
+            mainPanel.Children.Add(headerGrid);
+
+            // Create current dates display
+            var currentInfo = CreateCurrentDateDisplay(category);
+            mainPanel.Children.Add(currentInfo);
+
+            // Create date editing controls
+            var dateEditGrid = CreateDateEditGrid(category);
+            mainPanel.Children.Add(dateEditGrid);
+
+            // Create action buttons
+            var buttonPanel = CreateDropdownActions(category);
+            mainPanel.Children.Add(buttonPanel);
+
+            return mainPanel;
+        }
+
+        private Grid CreateDropdownHeader(TemplateCategory category)
+        {
+            var headerGrid = new Grid { Margin = new Thickness(0, 0, 0, 20) };
+            headerGrid.ColumnDefinitions.Add(new ColumnDefinition());
+            headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var titleBlock = new TextBlock
+            {
+                Text = $"📅 Edit {category.Name} Dates",
+                FontSize = 18,
+                FontWeight = FontWeights.Bold,
+                Foreground = GetBrushFromColor(ThemeColors.ActiveText, System.Windows.Media.Brushes.Black),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            Grid.SetColumn(titleBlock, 0);
+            headerGrid.Children.Add(titleBlock);
+
+            var closeBtn = new Button
+            {
+                Content = "✕",
+                Width = 28,
+                Height = 28,
+                FontSize = 14,
+                FontWeight = FontWeights.Bold,
+                Background = GetBrushFromColor(ThemeColors.ActiveBorder, System.Windows.Media.Brushes.LightGray),
+                Foreground = GetBrushFromColor(ThemeColors.ActiveText, System.Windows.Media.Brushes.DarkGray),
+                BorderThickness = new Thickness(0),
+                Template = CreateRoundButtonTemplate()
+            };
+            closeBtn.Click += (s, e) => CloseEditDropdown();
+            Grid.SetColumn(closeBtn, 1);
+            headerGrid.Children.Add(closeBtn);
+
+            return headerGrid;
+        }
+
+        private Border CreateCurrentDateDisplay(TemplateCategory category)
+        {
+            var currentInfo = new Border
+            {
+                Background = GetBrushFromColor(ThemeColors.InfoBackground, System.Windows.Media.Brushes.LightBlue),
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(15, 8, 15, 8),
+                Margin = new Thickness(0, 0, 0, 20)
+            };
             
-            UpdateSeasonPreview();
+            var currentText = new TextBlock
+            {
+                Text = $"Current: {FormatSeasonDate(category.SeasonStartDate ?? "")} - {FormatSeasonDate(category.SeasonEndDate ?? "")}",
+                FontSize = 14,
+                FontWeight = FontWeights.Medium,
+                Foreground = GetBrushFromColor(ThemeColors.PrimaryBlue, System.Windows.Media.Brushes.DarkBlue),
+                TextAlignment = TextAlignment.Center
+            };
+            currentInfo.Child = currentText;
+            
+            return currentInfo;
+        }
+
+        private Grid CreateDateEditGrid(TemplateCategory category)
+        {
+            // Parse current dates
+            var (startMonth, startDay, endMonth, endDay) = ParseCategoryDates(category);
+
+            // Create compact date controls for dropdown
+            TextBlock startMonthLabel, startDayLabel, endMonthLabel, endDayLabel;
+            var startDatePanel = CreateCompactDateControl("Season Start", startMonth, startDay, true, out startMonthLabel, out startDayLabel);
+            var endDatePanel = CreateCompactDateControl("Season End", endMonth, endDay, false, out endMonthLabel, out endDayLabel);
+
+            // Store references for save handler
+            _currentStartMonthLabel = startMonthLabel;
+            _currentStartDayLabel = startDayLabel;
+            _currentEndMonthLabel = endMonthLabel;
+            _currentEndDayLabel = endDayLabel;
+
+            // Create date editing grid
+            var dateEditGrid = new Grid { Margin = new Thickness(0, 0, 0, 20) };
+            dateEditGrid.ColumnDefinitions.Add(new ColumnDefinition());
+            dateEditGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(15) });
+            dateEditGrid.ColumnDefinitions.Add(new ColumnDefinition());
+
+            Grid.SetColumn(startDatePanel, 0);
+            Grid.SetColumn(endDatePanel, 2);
+            dateEditGrid.Children.Add(startDatePanel);
+            dateEditGrid.Children.Add(endDatePanel);
+
+            return dateEditGrid;
+        }
+
+        private (int startMonth, int startDay, int endMonth, int endDay) ParseCategoryDates(TemplateCategory category)
+        {
+            var startParts = (category.SeasonStartDate ?? DEFAULT_SEASON_START).Split('-');
+            var endParts = (category.SeasonEndDate ?? DEFAULT_SEASON_END).Split('-');
+            
+            int startMonth = int.TryParse(startParts[0], out var sm) ? sm : 1;
+            int startDay = int.TryParse(startParts[1], out var sd) ? sd : 1;
+            int endMonth = int.TryParse(endParts[0], out var em) ? em : 12;
+            int endDay = int.TryParse(endParts[1], out var ed) ? ed : 31;
+
+            return (startMonth, startDay, endMonth, endDay);
+        }
+
+        private StackPanel CreateDropdownActions(TemplateCategory category)
+        {
+            var buttonPanel = new StackPanel { 
+                Orientation = Orientation.Horizontal, 
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(0, 20, 0, 0)
+            };
+            
+            var saveButton = CreateSaveButton(category);
+            var cancelButton = CreateCancelButton();
+            
+            buttonPanel.Children.Add(saveButton);
+            buttonPanel.Children.Add(cancelButton);
+            
+            return buttonPanel;
+        }
+
+        private Button CreateSaveButton(TemplateCategory category)
+        {
+            var saveButton = new Button
+            {
+                Content = "💾 Save",
+                Width = 120,
+                Height = 40,
+                Margin = new Thickness(0, 0, 10, 0),
+                Background = GetBrushFromColor(ThemeColors.LightBlue, System.Windows.Media.Brushes.LightBlue),
+                Foreground = GetBrushFromColor(ThemeColors.PrimaryBlue, System.Windows.Media.Brushes.DarkBlue),
+                FontWeight = FontWeights.Bold,
+                FontSize = 14,
+                BorderThickness = new Thickness(0),
+                Template = CreateModernButtonTemplate()
+            };
+            
+            saveButton.Click += async (s, e) => await SaveCategoryDates(category);
+            return saveButton;
+        }
+
+        private Button CreateCancelButton()
+        {
+            var cancelButton = new Button
+            {
+                Content = "❌ Cancel",
+                Width = 100,
+                Height = 40,
+                Background = GetBrushFromColor(ThemeColors.ActiveBorder, System.Windows.Media.Brushes.LightGray),
+                Foreground = GetBrushFromColor(ThemeColors.ActiveText, System.Windows.Media.Brushes.DarkGray),
+                FontWeight = FontWeights.Bold,
+                FontSize = 14,
+                BorderThickness = new Thickness(0),
+                Template = CreateModernButtonTemplate()
+            };
+            
+            cancelButton.Click += (s, e) => CloseEditDropdown();
+            return cancelButton;
+        }
+
+        // Store references to current date controls for save handler
+        private TextBlock? _currentStartMonthLabel;
+        private TextBlock? _currentStartDayLabel;
+        private TextBlock? _currentEndMonthLabel;
+        private TextBlock? _currentEndDayLabel;
+
+        private async Task SaveCategoryDates(TemplateCategory category)
+        {
+            try
+            {
+                if (!ValidateCurrentDateControls())
+                {
+                    return;
+                }
+
+                var (startMonth, startDay, endMonth, endDay) = ExtractDateValues();
+                
+                if (!ValidateDateRange(startMonth, startDay, endMonth, endDay))
+                {
+                    NotificationService.Instance.ShowError("Invalid Dates", "Please check that all date values are valid.");
+                    return;
+                }
+                
+                var (newStartDate, newEndDate) = FormatDateStrings(startMonth, startDay, endMonth, endDay);
+                
+                await UpdateCategoryInDatabase(category, newStartDate, newEndDate);
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Error saving category dates", ex);
+                NotificationService.Instance.ShowError("Save Error", $"Error saving dates: {ex.Message}");
+            }
+        }
+
+        private bool ValidateCurrentDateControls()
+        {
+            if (_currentStartMonthLabel == null || _currentStartDayLabel == null || 
+                _currentEndMonthLabel == null || _currentEndDayLabel == null)
+            {
+                NotificationService.Instance.ShowError("Save Error", "Control references are invalid. Please try again.");
+                return false;
+            }
+            return true;
+        }
+
+        private (int startMonth, int startDay, int endMonth, int endDay) ExtractDateValues()
+        {
+            int startMonth = (int)_currentStartMonthLabel!.Tag;
+            int startDay = (int)_currentStartDayLabel!.Tag;
+            int endMonth = (int)_currentEndMonthLabel!.Tag;
+            int endDay = (int)_currentEndDayLabel!.Tag;
+            
+            return (startMonth, startDay, endMonth, endDay);
+        }
+
+        private bool ValidateDateRange(int startMonth, int startDay, int endMonth, int endDay)
+        {
+            return startMonth >= 1 && startMonth <= 12 &&
+                   endMonth >= 1 && endMonth <= 12 &&
+                   startDay >= 1 && startDay <= GetDaysInMonth(startMonth) &&
+                   endDay >= 1 && endDay <= GetDaysInMonth(endMonth);
+        }
+
+        private (string startDate, string endDate) FormatDateStrings(int startMonth, int startDay, int endMonth, int endDay)
+        {
+            string newStartDate = $"{startMonth:D2}-{startDay:D2}";
+            string newEndDate = $"{endMonth:D2}-{endDay:D2}";
+            
+            return (newStartDate, newEndDate);
+        }
+
+        private async Task UpdateCategoryInDatabase(TemplateCategory category, string newStartDate, string newEndDate)
+        {
+            var result = await _databaseService.UpdateTemplateCategoryAsync(
+                category.Id,
+                category.Name,
+                category.Description ?? "",
+                category.IsSeasonalCategory,
+                newStartDate,
+                newEndDate,
+                category.SeasonalPriority
+            );
+                        
+            if (result.Success)
+            {
+                CategoriesChanged = true;
+                await LoadCategoriesAsync();
+                NotificationService.Instance.ShowSuccess("Dates Updated", $"Season dates for {category.Name} updated successfully!");
+                CloseEditDropdown();
+            }
+            else
+            {
+                NotificationService.Instance.ShowError("Update Failed", $"Failed to update dates: {result.ErrorMessage}");
+            }
+        }
+
+        private StackPanel CreateCompactDateControl(string title, int initialMonth, int initialDay, bool isStart, out TextBlock monthLabel, out TextBlock dayLabel)
+        {
+            var mainPanel = new StackPanel();
+            
+            // Create title section
+            var titleBlock = CreateDateControlTitle(title);
+            mainPanel.Children.Add(titleBlock);
+
+            // Create month control
+            var monthControl = CreateMonthControl(initialMonth, out monthLabel);
+            mainPanel.Children.Add(monthControl);
+
+            // Create day control
+            var dayControl = CreateDayControl(initialDay, monthLabel, out dayLabel);
+            mainPanel.Children.Add(dayControl);
+
+            return mainPanel;
+        }
+
+        private TextBlock CreateDateControlTitle(string title)
+        {
+            return new TextBlock
+            {
+                Text = title,
+                FontSize = 16,
+                FontWeight = FontWeights.Bold,
+                TextAlignment = TextAlignment.Center,
+                Foreground = GetBrushFromColor(ThemeColors.DateControlText, System.Windows.Media.Brushes.DarkGray),
+                Margin = new Thickness(0, 0, 0, 15)
+            };
+        }
+
+        private Grid CreateMonthControl(int initialMonth, out TextBlock monthLabel)
+        {
+            var monthGrid = new Grid { Margin = new Thickness(0, 0, 0, 15) };
+            monthGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(45) });
+            monthGrid.ColumnDefinitions.Add(new ColumnDefinition());
+            monthGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(45) });
+
+            var monthLeftBtn = CreateNavigationButton("←", ThemeColors.LightBlue);
+            var monthDisplay = CreateDisplayBorder(ThemeColors.LightGray);
+            var monthRightBtn = CreateNavigationButton("→", ThemeColors.LightBlue);
+
+            monthLabel = new TextBlock
+            {
+                Text = MONTH_NAMES[initialMonth - 1],
+                FontSize = 16,
+                FontWeight = FontWeights.Bold,
+                TextAlignment = TextAlignment.Center,
+                Foreground = GetBrushFromColor(ThemeColors.PrimaryBlue, System.Windows.Media.Brushes.DarkBlue),
+                Tag = initialMonth
+            };
+            monthDisplay.Child = monthLabel;
+
+            // Set up month navigation event handlers
+            SetupMonthNavigation(monthLeftBtn, monthRightBtn, monthLabel, MONTH_NAMES);
+
+            Grid.SetColumn(monthLeftBtn, 0);
+            Grid.SetColumn(monthDisplay, 1);
+            Grid.SetColumn(monthRightBtn, 2);
+            monthGrid.Children.Add(monthLeftBtn);
+            monthGrid.Children.Add(monthDisplay);
+            monthGrid.Children.Add(monthRightBtn);
+
+            return monthGrid;
+        }
+
+        private Grid CreateDayControl(int initialDay, TextBlock monthLabel, out TextBlock dayLabel)
+        {
+            var dayGrid = new Grid();
+            dayGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(45) });
+            dayGrid.ColumnDefinitions.Add(new ColumnDefinition());
+            dayGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(45) });
+
+            var dayLeftBtn = CreateNavigationButton("←", ThemeColors.MediumBlue);
+            var dayDisplay = CreateDisplayBorder(ThemeColors.SlateGray);
+            var dayRightBtn = CreateNavigationButton("→", ThemeColors.MediumBlue);
+
+            dayLabel = new TextBlock
+            {
+                Text = initialDay.ToString(),
+                FontSize = 16,
+                FontWeight = FontWeights.Bold,
+                TextAlignment = TextAlignment.Center,
+                Foreground = GetBrushFromColor(ThemeColors.PrimaryBlue, System.Windows.Media.Brushes.DarkGray),
+                Tag = initialDay
+            };
+            dayDisplay.Child = dayLabel;
+
+            // Set up day navigation event handlers
+            SetupDayNavigation(dayLeftBtn, dayRightBtn, dayLabel, monthLabel);
+
+            Grid.SetColumn(dayLeftBtn, 0);
+            Grid.SetColumn(dayDisplay, 1);
+            Grid.SetColumn(dayRightBtn, 2);
+            dayGrid.Children.Add(dayLeftBtn);
+            dayGrid.Children.Add(dayDisplay);
+            dayGrid.Children.Add(dayRightBtn);
+
+            return dayGrid;
+        }
+
+        private Button CreateNavigationButton(string content, string backgroundColor)
+        {
+            return new Button
+            {
+                Content = content,
+                Width = 45,
+                Height = 45,
+                FontSize = 20,
+                FontWeight = FontWeights.Bold,
+                Background = GetBrushFromColor(backgroundColor, System.Windows.Media.Brushes.Blue),
+                Foreground = System.Windows.Media.Brushes.White,
+                BorderThickness = new Thickness(0),
+                Template = CreateRoundButtonTemplate()
+            };
+        }
+
+        private Border CreateDisplayBorder(string backgroundColor)
+        {
+            return new Border
+            {
+                Background = GetBrushFromColor(backgroundColor, System.Windows.Media.Brushes.LightBlue),
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(10, 8, 10, 8),
+                Margin = new Thickness(5, 0, 5, 0)
+            };
+        }
+
+        private void SetupMonthNavigation(Button leftBtn, Button rightBtn, TextBlock monthLabel, string[] monthNames)
+        {
+            leftBtn.Click += (s, e) =>
+            {
+                int currentMonth = (int)monthLabel.Tag;
+                int newMonth = currentMonth == 1 ? 12 : currentMonth - 1;
+                monthLabel.Tag = newMonth;
+                monthLabel.Text = monthNames[newMonth - 1];
+            };
+
+            rightBtn.Click += (s, e) =>
+            {
+                int currentMonth = (int)monthLabel.Tag;
+                int newMonth = currentMonth == 12 ? 1 : currentMonth + 1;
+                monthLabel.Tag = newMonth;
+                monthLabel.Text = monthNames[newMonth - 1];
+            };
+        }
+
+        private void SetupDayNavigation(Button leftBtn, Button rightBtn, TextBlock dayLabel, TextBlock monthLabel)
+        {
+            leftBtn.Click += (s, e) =>
+            {
+                int currentDay = (int)dayLabel.Tag;
+                int newDay = currentDay == 1 ? 31 : currentDay - 1;
+                
+                // Basic validation for days in month using reference year for consistent behavior
+                int currentMonth = (int)monthLabel.Tag;
+                var daysInMonth = GetDaysInMonth(currentMonth);
+                if (newDay > daysInMonth) newDay = daysInMonth;
+                
+                dayLabel.Tag = newDay;
+                dayLabel.Text = newDay.ToString();
+            };
+
+            rightBtn.Click += (s, e) =>
+            {
+                int currentDay = (int)dayLabel.Tag;
+                int currentMonth = (int)monthLabel.Tag;
+                var daysInMonth = GetDaysInMonth(currentMonth);
+                
+                int newDay = currentDay == daysInMonth ? 1 : currentDay + 1;
+                
+                dayLabel.Tag = newDay;
+                dayLabel.Text = newDay.ToString();
+            };
+        }
+
+
+
+        private ControlTemplate CreateButtonTemplate(double cornerRadius = 25, bool includeEffects = false, bool includePremiumEffects = false)
+        {
+            var template = new ControlTemplate(typeof(Button));
+            
+            // Create the visual tree
+            var border = new FrameworkElementFactory(typeof(Border));
+            border.SetValue(Border.BackgroundProperty, new TemplateBindingExtension(Control.BackgroundProperty));
+            border.SetValue(Border.CornerRadiusProperty, new CornerRadius(cornerRadius));
+            border.SetValue(Border.BorderThicknessProperty, new Thickness(0));
+            
+            var contentPresenter = new FrameworkElementFactory(typeof(ContentPresenter));
+            contentPresenter.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+            contentPresenter.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
+            
+            border.AppendChild(contentPresenter);
+            template.VisualTree = border;
+            
+            // Add hover effects
+            var hoverTrigger = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+            hoverTrigger.Setters.Add(new Setter(UIElement.OpacityProperty, includeEffects ? 0.9 : 0.85));
+            
+            if (includeEffects)
+            {
+                hoverTrigger.Setters.Add(new Setter(Control.EffectProperty, new System.Windows.Media.Effects.DropShadowEffect
+                {
+                    Color = System.Windows.Media.Colors.Black,
+                    BlurRadius = 12,
+                    ShadowDepth = 3,
+                    Opacity = 0.3
+                }));
+            }
+            
+            if (includePremiumEffects)
+            {
+                hoverTrigger.Setters.Add(new Setter(FrameworkElement.RenderTransformProperty, new ScaleTransform(1.05, 1.05)));
+            }
+            
+            template.Triggers.Add(hoverTrigger);
+            
+            var pressTrigger = new Trigger { Property = Button.IsPressedProperty, Value = true };
+            pressTrigger.Setters.Add(new Setter(UIElement.OpacityProperty, 0.7));
+            
+            if (includeEffects)
+            {
+                pressTrigger.Setters.Add(new Setter(FrameworkElement.RenderTransformProperty, new ScaleTransform(0.98, 0.98)));
+            }
+            
+            if (includePremiumEffects)
+            {
+                pressTrigger.Setters.Add(new Setter(FrameworkElement.RenderTransformProperty, new ScaleTransform(0.95, 0.95)));
+            }
+            
+            template.Triggers.Add(pressTrigger);
+            
+            return template;
+        }
+
+        private ControlTemplate CreateRoundButtonTemplate() => CreateButtonTemplate(25, false, false);
+        private ControlTemplate CreateModernButtonTemplate() => CreateButtonTemplate(15, true, false);
+        private ControlTemplate CreatePremiumButtonTemplate() => CreateButtonTemplate(35, false, true);
+
+        private DateTime ParseSeasonDate(string seasonDate, int year)
+        {
+            try
+            {
+                var parts = seasonDate.Split('-');
+                if (parts.Length == 2 && int.TryParse(parts[0], out int month) && int.TryParse(parts[1], out int day))
+                {
+                    return new DateTime(year, month, day);
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Error parsing season date", ex);
+            }
+            
+            return DateTime.Now;
         }
 
         private async void ToggleCategory(TemplateCategory category)
@@ -683,14 +1006,15 @@ namespace Photobooth.Controls
                 
                 if (confirmed)
                 {
+                    // Update the category status (this also updates all templates in the category)
                     var result = await _databaseService.UpdateTemplateCategoryStatusAsync(category.Id, !category.IsActive);
                     
                     if (result.Success)
                     {
                         CategoriesChanged = true;
-                        LoadCategories();
-                        LoggingService.Application.Information("Category {Action}: {CategoryName}", 
-                            ("Action", action + "d"), ("CategoryName", category.Name));
+                        await LoadCategoriesAsync();
+                        LoggingService.Application.Information("Category {Action}: {CategoryName} with {TemplateCount} templates", 
+                            ("Action", action + "d"), ("CategoryName", category.Name), ("TemplateCount", templateCount));
                         
                         string successMessage = $"Category '{category.Name}' has been {action}d successfully!";
                         if (templateCount > 0)
@@ -702,123 +1026,81 @@ namespace Photobooth.Controls
                     }
                     else
                     {
-                        NotificationService.Instance.ShowError($"Failed to {char.ToUpper(action[0])}{action.Substring(1)} Category", 
-                            $"Could not {action} category '{category.Name}': {result.ErrorMessage}");
+                        NotificationService.Instance.ShowError($"{char.ToUpper(action[0])}{action.Substring(1)} Failed", $"Failed to {action} category: {result.ErrorMessage}");
                     }
                 }
             }
             catch (Exception ex)
             {
                 LoggingService.Application.Error("Error toggling category status", ex);
-                NotificationService.Instance.ShowError("Unexpected Error", 
-                    $"Error updating category '{category.Name}' status. Please try again.");
+                NotificationService.Instance.ShowError("Toggle Error", "Error changing category status. Please try again.");
             }
-        }
-
-        private async void DeleteCategory(TemplateCategory category)
-        {
-            try
-            {
-                bool confirmed = ConfirmationDialog.ShowDeleteConfirmation(category.Name, "category", Window.GetWindow(this));
-                
-                if (confirmed)
-                {
-                    var result = await _databaseService.DeleteTemplateCategoryAsync(category.Id);
-                    if (result.Success)
-                    {
-                        CategoriesChanged = true;
-                        LoadCategories();
-                        LoggingService.Application.Information("Category deleted successfully: {CategoryName}", ("CategoryName", category.Name));
-                        NotificationService.Instance.ShowSuccess("Category Deleted", 
-                            $"Category '{category.Name}' has been deleted successfully!");
-                    }
-                    else
-                    {
-                        NotificationService.Instance.ShowError("Deletion Failed", 
-                            $"Could not delete category '{category.Name}': {result.ErrorMessage}");
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                LoggingService.Application.Error("Error deleting category", ex);
-                NotificationService.Instance.ShowError("Unexpected Error", 
-                    $"Error deleting category '{category.Name}'. Please try again.");
-            }
-        }
-
-        private void CancelEdit_Click(object sender, RoutedEventArgs e)
-        {
-            // Exit edit mode
-            _isEditMode = false;
-            _editingCategoryId = -1;
-            
-            // Reset UI to add mode
-            CancelEditButton.Visibility = Visibility.Collapsed;
-            ((TextBlock)((StackPanel)AddButtonContent).Children[1]).Text = "Add Category";
-            ((TextBlock)((StackPanel)AddButtonContent).Children[0]).Text = "➕";
-            
-            // Clear the form
-            ClearForm();
-        }
-
-        private void ClearForm()
-        {
-            _isEditMode = false;
-            _editingCategoryId = -1;
-            
-            CategoryNameTextBox.Text = string.Empty;
-            CategoryDescriptionTextBox.Text = string.Empty;
-            
-            // Reset seasonal fields
-            IsSeasonalCheckBox.IsChecked = false;
-            SeasonalSettingsPanel.Visibility = Visibility.Collapsed;
-            StartMonthComboBox.SelectedIndex = -1;
-            StartDayComboBox.SelectedIndex = -1;
-            EndMonthComboBox.SelectedIndex = -1;
-            EndDayComboBox.SelectedIndex = -1;
-            SeasonPriorityTextBox.Text = "100";
-            SeasonPreviewText.Text = "Set dates to see preview";
-            
-            // Reset character count
-            if (DescriptionCharCount != null)
-            {
-                DescriptionCharCount.Text = "0/200";
-                DescriptionCharCount.Foreground = (System.Windows.Media.Brush)(new System.Windows.Media.BrushConverter().ConvertFrom("#9CA3AF") ?? System.Windows.Media.Brushes.Gray);
-            }
-            
-            CancelEditButton.Visibility = Visibility.Collapsed;
-            ((TextBlock)((StackPanel)AddButtonContent).Children[1]).Text = "Add Category";
-            ((TextBlock)((StackPanel)AddButtonContent).Children[0]).Text = "➕";
         }
 
         private void CloseButton_Click(object sender, RoutedEventArgs e)
         {
-            // Fire the event to notify about changes
-            CategoriesChangedEvent?.Invoke(this, CategoriesChanged);
-            
-            // Close the modal using ModalService
-            ModalService.Instance.HideModal();
-        }
-
-        /// <summary>
-        /// Static method to show the modal
-        /// </summary>
-        public static void ShowModal()
-        {
             try
             {
+                LoggingService.Application.Information("Close button clicked - starting close process");
+                
+                CategoriesChangedEvent?.Invoke(this, CategoriesChanged);
+                
+                // Close any open dropdown first
+                CloseEditDropdown();
+                
+                if (!TryCloseModal())
+                {
+                    LoggingService.Application.Warning("Failed to close modal through normal methods");
+                    HandleModalCloseError();
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Error closing category modal", ex);
+                HandleModalCloseError();
+            }
+        }
 
-                var modal = new CategoryManagementModal();
-                ModalService.Instance.ShowModal(modal);
+        private bool TryCloseModal()
+        {
+            if (ModalService.Instance.IsModalShown)
+            {
+                ModalService.Instance.HideModal();
+                return true;
+            }
+            else
+            {
+                var parentWindow = Window.GetWindow(this);
+                if (parentWindow != null && parentWindow != Application.Current.MainWindow)
+                {
+                    parentWindow.DialogResult = false;
+                    return true;
+                }
+            }
+            return false;
+        }
 
+        private void HandleModalCloseError()
+        {
+            // Fallback: try ModalService first, then window methods
+            try
+            {
+                if (ModalService.Instance.IsModalShown)
+                {
+                    ModalService.Instance.HideModal();
+                }
+                else
+                {
+                    var parentWindow = Window.GetWindow(this);
+                    parentWindow?.Hide();
+                }
             }
             catch
             {
-
-
-                throw;
+                // Last resort - ignore secondary errors to prevent infinite loops
             }
         }
+
+
     }
 } 

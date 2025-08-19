@@ -24,6 +24,7 @@ namespace Photobooth
         #region Private Fields
 
         private readonly IDatabaseService _databaseService;
+        private readonly MainWindow? _mainWindow; // Reference to MainWindow for operation mode check
         private Template? _currentTemplate;
         private TemplateCategory? _currentCategory;
         private ProductInfo? _currentProduct;
@@ -36,6 +37,9 @@ namespace Photobooth
 
         // Data binding properties
         private string _templateDimensionsText = "Dimensions: Loading...";
+
+        // Credits
+        private decimal _currentCredits = 0;
 
         #endregion
 
@@ -90,9 +94,10 @@ namespace Photobooth
         /// <summary>
         /// Constructor for dependency injection
         /// </summary>
-        public TemplateCustomizationScreen(IDatabaseService databaseService)
+        public TemplateCustomizationScreen(IDatabaseService databaseService, MainWindow? mainWindow = null)
         {
             _databaseService = databaseService ?? throw new ArgumentNullException(nameof(databaseService));
+            _mainWindow = mainWindow;
             _selectedCustomizations = new List<string>();
             
             InitializeComponent();
@@ -100,6 +105,9 @@ namespace Photobooth
             
             // Set the data context for binding
             DataContext = this;
+            
+            // Initialize credits display
+            RefreshCreditsFromDatabase();
         }
 
         /// <summary>
@@ -422,6 +430,79 @@ namespace Photobooth
         private void BackButton_Click(object sender, RoutedEventArgs e)
         {
             BackButtonClicked?.Invoke(this, EventArgs.Empty);
+        }
+
+        /// <summary>
+        /// Refresh credits from database
+        /// </summary>
+        private async void RefreshCreditsFromDatabase()
+        {
+            try
+            {
+                var creditsResult = await _databaseService.GetSettingValueAsync<decimal>("System", "CurrentCredits");
+                if (creditsResult.Success)
+                {
+                    _currentCredits = creditsResult.Data;
+                }
+                else
+                {
+                    _currentCredits = 0;
+                }
+                UpdateCreditsDisplay();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error refreshing credits from database: {ex.Message}");
+                _currentCredits = 0;
+                UpdateCreditsDisplay();
+            }
+        }
+
+        /// <summary>
+        /// Updates the credits display with validation
+        /// </summary>
+        /// <param name="credits">Current credit amount</param>
+        public void UpdateCredits(decimal credits)
+        {
+            if (credits < 0)
+            {
+                credits = 0;
+            }
+
+            _currentCredits = credits;
+            UpdateCreditsDisplay();
+        }
+
+        /// <summary>
+        /// Update credits display
+        /// </summary>
+        private void UpdateCreditsDisplay()
+        {
+            try
+            {
+                if (!Dispatcher.CheckAccess())
+                {
+                    Dispatcher.Invoke(UpdateCreditsDisplay);
+                    return;
+                }
+                if (CreditsDisplay != null)
+                {
+                    string displayText;
+                    if (_mainWindow?.IsFreePlayMode == true)
+                    {
+                        displayText = "Free Play Mode";
+                    }
+                    else
+                    {
+                        displayText = $"Credits: ${_currentCredits:F2}";
+                    }
+                    CreditsDisplay.Text = displayText;
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to update credits display: {ex.Message}");
+            }
         }
 
         #endregion

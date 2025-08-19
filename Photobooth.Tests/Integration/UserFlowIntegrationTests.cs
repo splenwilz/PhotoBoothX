@@ -41,6 +41,10 @@ namespace Photobooth.Tests.Integration
             // Arrange
             TestContext?.WriteLine("Testing database integration for template loading...");
 
+            // Initialize the database first
+            var initResult = await _databaseService!.InitializeAsync();
+            initResult.Success.Should().BeTrue($"Database initialization should succeed: {initResult.ErrorMessage}");
+
             // Act
             var templatesResult = await _databaseService!.GetAllTemplatesAsync();
 
@@ -66,14 +70,14 @@ namespace Photobooth.Tests.Integration
             {
                 Name = "Test Product",
                 Type = "strips",
-                Price = 5.00m,
+                Price = 6.00m,
                 Description = "Test description"
             };
 
             // Act & Assert
             product.Name.Should().Be("Test Product");
             product.Type.Should().Be("strips");
-            product.Price.Should().Be(5.00m);
+            product.Price.Should().Be(6.00m);
             product.Description.Should().Be("Test description");
             TestContext?.WriteLine("✓ ProductInfo model works correctly");
         }
@@ -142,7 +146,7 @@ namespace Photobooth.Tests.Integration
             { 
                 Name = "Test Product", 
                 Type = "strips", 
-                Price = 5.00m 
+                Price = 6.00m 
             });
 
             var templateSelectedArgs = new TemplateSelectedEventArgs(new TemplateInfo 
@@ -160,7 +164,7 @@ namespace Photobooth.Tests.Integration
 
             var photoSessionArgs = new PhotoSessionStartEventArgs(
                 mockTemplate, 
-                new ProductInfo { Name = "Test Product", Type = "strips", Price = 5.00m },
+                new ProductInfo { Name = "Test Product", Type = "strips", Price = 6.00m },
                 new List<string>(), // customizations
                 4, // photoCount
                 3, // timerSeconds
@@ -191,7 +195,7 @@ namespace Photobooth.Tests.Integration
             // Act & Assert - Test the complete data flow we've implemented
 
             // 1. Product Selection
-            var product = new ProductInfo { Name = "Photo Strips", Type = "strips", Price = 5.00m };
+            var product = new ProductInfo { Name = "Photo Strips", Type = "strips", Price = 6.00m };
             product.Name.Should().NotBeNullOrEmpty();
             TestContext?.WriteLine("✓ Product selection data model works");
 
@@ -239,7 +243,7 @@ namespace Photobooth.Tests.Integration
             // Act - Create many instances
             for (int i = 0; i < 1000; i++)
             {
-                var product = new ProductInfo { Name = $"Product {i}", Type = "strips", Price = 5.00m };
+                var product = new ProductInfo { Name = $"Product {i}", Type = "strips", Price = 6.00m };
                 var template = new TemplateInfo { TemplateName = $"Template {i}", Category = "Classic" };
                 
                 // Let them go out of scope

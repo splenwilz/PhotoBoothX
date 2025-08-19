@@ -10,6 +10,7 @@
         WindowState="Maximized" 
         WindowStyle="None"
         Background="Black"
+        Loaded="MainWindow_Loaded"
         >
     <!-- Main Container for all screens -->
     <Grid Name="MainContainer">

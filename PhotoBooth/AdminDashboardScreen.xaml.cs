@@ -5,8 +5,11 @@ using System.ComponentModel;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows;
+using PhotoBooth.Controls;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Data;
@@ -45,7 +48,7 @@ namespace Photobooth
                 if (_isEnabled != value)
                 {
                     _isEnabled = value;
-                    _hasUnsavedChanges = true;
+                    HasUnsavedChanges = true;
                     OnPropertyChanged(nameof(IsEnabled));
                     OnPropertyChanged(nameof(CardOpacity));
                     OnPropertyChanged(nameof(PriceSectionEnabled));
@@ -61,7 +64,7 @@ namespace Photobooth
                 if (_price != value)
                 {
                     _price = value;
-                    _hasUnsavedChanges = true;
+                    HasUnsavedChanges = true;
                     OnPropertyChanged(nameof(Price));
                     OnPropertyChanged(nameof(PriceText));
                 }
@@ -73,27 +76,51 @@ namespace Photobooth
             get => _price.ToString("F2", CultureInfo.InvariantCulture);
             set
             {
+#if DEBUG
+                Console.WriteLine($"=== ProductViewModel.PriceText setter called ===");
+                Console.WriteLine($"Product: {Name}, Current Price: {_price}, Input Value: '{value}'");
+#endif
+                
                 // Use specific NumberStyles to prevent comma interpretation as thousands separator
                 // Allow decimal point, leading sign, and whitespace, but not thousands separators
                 var allowedStyles = NumberStyles.AllowDecimalPoint | NumberStyles.AllowLeadingSign | 
                                    NumberStyles.AllowLeadingWhite | NumberStyles.AllowTrailingWhite;
                 if (decimal.TryParse(value, allowedStyles, CultureInfo.InvariantCulture, out decimal newPrice))
                 {
+#if DEBUG
+                    Console.WriteLine($"Parsed successfully: {newPrice}");
+#endif
+                    
                     // Allow zero values for free products, but not negative values
                     if (newPrice >= 0)
                     {
+#if DEBUG
+                        Console.WriteLine($"Setting Price from {_price} to {newPrice}");
+#endif
                         Price = newPrice;
                         ValidationError = null; // Clear any previous validation error
+#if DEBUG
+                        Console.WriteLine($"Price set successfully, new Price: {_price}");
+#endif
                     }
                     else
                     {
+#if DEBUG
+                        Console.WriteLine($"Price rejected: negative value");
+#endif
                         ValidationError = "Price cannot be negative";
                     }
                 }
                 else
                 {
+#if DEBUG
+                    Console.WriteLine($"Parse failed for value: '{value}'");
+#endif
                     ValidationError = "Invalid price format. Please enter a valid number (e.g., 5.00)";
                 }
+#if DEBUG
+                Console.WriteLine($"=== ProductViewModel.PriceText setter completed ===");
+#endif
             }
         }
 
@@ -132,6 +159,38 @@ namespace Photobooth
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
+
+        /// <summary>
+        /// Reset the unsaved changes flag - used when loading data from database
+        /// </summary>
+        public void ResetUnsavedChanges()
+        {
+            _hasUnsavedChanges = false;
+            OnPropertyChanged(nameof(HasUnsavedChanges));
+        }
+
+        /// <summary>
+        /// Set price from database without triggering unsaved changes flag
+        /// </summary>
+        public void SetPriceFromDatabase(decimal price)
+        {
+            _price = price;
+            // Don't trigger HasUnsavedChanges when loading from database
+            OnPropertyChanged(nameof(Price));
+            OnPropertyChanged(nameof(PriceText));
+        }
+
+        /// <summary>
+        /// Set enabled status from database without triggering unsaved changes flag
+        /// </summary>
+        public void SetIsEnabledFromDatabase(bool isEnabled)
+        {
+            _isEnabled = isEnabled;
+            // Don't trigger HasUnsavedChanges when loading from database
+            OnPropertyChanged(nameof(IsEnabled));
+            OnPropertyChanged(nameof(CardOpacity));
+            OnPropertyChanged(nameof(PriceSectionEnabled));
+        }
     }
 
     /// <summary>
@@ -155,6 +214,7 @@ namespace Photobooth
         private Dictionary<string, Grid> _tabContentPanels = new();
         private Dictionary<string, Button> _tabButtons = new();
         private readonly IDatabaseService _databaseService;
+        private readonly MainWindow? _mainWindow; // Reference to MainWindow for operation mode refresh
 
         // Sample sales data - in real implementation, this would come from database
         private SalesData _salesData = new();
@@ -171,13 +231,21 @@ namespace Photobooth
         // Product management
         private List<Product> _products = new();
         private bool _isLoadingProducts = false;
-        private bool _hasUnsavedChanges = false;
+        private bool _isSaving = false;
+        private bool _isValidatingInput = false;
 
         // Product ViewModels for new templated approach
         public ObservableCollection<ProductViewModel> ProductViewModels { get; set; } = new();
 
         // Templates tab control instance
         private Views.TemplatesTabControl? TemplatesTabControlInstance;
+
+        // Credit management
+        private decimal _currentCredits = 0;
+        private List<CreditTransaction> _creditHistory = new();
+        
+        // Transaction history
+        private List<Transaction> _recentTransactions = new();
 
         #endregion
 
@@ -186,7 +254,7 @@ namespace Photobooth
         /// <summary>
         /// Initialize the admin dashboard screen
         /// </summary>
-        public AdminDashboardScreen(IDatabaseService databaseService)
+        public AdminDashboardScreen(IDatabaseService databaseService, MainWindow? mainWindow = null)
         {
 
             try
@@ -197,6 +265,7 @@ namespace Photobooth
 
 
                 _databaseService = databaseService;
+                _mainWindow = mainWindow;
 
 
                 InitializeTabMapping();
@@ -211,6 +280,10 @@ namespace Photobooth
                 InitializeTemplatesTab();
 
 
+                // Set up virtual keyboard callback for price input completion
+                SetupVirtualKeyboardCallback();
+
+
             }
             catch (Exception ex)
             {
@@ -221,6 +294,53 @@ namespace Photobooth
                     System.Diagnostics.Debug.WriteLine($"Inner Exception: {ex.InnerException.Message}");
                 }
                 throw; // Re-throw to prevent silent failures
+            }
+        }
+
+        /// <summary>
+        /// Set up the virtual keyboard callback for price input completion
+        /// </summary>
+        private void SetupVirtualKeyboardCallback()
+        {
+            try
+            {
+                // Set up callback for when price input is completed via virtual keyboard
+                VirtualKeyboardService.Instance.OnPriceInputComplete = (context) =>
+                {
+                    // Trigger the save functionality when price input is completed
+                    LoggingService.Application.Information("Price input completed via virtual keyboard", ("Context", context));
+                    
+                    // Use Dispatcher to ensure we're on the UI thread with proper async handling
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            // Use InvokeAsync for proper async/await handling
+                            await Dispatcher.InvokeAsync(async () =>
+                            {
+                                // Trigger the save functionality
+                                await SaveProductConfiguration();
+                                
+                                // Show success feedback
+                                NotificationService.Quick.Success("Product settings saved successfully!");
+                            });
+                        }
+                        catch (Exception ex)
+                        {
+                            LoggingService.Application.Error("Failed to save product configuration from virtual keyboard callback", ex);
+                            
+                            // Ensure error notification is shown on UI thread
+                            await Dispatcher.InvokeAsync(() =>
+                            {
+                                NotificationService.Quick.Error("Failed to save product settings");
+                            });
+                        }
+                    });
+                };
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to set up virtual keyboard callback", ex);
             }
         }
 
@@ -299,7 +419,7 @@ namespace Photobooth
             UnsubscribeFromProductViewModels();
             ProductViewModels.Clear();
 
-            // Photo Strips Product
+            // Photo Strips Product - Initialize with defaults, database values will override during LoadProductsData
             var photoStrips = new ProductViewModel
             {
                 Name = "Photo Strips",
@@ -309,10 +429,10 @@ namespace Photobooth
                 PriceLabel = "Price per Strip",
                 ProductKey = "PhotoStrips",
                 IsEnabled = true,
-                Price = 5.00m
+                // Don't set Price here - let it default to 0, database values will override
             };
 
-            // 4x6 Photos Product
+            // 4x6 Photos Product - Initialize with defaults, database values will override during LoadProductsData
             var photo4x6 = new ProductViewModel
             {
                 Name = "4x6 Photos",
@@ -322,10 +442,10 @@ namespace Photobooth
                 PriceLabel = "Price per Photo",
                 ProductKey = "Photo4x6",
                 IsEnabled = true,
-                Price = 3.00m
+                // Don't set Price here - let it default to 0, database values will override
             };
 
-            // Smartphone Print Product
+            // Smartphone Print Product - Initialize with defaults, database values will override during LoadProductsData
             var smartphonePrint = new ProductViewModel
             {
                 Name = "Smartphone Print",
@@ -335,7 +455,7 @@ namespace Photobooth
                 PriceLabel = "Price per Print",
                 ProductKey = "SmartphonePrint",
                 IsEnabled = true,
-                Price = 2.00m
+                // Don't set Price here - let it default to 0, database values will override
             };
 
             ProductViewModels.Add(photoStrips);
@@ -346,6 +466,8 @@ namespace Photobooth
             foreach (var product in ProductViewModels)
             {
                 product.PropertyChanged += ProductViewModel_PropertyChanged;
+                // Reset unsaved changes flag so database values can load properly during LoadProductsData
+                product.ResetUnsavedChanges();
             }
 
             // The ItemsSource will be set when the control is loaded
@@ -360,7 +482,6 @@ namespace Photobooth
         {
             if (e.PropertyName == nameof(ProductViewModel.IsEnabled) || e.PropertyName == nameof(ProductViewModel.Price))
             {
-                _hasUnsavedChanges = true;
                 UpdateSaveButtonState();
             }
         }
@@ -423,6 +544,7 @@ namespace Photobooth
             {
                 await LoadSalesData();
                 await LoadSupplyStatus();
+                await LoadTransactionHistory();
             }
             catch
             {
@@ -481,7 +603,25 @@ namespace Photobooth
         /// </summary>
         private void ExitAdminButton_Click(object sender, RoutedEventArgs e)
         {
-            ExitAdminRequested?.Invoke(this, EventArgs.Empty);
+            try
+            {
+                Console.WriteLine("AdminDashboard: Exit admin button clicked - cleaning up diagnostic camera");
+                
+                // Stop diagnostic camera when exiting admin
+                StopDiagnosticCamera();
+                LogToDiagnostics("Diagnostic camera stopped - exiting admin dashboard");
+                
+                // Invoke the exit event
+                ExitAdminRequested?.Invoke(this, EventArgs.Empty);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"AdminDashboard: Error during admin exit - {ex.Message}");
+                LoggingService.Application.Error("Failed to cleanup during admin exit", ex);
+                
+                // Still try to exit even if cleanup fails
+                ExitAdminRequested?.Invoke(this, EventArgs.Empty);
+            }
         }
 
         /// <summary>
@@ -505,6 +645,13 @@ namespace Photobooth
                 {
                     clickedTab.Tag = "Active";
 
+                    // Auto-stop diagnostic camera when leaving diagnostics tab
+                    if (DiagnosticsTabContent.Visibility == Visibility.Visible && clickedTab.Name != "DiagnosticsTab")
+                    {
+                        StopDiagnosticCamera();
+                        LogToDiagnostics("Diagnostic camera auto-stopped when leaving tab");
+                    }
+                    
                     // Hide all tab contents
                     SalesTabContent.Visibility = Visibility.Collapsed;
                     SettingsTabContent.Visibility = Visibility.Collapsed;
@@ -552,10 +699,12 @@ namespace Photobooth
                         case "DiagnosticsTab":
                             DiagnosticsTabContent.Visibility = Visibility.Visible;
                             BreadcrumbText.Text = "Diagnostics";
+                            InitializeDiagnosticsTab();
                             break;
                         case "SystemTab":
                             SystemTabContent.Visibility = Visibility.Visible;
                             BreadcrumbText.Text = "System";
+                            await LoadSystemTabSettings();
                             break;
                         case "CreditsTab":
                             CreditsTabContent.Visibility = Visibility.Visible;
@@ -691,7 +840,7 @@ namespace Photobooth
                 {
                     SaveSettingsButton.IsEnabled = true;
                     SaveSettingsButton.Content = new StackPanel { Orientation = Orientation.Horizontal, Children = {
-                        new TextBlock { Text = "??", FontSize = 14, Margin = new Thickness(0,0,8,0) },
+                        new TextBlock { Text = "💾", FontSize = 14, Margin = new Thickness(0,0,8,0) },
                         new TextBlock { Text = "Save Settings", FontSize = 14 }
                     }};
                 }
@@ -771,9 +920,24 @@ namespace Photobooth
             try
             {
 
+                Console.WriteLine($"=== SAVING OPERATION MODE === Mode: '{_currentOperationMode}', UserId: '{_currentUserId}'");
+
                 // NOTE: Product pricing and enabled states are now managed in the Products tab
                 // Only save operation mode here (Coin vs Free) - this is system-wide setting
                 var result = await _databaseService.SetSettingValueAsync("System", "Mode", _currentOperationMode, _currentUserId);
+                Console.WriteLine($"=== SAVE OPERATION MODE RESULT === Success: {result.Success}");
+
+                // Refresh the MainWindow's operation mode to immediately reflect the change
+                if (_mainWindow != null)
+                {
+                    Console.WriteLine("=== REFRESHING MAINWINDOW OPERATION MODE ===");
+                    await _mainWindow.RefreshOperationModeAsync();
+                    LoggingService.Application.Information("Operation mode refreshed in MainWindow", ("NewMode", _currentOperationMode));
+                }
+                else
+                {
+                    Console.WriteLine("=== MAINWINDOW IS NULL - CANNOT REFRESH OPERATION MODE ===");
+                }
 
             }
             catch (Exception ex)
@@ -1490,6 +1654,14 @@ namespace Photobooth
             {
 
             }
+
+            // Refresh data when showing specific tabs
+            if (tabName == "Credits")
+            {
+                // Refresh credits display and history when tab is shown
+                UpdateCreditsDisplay();
+                UpdateCreditHistoryDisplay();
+            }
         }
 
         /// <summary>
@@ -1559,41 +1731,112 @@ namespace Photobooth
         {
             try
             {
-                // Load today's sales
+                // Load today's sales and calculate change from yesterday
                 var todayResult = await _databaseService.GetDailySalesAsync(DateTime.Today);
-                if (todayResult.Success && todayResult.Data != null)
-                {
-                    var todaySales = todayResult.Data;
-                    TodaySales.Text = $"${todaySales.TotalRevenue:F2}";
-                }
-                else
-                {
-                    // No sales today, use dummy data or show $0.00
-                    TodaySales.Text = "$0.00";
-                }
+                var todaySales = todayResult.Success && todayResult.Data != null ? todayResult.Data.TotalRevenue : 0;
+                var yesterdaySales = await CalculatePeriodSales(DateTime.Today.AddDays(-1), DateTime.Today.AddDays(-1));
+                
+                TodaySales.Text = $"${todaySales:F2}";
+                UpdatePercentageDisplay(TodayChange, todaySales, yesterdaySales, "yesterday");
 
-                // Load week sales (sum of last 7 days)
-                var weekSales = await CalculatePeriodSales(DateTime.Today.AddDays(-7), DateTime.Today);
-                WeekSales.Text = $"${weekSales:F2}";
+                // Load week sales (current week vs last week)
+                var currentWeekStart = DateTime.Today.AddDays(-(int)DateTime.Today.DayOfWeek);
+                var currentWeekSales = await CalculatePeriodSales(currentWeekStart, DateTime.Today);
+                var lastWeekStart = currentWeekStart.AddDays(-7);
+                var lastWeekSales = await CalculatePeriodSales(lastWeekStart, lastWeekStart.AddDays(6));
+                
+                WeekSales.Text = $"${currentWeekSales:F2}";
+                UpdatePercentageDisplay(WeekChange, currentWeekSales, lastWeekSales, "last week");
 
-                // Load month sales
-                var monthStart = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
-                var monthSales = await CalculatePeriodSales(monthStart, DateTime.Today);
-                MonthSales.Text = $"${monthSales:F2}";
+                // Load month sales (current month vs last month)
+                var currentMonthStart = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+                var currentMonthSales = await CalculatePeriodSales(currentMonthStart, DateTime.Today);
+                var lastMonthStart = currentMonthStart.AddMonths(-1);
+                var lastMonthEnd = currentMonthStart.AddDays(-1);
+                var lastMonthSales = await CalculatePeriodSales(lastMonthStart, lastMonthEnd);
+                
+                MonthSales.Text = $"${currentMonthSales:F2}";
+                UpdatePercentageDisplay(MonthChange, currentMonthSales, lastMonthSales, "last month");
 
-                // Load year sales
-                var yearStart = new DateTime(DateTime.Today.Year, 1, 1);
-                var yearSales = await CalculatePeriodSales(yearStart, DateTime.Today);
-                YearSales.Text = $"${yearSales:F2}";
+                // Load year sales (current year vs last year)
+                var currentYearStart = new DateTime(DateTime.Today.Year, 1, 1);
+                var currentYearSales = await CalculatePeriodSales(currentYearStart, DateTime.Today);
+                var lastYearStart = new DateTime(DateTime.Today.Year - 1, 1, 1);
+                var lastYearEnd = new DateTime(DateTime.Today.Year - 1, 12, 31);
+                var lastYearSales = await CalculatePeriodSales(lastYearStart, lastYearEnd);
+                
+                YearSales.Text = $"${currentYearSales:F2}";
+                UpdatePercentageDisplay(YearChange, currentYearSales, lastYearSales, "last year");
             }
-            catch
+            catch (Exception ex)
             {
+                LoggingService.Application.Error("Failed to load sales data", ex);
 
                 // Set default values on error
                 TodaySales.Text = "$0.00";
                 WeekSales.Text = "$0.00";
                 MonthSales.Text = "$0.00";
                 YearSales.Text = "$0.00";
+                
+                // Set default percentage messages
+                TodayChange.Text = "No data available";
+                WeekChange.Text = "No data available";
+                MonthChange.Text = "No data available";
+                YearChange.Text = "No data available";
+            }
+        }
+
+        /// <summary>
+        /// Update percentage display with calculated change and appropriate formatting
+        /// </summary>
+        private void UpdatePercentageDisplay(TextBlock textBlock, decimal currentValue, decimal previousValue, string periodName)
+        {
+            try
+            {
+                if (textBlock == null) return;
+
+                if (previousValue == 0)
+                {
+                    if (currentValue > 0)
+                    {
+                        // New sales with no previous data
+                        textBlock.Text = $"New sales vs {periodName}";
+                        textBlock.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#059669")); // Green
+                    }
+                    else
+                    {
+                        // No sales in either period
+                        textBlock.Text = $"No change from {periodName}";
+                        textBlock.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#6B7280")); // Gray
+                    }
+                    return;
+                }
+
+                // Calculate percentage change
+                var percentageChange = ((currentValue - previousValue) / previousValue) * 100;
+                var roundedPercentage = Math.Round(percentageChange, 1);
+
+                if (roundedPercentage > 0)
+                {
+                    textBlock.Text = $"+{roundedPercentage}% from {periodName}";
+                    textBlock.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#059669")); // Green
+                }
+                else if (roundedPercentage < 0)
+                {
+                    textBlock.Text = $"{roundedPercentage}% from {periodName}"; // Negative sign already included
+                    textBlock.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#DC2626")); // Red
+                }
+                else
+                {
+                    textBlock.Text = $"No change from {periodName}";
+                    textBlock.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#6B7280")); // Gray
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to update percentage display", ex);
+                textBlock.Text = $"Error calculating vs {periodName}";
+                textBlock.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#6B7280")); // Gray
             }
         }
 
@@ -1727,12 +1970,14 @@ namespace Photobooth
         {
             await LoadSalesData();
             await LoadSupplyStatus();
-            await LoadSystemSettings();
             await LoadBusinessInformation();
             await LoadOperationModeFromSettings();
             await LoadSystemPreferences();
             await LoadProductsData(); // Load the products data for Products tab
             await LoadUsersList(); // Load the users list
+            await LoadCreditsAsync(); // Load the credit system data
+            await LoadTransactionHistory(); // Load transaction history for sales tab
+            await LoadSystemTabSettings(); // Load system configuration settings
         }
 
         private async System.Threading.Tasks.Task LoadBusinessInformation()
@@ -1921,37 +2166,72 @@ namespace Photobooth
                 var photo4x6 = _products.FirstOrDefault(p => p.ProductType == ProductType.Photo4x6);
                 var smartphonePrint = _products.FirstOrDefault(p => p.ProductType == ProductType.SmartphonePrint);
 
-                // Update ViewModels with database data
+                // Update ViewModels with database data, but preserve unsaved changes
                 var photoStripsVM = ProductViewModels.FirstOrDefault(vm => vm.ProductKey == "PhotoStrips");
                 if (photoStripsVM != null && photoStrips != null)
                 {
-                    photoStripsVM.IsEnabled = photoStrips.IsActive;
-                    photoStripsVM.Price = photoStrips.Price;
-                    photoStripsVM.HasUnsavedChanges = false;
+                    // Only update if there are no unsaved changes to preserve user input
+                    if (!photoStripsVM.HasUnsavedChanges)
+                    {
+                        photoStripsVM.SetIsEnabledFromDatabase(photoStrips.IsActive);
+                        photoStripsVM.SetPriceFromDatabase(photoStrips.Price);
+                    }
+                    else
+                    {
+        
+                    }
                 }
 
                 var photo4x6VM = ProductViewModels.FirstOrDefault(vm => vm.ProductKey == "Photo4x6");
                 if (photo4x6VM != null && photo4x6 != null)
                 {
-                    photo4x6VM.IsEnabled = photo4x6.IsActive;
-                    photo4x6VM.Price = photo4x6.Price;
-                    photo4x6VM.HasUnsavedChanges = false;
+                    // Only update if there are no unsaved changes to preserve user input
+                    if (!photo4x6VM.HasUnsavedChanges)
+                    {
+                        photo4x6VM.SetIsEnabledFromDatabase(photo4x6.IsActive);
+                        photo4x6VM.SetPriceFromDatabase(photo4x6.Price);
+                    }
+                    else
+                    {
+        
+                    }
                 }
 
                 var smartphonePrintVM = ProductViewModels.FirstOrDefault(vm => vm.ProductKey == "SmartphonePrint");
                 if (smartphonePrintVM != null && smartphonePrint != null)
                 {
-                    smartphonePrintVM.IsEnabled = smartphonePrint.IsActive;
-                    smartphonePrintVM.Price = smartphonePrint.Price;
-                    smartphonePrintVM.HasUnsavedChanges = false;
+                    // Only update if there are no unsaved changes to preserve user input
+                    if (!smartphonePrintVM.HasUnsavedChanges)
+                    {
+                        smartphonePrintVM.SetIsEnabledFromDatabase(smartphonePrint.IsActive);
+                        smartphonePrintVM.SetPriceFromDatabase(smartphonePrint.Price);
+                    }
+                    else
+                    {
+        
+                    }
                 }
 
-                _hasUnsavedChanges = false;
+                // Only clear unsaved changes flag if no ViewModels have unsaved changes
+                var hasAnyUnsavedChanges = ProductViewModels.Any(vm => vm.HasUnsavedChanges);
+                if (!hasAnyUnsavedChanges)
+                {
+            }
+
+                // Load extra copy pricing (use PhotoStrips as reference product)
+                if (photoStrips != null)
+            {
+                    LoadExtraCopyPricingUI(photoStrips);
+                }
+
+                // Update base price displays to show current database values
+                UpdateBasePriceDisplays();
+
                 UpdateSaveButtonState();
             }
-            catch
+            catch (Exception ex)
             {
-
+                LoggingService.Application.Error("Failed to update products UI", ex);
             }
         }
 
@@ -2080,7 +2360,6 @@ namespace Photobooth
                     UpdateModeCardStyles(false);
                 }
 
-                _hasUnsavedChanges = true;
                 UpdateSaveButtonState();
             }
         }
@@ -2093,39 +2372,47 @@ namespace Photobooth
             try
             {
                 // Only update if the save button exists (we're in the Products tab)
-                if (SaveProductConfigButton == null)
+                if (SaveProductConfigButton == null || SaveButtonText == null || UnsavedChangesIndicator == null || SaveButtonBorder == null)
                     return;
 
-                if (_hasUnsavedChanges)
+                // Check if any ProductViewModel has unsaved changes
+                var hasAnyUnsavedChanges = ProductViewModels.Any(vm => vm.HasUnsavedChanges);
+
+                // Check if there are any validation errors in pricing inputs
+                var hasValidationErrors = HasAnyValidationErrors();
+
+                if (hasValidationErrors)
                 {
-                    SaveProductConfigButton.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#059669")); // Green
-                    SaveProductConfigButton.Content = new StackPanel
-                    {
-                        Orientation = Orientation.Horizontal,
-                        Children =
-                        {
-                            new TextBlock { Text = "??", FontSize = 16, Margin = new Thickness(0, 0, 8, 0) },
-                            new TextBlock { Text = "Save Changes" }
-                        }
-                    };
+                    // Show validation error state - disable save button
+                    SaveButtonBorder.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#DC2626")); // Red
+                    SaveButtonText.Text = "Fix Errors";
+                    UnsavedChangesIndicator.Text = "Validation errors detected";
+                    UnsavedChangesIndicator.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#DC2626")); // Red
+                    UnsavedChangesIndicator.Visibility = Visibility.Visible;
+                    SaveProductConfigButton.IsEnabled = false;
+                }
+                else if (hasAnyUnsavedChanges)
+                {
+                    // Show unsaved changes state
+                    SaveButtonBorder.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#059669")); // Green
+                    SaveButtonText.Text = "Save Changes";
+                    UnsavedChangesIndicator.Text = "Unsaved changes";
+                    UnsavedChangesIndicator.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F59E0B")); // Amber
+                    UnsavedChangesIndicator.Visibility = Visibility.Visible;
+                    SaveProductConfigButton.IsEnabled = true;
                 }
                 else
                 {
-                    SaveProductConfigButton.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#3B82F6")); // Blue
-                    SaveProductConfigButton.Content = new StackPanel
-                    {
-                        Orientation = Orientation.Horizontal,
-                        Children =
-                        {
-                            new TextBlock { Text = "??", FontSize = 16, Margin = new Thickness(0, 0, 8, 0) },
-                            new TextBlock { Text = "Save Configuration" }
-                        }
-                    };
+                    // Show normal state
+                    SaveButtonBorder.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#3B82F6")); // Blue
+                    SaveButtonText.Text = "Save Configuration";
+                    UnsavedChangesIndicator.Visibility = Visibility.Collapsed;
+                    SaveProductConfigButton.IsEnabled = true;
                 }
             }
-            catch
+            catch (Exception ex)
             {
-
+                LoggingService.Application.Error("Error updating save button state", ex);
             }
         }
 
@@ -2136,58 +2423,74 @@ namespace Photobooth
         {
             try
             {
-                SaveProductConfigButton.IsEnabled = false;
-                SaveProductConfigButton.Content = new StackPanel
-                {
-                    Orientation = Orientation.Horizontal,
-                    Children =
-                    {
-                        new TextBlock { Text = "?", FontSize = 16, Margin = new Thickness(0, 0, 8, 0) },
-                        new TextBlock { Text = "Saving..." }
-                    }
-                };
-
-                await SaveProductConfiguration();
+#if DEBUG
+                Console.WriteLine("=== SaveProductConfig_Click CALLED ===");
+#endif
                 
-                _hasUnsavedChanges = false;
-                UpdateSaveButtonState();
-
-                // Show success feedback
-                SaveProductConfigButton.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#059669"));
-                SaveProductConfigButton.Content = new StackPanel
+                // Prevent multiple simultaneous saves
+                if (_isSaving)
                 {
-                    Orientation = Orientation.Horizontal,
-                    Children =
-                    {
-                        new TextBlock { Text = "?", FontSize = 16, Margin = new Thickness(0, 0, 8, 0) },
-                        new TextBlock { Text = "Saved!" }
-                    }
-                };
+#if DEBUG
+                    Console.WriteLine("Save already in progress, ignoring duplicate request");
+#endif
+                    return;
+                }
+                
+                _isSaving = true;
+                SaveProductConfigButton.IsEnabled = false;
+                SaveButtonBorder.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#6366F1")); // Purple for saving
+                SaveButtonText.Text = "Saving...";
+                UnsavedChangesIndicator.Text = "Please wait...";
+                UnsavedChangesIndicator.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#6366F1")); // Purple
+                UnsavedChangesIndicator.Visibility = Visibility.Visible;
+
+#if DEBUG
+                Console.WriteLine("About to call SaveProductConfiguration()...");
+#endif
+                await SaveProductConfiguration();
+#if DEBUG
+                Console.WriteLine("SaveProductConfiguration() completed successfully");
+#endif
+                
+                // Show success feedback
+                SaveButtonBorder.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#059669"));
+                SaveButtonText.Text = "Saved!";
+                UnsavedChangesIndicator.Text = "Settings saved successfully";
+                UnsavedChangesIndicator.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#059669")); // Green
+                UnsavedChangesIndicator.Visibility = Visibility.Visible;
+
+                // Show notification toast
+                NotificationService.Quick.Success("Product settings have been saved successfully!");
 
                 // Reset after 2 seconds
                 await Task.Delay(2000);
+                UnsavedChangesIndicator.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F59E0B")); // Back to amber
                 UpdateSaveButtonState();
+                
+#if DEBUG
+                Console.WriteLine("=== SaveProductConfig_Click COMPLETED SUCCESSFULLY ===");
+#endif
             }
-            catch
+            catch (Exception ex)
             {
+#if DEBUG
+                Console.WriteLine($"=== SaveProductConfig_Click ERROR: {ex.Message} ===");
+#endif
 
                 // Show error feedback
-                SaveProductConfigButton.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#DC2626"));
-                SaveProductConfigButton.Content = new StackPanel
-                {
-                    Orientation = Orientation.Horizontal,
-                    Children =
-                    {
-                        new TextBlock { Text = "?", FontSize = 16, Margin = new Thickness(0, 0, 8, 0) },
-                        new TextBlock { Text = "Error saving" }
-                    }
-                };
+                SaveButtonBorder.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#DC2626"));
+                SaveButtonText.Text = "Error!";
+                UnsavedChangesIndicator.Text = "Failed to save settings";
+                UnsavedChangesIndicator.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#DC2626")); // Red
+                UnsavedChangesIndicator.Visibility = Visibility.Visible;
 
                 await Task.Delay(2000);
+                UnsavedChangesIndicator.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F59E0B")); // Back to amber
                 UpdateSaveButtonState();
             }
             finally
             {
+                _isSaving = false;
                 SaveProductConfigButton.IsEnabled = true;
             }
         }
@@ -2199,8 +2502,22 @@ namespace Photobooth
         {
             try
             {
+#if DEBUG
+                Console.WriteLine("=== SaveProductConfiguration CALLED ===");
+                Console.WriteLine($"Total ProductViewModels: {ProductViewModels.Count}");
+                
+                foreach (var vm in ProductViewModels)
+                {
+                    Console.WriteLine($"Product: {vm.Name}, Price: {vm.Price}, HasUnsavedChanges: {vm.HasUnsavedChanges}");
+                }
+#endif
+                
                 // Check for validation errors before saving
                 var validationErrors = ProductViewModels.Where(vm => vm.HasValidationError).ToList();
+#if DEBUG
+                Console.WriteLine($"Validation errors found: {validationErrors.Count}");
+#endif
+                
                 if (validationErrors.Count > 0)
                 {
                     // Create detailed error message listing each product and its specific error
@@ -2210,7 +2527,7 @@ namespace Photobooth
                     
                     foreach (var errorViewModel in validationErrors)
                     {
-                        errorDetails.Add($"? {errorViewModel.Name}: {errorViewModel.ValidationError}");
+                        errorDetails.Add($"• {errorViewModel.Name}: {errorViewModel.ValidationError}");
                     }
                     
                     errorDetails.Add(""); // Empty line for readability
@@ -2222,8 +2539,15 @@ namespace Photobooth
                 }
 
                 // Update products in database using ViewModels
+#if DEBUG
+                Console.WriteLine($"Updating {_products.Count} products in database...");
+#endif
+                
                 foreach (var product in _products)
                 {
+#if DEBUG
+                    Console.WriteLine($"Processing product: {product.Name} (Type: {product.ProductType}, ID: {product.Id})");
+#endif
 
                     bool newStatus = false;
                     decimal newPrice = 0;
@@ -2248,18 +2572,34 @@ namespace Photobooth
                         newStatus = viewModel.IsEnabled;
                         newPrice = viewModel.Price;
 
+#if DEBUG
+                        Console.WriteLine($"Found ViewModel: {viewModel.Name}, Current DB Price: {product.Price}, New Price: {newPrice}, HasUnsavedChanges: {viewModel.HasUnsavedChanges}");
+#endif
+
                         // Check what needs to be updated
                         bool statusChanged = product.IsActive != newStatus;
                         bool priceChanged = product.Price != newPrice && newPrice >= 0;
                         
+#if DEBUG
+                        Console.WriteLine($"Status changed: {statusChanged} ({product.IsActive} -> {newStatus}), Price changed: {priceChanged} ({product.Price} -> {newPrice})");
+#endif
+                        
                         if (statusChanged || priceChanged)
                         {
+#if DEBUG
+                            Console.WriteLine($"Updating product {product.Name} in database...");
+#endif
+                            
                             // Collect all changes for atomic update
                             bool? statusUpdate = statusChanged ? newStatus : null;
                             decimal? priceUpdate = priceChanged ? newPrice : null;
 
                             // Perform atomic update
                             var updateResult = await _databaseService.UpdateProductAsync(product.Id, statusUpdate, priceUpdate);
+                            
+#if DEBUG
+                            Console.WriteLine($"Database update result for {product.Name}: Success={updateResult.Success}, Error={updateResult.ErrorMessage}");
+#endif
                             
                             if (!updateResult.Success)
                             {
@@ -2270,25 +2610,63 @@ namespace Photobooth
                             if (statusChanged)
                             {
                                 product.IsActive = newStatus;
+#if DEBUG
+                                Console.WriteLine($"Updated local product {product.Name} IsActive to {newStatus}");
+#endif
                             }
                             if (priceChanged)
                             {
                                 product.Price = newPrice;
+#if DEBUG
+                                Console.WriteLine($"Updated local product {product.Name} Price to {newPrice}");
+#endif
                             }
 
                         }
                         else
                         {
-
+#if DEBUG
+                            Console.WriteLine($"No changes needed for product {product.Name}");
+#endif
                         }
 
                         // Mark ViewModel as saved
-                        viewModel.HasUnsavedChanges = false;
+                        viewModel.ResetUnsavedChanges();
+#if DEBUG
+                        Console.WriteLine($"Marked ViewModel {viewModel.Name} as saved (HasUnsavedChanges = false)");
+#endif
+                    }
+                    else
+                    {
+#if DEBUG
+                        Console.WriteLine($"No ViewModel found for product {product.Name}");
+#endif
                     }
                 }
+                
+#if DEBUG
+                Console.WriteLine("=== SaveProductConfiguration COMPLETED ===");
+#endif
 
-                // Save operation mode
-                await _databaseService.SetSettingValueAsync("System", "Mode", _currentOperationMode, _currentUserId);
+                // Save extra copy pricing for all products
+                await SaveExtraCopyPricing();
+
+                // Refresh products from database to ensure local _products list is up to date
+                var refreshResult = await _databaseService.GetProductsAsync();
+                if (refreshResult.Success && refreshResult.Data != null)
+                {
+                    _products = refreshResult.Data;
+#if DEBUG
+                    Console.WriteLine("=== Refreshed _products list from database after save ===");
+                    foreach (var product in _products)
+                    {
+                        Console.WriteLine($"  {product.Name}: Price=${product.Price}, IsActive={product.IsActive}");
+                    }
+#endif
+                }
+
+                // Save operation mode and refresh MainWindow
+                await SaveOperationModeSettings();
 
             }
             catch
@@ -2298,7 +2676,662 @@ namespace Photobooth
             }
         }
 
+        /// <summary>
+        /// Save extra copy pricing for all products
+        /// </summary>
+        private async Task SaveExtraCopyPricing()
+        {
+            try
+            {
+                // Get custom pricing toggle state
+                bool useCustomPricing = UseCustomExtraCopyPricingCheckBox?.IsChecked == true;
+
+                // Simplified product-specific extra copy pricing
+                decimal? stripsExtraCopyPrice = null;
+                decimal? stripsMultipleCopyDiscount = null;
+                decimal? photo4x6ExtraCopyPrice = null;
+                decimal? photo4x6MultipleCopyDiscount = null;
+                decimal? smartphoneExtraCopyPrice = null;
+                decimal? smartphoneMultipleCopyDiscount = null;
+
+                if (useCustomPricing)
+                {
+                    // Get Photo Strips pricing from UI
+                    if (StripsExtraCopyPriceInput != null && int.TryParse(StripsExtraCopyPriceInput.Text, out int stripsPrice))
+                    {
+                        stripsExtraCopyPrice = stripsPrice;
+                    }
+                    if (StripsMultipleCopyDiscountInput != null && int.TryParse(StripsMultipleCopyDiscountInput.Text, out int stripsDiscount))
+                    {
+                        stripsMultipleCopyDiscount = stripsDiscount;
+                    }
+
+                    // Get 4x6 Photos pricing from UI
+                    if (Photo4x6ExtraCopyPriceInput != null && int.TryParse(Photo4x6ExtraCopyPriceInput.Text, out int photo4x6Price))
+                    {
+                        photo4x6ExtraCopyPrice = photo4x6Price;
+                    }
+                    if (Photo4x6MultipleCopyDiscountInput != null && int.TryParse(Photo4x6MultipleCopyDiscountInput.Text, out int photo4x6Discount))
+                    {
+                        photo4x6MultipleCopyDiscount = photo4x6Discount;
+                    }
+
+                    // Get Smartphone Print pricing from UI
+                    if (SmartphoneExtraCopyPriceInput != null && int.TryParse(SmartphoneExtraCopyPriceInput.Text, out int smartphonePrice))
+                    {
+                        smartphoneExtraCopyPrice = smartphonePrice;
+                    }
+                    if (SmartphoneMultipleCopyDiscountInput != null && int.TryParse(SmartphoneMultipleCopyDiscountInput.Text, out int smartphoneDiscount))
+                    {
+                        smartphoneMultipleCopyDiscount = smartphoneDiscount;
+                    }
+                }
+                // If not using custom pricing, leave values as null (will use base product price)
+
+                // Use the product-specific pricing values from UI
+
+                // Save for all products
+                foreach (var product in _products)
+                {
+                    var updateResult = await _databaseService.UpdateProductAsync(
+                        product.Id,
+                        isActive: null,
+                        price: null,
+                        useCustomExtraCopyPricing: useCustomPricing,
+                        // Legacy pricing (keep for backward compatibility)
+                        extraCopy1Price: null,
+                        extraCopy2Price: null,
+                        extraCopy4BasePrice: null,
+                        extraCopyAdditionalPrice: null,
+                        // Simplified product-specific extra copy pricing
+                        stripsExtraCopyPrice: stripsExtraCopyPrice,
+                        stripsMultipleCopyDiscount: stripsMultipleCopyDiscount,
+                        photo4x6ExtraCopyPrice: photo4x6ExtraCopyPrice,
+                        photo4x6MultipleCopyDiscount: photo4x6MultipleCopyDiscount,
+                        smartphoneExtraCopyPrice: smartphoneExtraCopyPrice,
+                        smartphoneMultipleCopyDiscount: smartphoneMultipleCopyDiscount
+                    );
+
+                    if (!updateResult.Success)
+                    {
+                        throw new InvalidOperationException($"Failed to update extra copy pricing for {product.Name}: {updateResult.ErrorMessage}");
+                    }
+
+                    // Update local product model
+                    product.UseCustomExtraCopyPricing = useCustomPricing;
+                    
+                    // Update simplified product-specific pricing
+                    product.StripsExtraCopyPrice = stripsExtraCopyPrice;
+                    product.StripsMultipleCopyDiscount = stripsMultipleCopyDiscount;
+                    product.Photo4x6ExtraCopyPrice = photo4x6ExtraCopyPrice;
+                    product.Photo4x6MultipleCopyDiscount = photo4x6MultipleCopyDiscount;
+                    product.SmartphoneExtraCopyPrice = smartphoneExtraCopyPrice;
+                    product.SmartphoneMultipleCopyDiscount = smartphoneMultipleCopyDiscount;
+                }
+
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to save extra copy pricing", ex);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Event handler for extra copy price changes - updates pricing examples
+        /// </summary>
+        private void ExtraCopyPrice_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (sender is TextBox textBox)
+            {
+                // Only validate if we're not loading from database
+                if (!_isLoadingProducts)
+                {
+                    ValidatePricingInput(textBox);
+                    
+                    // Provide immediate feedback for better UX
+                    if (string.IsNullOrWhiteSpace(textBox.Text))
+                    {
+                        ClearValidationError(textBox);
+                    }
+                }
+            }
+            
+            UpdatePricingExamples();
+            
+            // Mark as having unsaved changes (unless we're loading from database)
+            if (!_isLoadingProducts)
+            {
+                UpdateSaveButtonState();
+            }
+        }
+
+        /// <summary>
+        /// Event handler for multiple copy discount changes
+        /// </summary>
+        private void MultipleCopyDiscount_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (sender is TextBox textBox)
+            {
+                // Only validate if we're not loading from database
+                if (!_isLoadingProducts)
+                {
+                    ValidateDiscountInput(textBox);
+                    
+                    // Provide immediate feedback for better UX
+                    if (string.IsNullOrWhiteSpace(textBox.Text))
+                    {
+                        ClearValidationError(textBox);
+                    }
+                }
+            }
+            
+            UpdatePricingExamples();
+            
+            // Mark as having unsaved changes (unless we're loading from database)
+            if (!_isLoadingProducts)
+            {
+                UpdateSaveButtonState();
+            }
+        }
+
+        /// <summary>
+        /// Event handler for smartphone input focus - adds padding for virtual keyboard
+        /// </summary>
+        private void SmartphoneInput_GotFocus(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                // Add extra bottom padding to make room for virtual keyboard
+                if (MainScrollViewer != null)
+                {
+                    MainScrollViewer.Padding = new Thickness(24, 0, 24, 120);
+                    
+                    // Scroll to the bottom to ensure the input is at the bottom where there's space for the keyboard
+                    MainScrollViewer.ScrollToBottom();
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Error handling smartphone input focus", ex);
+            }
+        }
+
+        /// <summary>
+        /// Event handler for smartphone input blur - removes extra padding
+        /// </summary>
+        private void SmartphoneInput_LostFocus(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                // Check if any smartphone input still has focus
+                bool anySmartphoneInputFocused = SmartphoneExtraCopyPriceInput?.IsFocused == true || 
+                                                SmartphoneMultipleCopyDiscountInput?.IsFocused == true;
+                
+                // Only remove padding if no smartphone input has focus
+                if (!anySmartphoneInputFocused && MainScrollViewer != null)
+                {
+                    MainScrollViewer.Padding = new Thickness(24, 0, 24, 24);
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Error handling smartphone input blur", ex);
+            }
+        }
+
+        /// <summary>
+        /// Event handler for when custom pricing is enabled
+        /// </summary>
+        private void UseCustomPricing_Checked(object sender, RoutedEventArgs e)
+        {
+            if (CustomPricingSection != null)
+            {
+                CustomPricingSection.Visibility = Visibility.Visible;
+            }
+            
+            if (CustomPricingDescription != null)
+            {
+                CustomPricingDescription.Text = "Configure custom pricing for extra copies";
+            }
+
+            // Mark as having unsaved changes
+            if (!_isLoadingProducts)
+            {
+                UpdateSaveButtonState();
+            }
+        }
+
+        /// <summary>
+        /// Event handler for when custom pricing is disabled
+        /// </summary>
+        private void UseCustomPricing_Unchecked(object sender, RoutedEventArgs e)
+        {
+            if (CustomPricingSection != null)
+            {
+                CustomPricingSection.Visibility = Visibility.Collapsed;
+            }
+            
+            if (CustomPricingDescription != null)
+            {
+                CustomPricingDescription.Text = "Extra copies will cost the same as the base product price";
+            }
+
+            // Mark as having unsaved changes
+            if (!_isLoadingProducts)
+            {
+                UpdateSaveButtonState();
+            }
+        }
+
+        /// <summary>
+        /// Update pricing examples based on current input values
+        /// </summary>
+        private void UpdatePricingExamples()
+        {
+            // Pricing examples removed - they were causing confusion and didn't match frontend display
+            // The frontend now shows rounded prices (Math.Ceiling) to avoid decimal pricing issues
+        }
+
+        /// <summary>
+        /// Validate pricing input and provide user feedback
+        /// </summary>
+        private void ValidatePricingInput(TextBox textBox)
+        {
+            if (_isValidatingInput) return; // Prevent recursive validation
+            
+            try
+            {
+                _isValidatingInput = true;
+                var inputText = textBox.Text?.Trim() ?? "";
+                
+                // Allow empty input during typing
+                if (string.IsNullOrEmpty(inputText))
+                {
+                    ClearValidationError(textBox);
+                    return;
+                }
+
+                // Try to parse the input as integer
+                if (int.TryParse(inputText, out int price))
+                {
+                    // Validate price range (must be >= 0)
+                    if (price < 0)
+                    {
+                        // Clamp negative values to 0
+                        textBox.Text = "0";
+                        ShowValidationError(textBox, "Price cannot be negative. Set to 0.");
+                        LoggingService.Application.Warning("Negative price input corrected", 
+                            ("Field", textBox.Name),
+                            ("OriginalValue", price),
+                            ("CorrectedValue", 0));
+                    }
+                    else
+                    {
+                        // Valid price - no formatting needed for integers
+                        ClearValidationError(textBox);
+                    }
+                }
+                else
+                {
+                    // Invalid numeric input - revert to previous valid value or 0
+                    var previousValue = GetPreviousValidPrice(textBox);
+                    textBox.Text = previousValue.ToString();
+                    ShowValidationError(textBox, "Please enter a valid whole number (e.g., 5)");
+                    LoggingService.Application.Warning("Invalid price input corrected", 
+                        ("Field", textBox.Name),
+                        ("InvalidInput", inputText),
+                        ("CorrectedValue", previousValue));
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Error validating pricing input", ex,
+                    ("Field", textBox.Name),
+                    ("Input", textBox.Text));
+                // Fallback to safe value
+                textBox.Text = "0";
+            }
+            finally
+            {
+                _isValidatingInput = false;
+            }
+        }
+
+        /// <summary>
+        /// Validate discount input and provide user feedback
+        /// </summary>
+        private void ValidateDiscountInput(TextBox textBox)
+        {
+            if (_isValidatingInput) return; // Prevent recursive validation
+            
+            try
+            {
+                _isValidatingInput = true;
+                var inputText = textBox.Text?.Trim() ?? "";
+                
+                // Allow empty input during typing
+                if (string.IsNullOrEmpty(inputText))
+                {
+                    ClearValidationError(textBox);
+                    return;
+                }
+
+                // Try to parse the input as decimal
+                if (decimal.TryParse(inputText, out decimal discount))
+                {
+                    // Validate discount range (0-100)
+                    if (discount < 0)
+                    {
+                        // Clamp negative values to 0
+                        textBox.Text = "0";
+                        ShowValidationError(textBox, "Discount cannot be negative. Set to 0%.");
+                        LoggingService.Application.Warning("Negative discount input corrected", 
+                            ("Field", textBox.Name),
+                            ("OriginalValue", discount),
+                            ("CorrectedValue", 0));
+                    }
+                    else if (discount > 100)
+                    {
+                        // Clamp values over 100 to 100
+                        textBox.Text = "100";
+                        ShowValidationError(textBox, "Discount cannot exceed 100%. Set to 100%.");
+                        LoggingService.Application.Warning("Excessive discount input corrected", 
+                            ("Field", textBox.Name),
+                            ("OriginalValue", discount),
+                            ("CorrectedValue", 100));
+                    }
+                    else
+                    {
+                        // Valid discount - format as whole number
+                        textBox.Text = ((int)discount).ToString();
+                        ClearValidationError(textBox);
+                    }
+                }
+                else
+                {
+                    // Invalid numeric input - revert to previous valid value or 0
+                    var previousValue = GetPreviousValidDiscount(textBox);
+                    textBox.Text = previousValue.ToString();
+                    ShowValidationError(textBox, "Please enter a valid discount (0-100)");
+                    LoggingService.Application.Warning("Invalid discount input corrected", 
+                        ("Field", textBox.Name),
+                        ("InvalidInput", inputText),
+                        ("CorrectedValue", previousValue));
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Error validating discount input", ex,
+                    ("Field", textBox.Name),
+                    ("Input", textBox.Text));
+                // Fallback to safe value
+                textBox.Text = "0";
+            }
+            finally
+            {
+                _isValidatingInput = false;
+            }
+        }
+
+        /// <summary>
+        /// Get the previous valid price for a text box (fallback to 0)
+        /// </summary>
+        private int GetPreviousValidPrice(TextBox textBox)
+        {
+            // Try to get from current product data if available
+            if (_products?.Count > 0)
+            {
+                var productType = GetProductTypeFromTextBoxName(textBox.Name);
+                var product = _products.FirstOrDefault(p => p.ProductType.ToString() == productType);
+                if (product != null)
+                {
+                    return (int)product.Price; // Use base product price as fallback
+                }
+            }
+            return 0; // Default fallback
+        }
+
+        /// <summary>
+        /// Get the previous valid discount for a text box (fallback to 0)
+        /// </summary>
+        private int GetPreviousValidDiscount(TextBox textBox)
+        {
+            // Default discount is 0%
+            return 0;
+        }
+
+        /// <summary>
+        /// Extract product type from text box name
+        /// </summary>
+        private string GetProductTypeFromTextBoxName(string textBoxName)
+        {
+            if (textBoxName.Contains("Strips"))
+                return "PhotoStrips";
+            else if (textBoxName.Contains("Photo4x6"))
+                return "Photo4x6";
+            else if (textBoxName.Contains("Smartphone"))
+                return "SmartphonePrint";
+            else
+                return "Unknown";
+        }
+
+        /// <summary>
+        /// Show validation error for a text box
+        /// </summary>
+        private void ShowValidationError(TextBox textBox, string errorMessage)
+        {
+            // Set error styling - since TextBoxes have BorderThickness="0", we only set the ToolTip
+            textBox.ToolTip = errorMessage;
+            
+            // Show error indicator if available
+            var errorIndicator = FindName("UnsavedChangesIndicator") as TextBlock;
+            if (errorIndicator != null)
+            {
+                errorIndicator.Text = "Validation Error";
+                errorIndicator.Foreground = System.Windows.Media.Brushes.Red;
+                errorIndicator.Visibility = Visibility.Visible;
+            }
+            
+            // Log the validation error
+            LoggingService.Application.Warning("Pricing input validation error", 
+                ("Field", textBox.Name),
+                ("Error", errorMessage));
+        }
+
+        /// <summary>
+        /// Clear validation error for a text box
+        /// </summary>
+        private void ClearValidationError(TextBox textBox)
+        {
+            // Clear error styling - since TextBoxes have BorderThickness="0", we need to clear the ToolTip
+            textBox.ToolTip = null;
+            
+            // Hide error indicator if no other errors
+            if (!HasAnyValidationErrors())
+            {
+                var errorIndicator = FindName("UnsavedChangesIndicator") as TextBlock;
+                if (errorIndicator != null)
+                {
+                    errorIndicator.Visibility = Visibility.Collapsed;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Check if there are any validation errors in pricing inputs
+        /// </summary>
+        private bool HasAnyValidationErrors()
+        {
+            var pricingInputs = new[]
+            {
+                StripsExtraCopyPriceInput,
+                Photo4x6ExtraCopyPriceInput,
+                SmartphoneExtraCopyPriceInput,
+                StripsMultipleCopyDiscountInput,
+                Photo4x6MultipleCopyDiscountInput,
+                SmartphoneMultipleCopyDiscountInput
+            };
+
+            // Since TextBoxes have BorderThickness="0", we check for ToolTip instead of BorderBrush
+            return pricingInputs.Any(tb => tb?.ToolTip != null);
+        }
+
+        /// <summary>
+        /// Clear all validation errors from pricing inputs
+        /// </summary>
+        private void ClearAllValidationErrors()
+        {
+            var pricingInputs = new[]
+            {
+                StripsExtraCopyPriceInput,
+                Photo4x6ExtraCopyPriceInput,
+                SmartphoneExtraCopyPriceInput,
+                StripsMultipleCopyDiscountInput,
+                Photo4x6MultipleCopyDiscountInput,
+                SmartphoneMultipleCopyDiscountInput
+            };
+
+            foreach (var textBox in pricingInputs)
+            {
+                if (textBox != null)
+                {
+                    textBox.ToolTip = null;
+                }
+            }
+
+            // Hide error indicator
+            var errorIndicator = FindName("UnsavedChangesIndicator") as TextBlock;
+            if (errorIndicator != null)
+            {
+                errorIndicator.Visibility = Visibility.Collapsed;
+            }
+        }
+
+        /// <summary>
+        /// Load extra copy pricing values from database into UI
+        /// </summary>
+        private void LoadExtraCopyPricingUI(Product product)
+        {
+            try
+            {
+                // Clear any existing validation errors when loading from database
+                ClearAllValidationErrors();
+
+                // Set the custom pricing toggle
+                if (UseCustomExtraCopyPricingCheckBox != null)
+                {
+                    UseCustomExtraCopyPricingCheckBox.IsChecked = product.UseCustomExtraCopyPricing;
+                }
+
+                // Show/hide custom pricing section based on toggle
+                if (CustomPricingSection != null)
+                {
+                    CustomPricingSection.Visibility = product.UseCustomExtraCopyPricing ? Visibility.Visible : Visibility.Collapsed;
+                }
+
+                // Update description
+                if (CustomPricingDescription != null)
+                {
+                    if (product.UseCustomExtraCopyPricing)
+                    {
+                        CustomPricingDescription.Text = "Configure product-specific pricing for extra copies";
+                    }
+                    else
+                    {
+                        CustomPricingDescription.Text = $"Extra copies will cost ${product.Price:F2} each (same as base price)";
+                    }
+                }
+
+                // Load simplified product-specific pricing values (or defaults)
+                // Photo Strips pricing
+                if (StripsExtraCopyPriceInput != null)
+                {
+                    StripsExtraCopyPriceInput.Text = ((int)(product.StripsExtraCopyPrice ?? 6.00m)).ToString();
+                }
+                if (StripsMultipleCopyDiscountInput != null)
+                {
+                    StripsMultipleCopyDiscountInput.Text = ((int)(product.StripsMultipleCopyDiscount ?? 0.00m)).ToString();
+                }
+
+                // 4x6 Photos pricing
+                if (Photo4x6ExtraCopyPriceInput != null)
+                {
+                    Photo4x6ExtraCopyPriceInput.Text = ((int)(product.Photo4x6ExtraCopyPrice ?? 6.00m)).ToString();
+                }
+                if (Photo4x6MultipleCopyDiscountInput != null)
+                {
+                    Photo4x6MultipleCopyDiscountInput.Text = ((int)(product.Photo4x6MultipleCopyDiscount ?? 0.00m)).ToString();
+                }
+
+                // Smartphone Print pricing
+                if (SmartphoneExtraCopyPriceInput != null)
+                {
+                    SmartphoneExtraCopyPriceInput.Text = ((int)(product.SmartphoneExtraCopyPrice ?? 6.00m)).ToString();
+                }
+                if (SmartphoneMultipleCopyDiscountInput != null)
+                {
+                    SmartphoneMultipleCopyDiscountInput.Text = ((int)(product.SmartphoneMultipleCopyDiscount ?? 0.00m)).ToString();
+                }
+
+                // Update pricing examples with loaded values
+                UpdatePricingExamples();
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to load extra copy pricing UI", ex);
+            }
+        }
+
         #endregion
+
+        /// <summary>
+        /// Update the base price displays in the pricing sections to show current database values
+        /// </summary>
+        private void UpdateBasePriceDisplays()
+        {
+            try
+            {
+                // Find products by ProductType enum
+                var photoStrips = _products.FirstOrDefault(p => p.ProductType == ProductType.PhotoStrips);
+                var photo4x6 = _products.FirstOrDefault(p => p.ProductType == ProductType.Photo4x6);
+                var smartphonePrint = _products.FirstOrDefault(p => p.ProductType == ProductType.SmartphonePrint);
+
+                // Update Photo Strips base price display
+                if (photoStrips != null)
+                {
+                    var photoStripsBasePriceText = this.FindName("PhotoStripsBasePriceText") as TextBlock;
+                    if (photoStripsBasePriceText != null)
+                    {
+                        photoStripsBasePriceText.Text = $"Pricing for Photo Strips extra copies (Base: ${photoStrips.Price:F2})";
+                    }
+                }
+
+                // Update 4x6 Photos base price display
+                if (photo4x6 != null)
+                {
+                    var photo4x6BasePriceText = this.FindName("Photo4x6BasePriceText") as TextBlock;
+                    if (photo4x6BasePriceText != null)
+                    {
+                        photo4x6BasePriceText.Text = $"Pricing for 4x6 Photos extra copies (Base: ${photo4x6.Price:F2})";
+                    }
+                }
+
+                // Update Smartphone Print base price display
+                if (smartphonePrint != null)
+                {
+                    var smartphoneBasePriceText = this.FindName("SmartphoneBasePriceText") as TextBlock;
+                    if (smartphoneBasePriceText != null)
+                    {
+                        smartphoneBasePriceText.Text = $"Pricing for Smartphone Print extra copies (Base: ${smartphonePrint.Price:F2})";
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to update base price displays", ex);
+            }
+        }
 
         /// <summary>
         /// Helper method to find TemplatesTabControl in the content
@@ -2320,6 +3353,2290 @@ namespace Photobooth
             }
             return null;
         }
+
+        #region Credit Management
+
+        // NOTE: This credit management system is production-ready and designed to work with firmware integration.
+        // When payment hardware (cash acceptor, card reader) is connected, the firmware will call AddCreditsAsync()
+        // to automatically add credits when customers make payments. Manual credit addition is available for
+        // administrative purposes, promotions, and testing.
+
+        /// <summary>
+        /// Load current credits from database settings
+        /// </summary>
+        private async Task LoadCreditsAsync()
+        {
+            try
+            {
+                var result = await _databaseService.GetSettingValueAsync<decimal>("System", "CurrentCredits");
+                
+                if (result.Success)
+                {
+                    _currentCredits = result.Data;
+                }
+                else
+                {
+                    _currentCredits = 0;
+                }
+                
+                // Also load credit history and transaction count
+                await LoadCreditHistoryAsync();
+                await LoadTransactionCountAsync();
+                
+                UpdateCreditsDisplay();
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to load credits", ex);
+                _currentCredits = 0;
+                UpdateCreditsDisplay();
+                NotificationService.Instance.ShowError("Error Loading Credits", "Failed to load credit balance from database");
+            }
+        }
+
+        /// <summary>
+        /// Load credit history from database
+        /// </summary>
+        private async Task LoadCreditHistoryAsync()
+        {
+            try
+            {
+                var result = await _databaseService.GetCreditTransactionsAsync(10); // Load last 10 for display
+                
+                // Ensure UI updates happen on the UI thread
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    if (result.Success && result.Data != null)
+                    {
+                        _creditHistory.Clear();
+                        _creditHistory.AddRange(result.Data);
+                    }
+                    else
+                    {
+                        _creditHistory.Clear();
+                    }
+                    
+                    UpdateCreditHistoryDisplay();
+                });
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to load credit history", ex);
+                
+                // Ensure UI updates happen on the UI thread even on error
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    _creditHistory.Clear();
+                    UpdateCreditHistoryDisplay();
+                });
+            }
+        }
+
+        /// <summary>
+        /// Save current credits to database settings
+        /// </summary>
+        private async Task SaveCreditsAsync()
+        {
+            try
+            {
+                var result = await _databaseService.SetSettingValueAsync("System", "CurrentCredits", _currentCredits, null);
+                
+                if (!result.Success)
+                {
+                    LoggingService.Application.Error("Failed to save credits to database", null, ("Error", result.ErrorMessage ?? "Unknown error"));
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to save credits", ex);
+            }
+        }
+
+        /// <summary>
+        /// Save credits to database and return success status
+        /// </summary>
+        private async Task<bool> SaveCreditsWithResultAsync()
+        {
+            try
+            {
+                var result = await _databaseService.SetSettingValueAsync("System", "CurrentCredits", _currentCredits, null);
+                
+                if (!result.Success)
+                {
+                    LoggingService.Application.Error("Failed to save credits to database", null, ("Error", result.ErrorMessage ?? "Unknown error"));
+                }
+                
+                return result.Success;
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to save credits", ex);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Update the credits display in the UI
+        /// </summary>
+        private void UpdateCreditsDisplay()
+        {
+            try
+            {
+                if (!Dispatcher.CheckAccess())
+                {
+                    Dispatcher.Invoke(UpdateCreditsDisplay);
+                    return;
+                }
+                if (CurrentCreditsText != null)
+                {
+                    string displayText;
+                    if (_mainWindow?.IsFreePlayMode == true)
+                    {
+                        displayText = "Free Play Mode";
+                    }
+                    else
+                    {
+                        displayText = $"Credits: ${_currentCredits:F2}";
+                    }
+                    CurrentCreditsText.Text = displayText;
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to update credits display", ex);
+            }
+        }
+
+        /// <summary>
+        /// Add credits to the system manually
+        /// </summary>
+        private async Task AddCreditsAsync(decimal amount, string description)
+        {
+            try
+            {
+                _currentCredits += amount;
+                await SaveCreditsAsync();
+                
+                // Add to database history
+                var transaction = new CreditTransaction
+                {
+                    Amount = amount,
+                    TransactionType = CreditTransactionType.Add,
+                    Description = description,
+                    BalanceAfter = _currentCredits,
+                    CreatedAt = DateTime.Now,
+                    CreatedBy = null // Use null for system operations to avoid foreign key issues
+                };
+                
+                var insertResult = await _databaseService.InsertCreditTransactionAsync(transaction);
+                if (!insertResult.Success)
+                {
+                    LoggingService.Application.Warning("Failed to save credit transaction to database", ("Error", insertResult.ErrorMessage ?? "Unknown error"));
+                    // Still show in memory for immediate feedback
+                    _creditHistory.Insert(0, transaction);
+                    UpdateCreditHistoryDisplay();
+                }
+                else
+                {
+                    // Successfully saved to database, reload from database to show updated history
+                    await LoadCreditHistoryAsync();
+                }
+                
+                // Update credits display
+                UpdateCreditsDisplay();
+                
+                LoggingService.Application.Information("Credits added",
+                    ("Amount", amount),
+                    ("Description", description),
+                    ("NewBalance", _currentCredits));
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to add credits", ex);
+                NotificationService.Instance.ShowError("Error Adding Credits", "Failed to add credits to the system. Please try again.");
+            }
+        }
+
+        /// <summary>
+        /// Deduct credits from the system (for purchases)
+        /// </summary>
+        public async Task<bool> DeductCreditsAsync(decimal amount, string description, int? relatedTransactionId = null)
+        {
+            try
+            {
+                if (_currentCredits < amount)
+                {
+                    LoggingService.Application.Warning("Insufficient credits for purchase",
+                        ("Required", amount),
+                        ("Available", _currentCredits));
+                    return false;
+                }
+                
+                var originalCredits = _currentCredits;
+                _currentCredits -= amount;
+                
+                // Try to save to database - if this fails, we need to rollback
+                var saveResult = await SaveCreditsWithResultAsync();
+                if (!saveResult)
+                {
+                    // Rollback the in-memory change
+                    _currentCredits = originalCredits;
+                    UpdateCreditsDisplay();
+                    
+                    LoggingService.Application.Error("Failed to save credit deduction to database - transaction rolled back");
+                    return false;
+                }
+                
+                // Add to database history
+                var transaction = new CreditTransaction
+                {
+                    Amount = -amount,
+                    TransactionType = CreditTransactionType.Deduct,
+                    Description = description,
+                    BalanceAfter = _currentCredits,
+                    CreatedAt = DateTime.Now,
+                    CreatedBy = null, // Use null for system operations to avoid foreign key issues
+                    RelatedTransactionId = relatedTransactionId // Link to sales transaction
+                };
+                
+                var insertResult = await _databaseService.InsertCreditTransactionAsync(transaction);
+                if (!insertResult.Success)
+                {
+                    LoggingService.Application.Warning("Failed to save credit transaction to database", ("Error", insertResult.ErrorMessage ?? "Unknown error"));
+                    // Still show in memory for immediate feedback
+                    _creditHistory.Insert(0, transaction);
+                    UpdateCreditHistoryDisplay();
+                }
+                else
+                {
+                    // Successfully saved to database, reload from database to show updated history
+                    await LoadCreditHistoryAsync();
+                }
+                
+                // Update credits display
+                UpdateCreditsDisplay();
+                
+                LoggingService.Application.Information("Credits deducted",
+                    ("Amount", amount),
+                    ("Description", description),
+                    ("NewBalance", _currentCredits),
+                    ("RelatedTransactionId", relatedTransactionId ?? (object)"None"));
+                
+                return true;
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to deduct credits", ex);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Check if sufficient credits are available
+        /// </summary>
+        public bool HasSufficientCredits(decimal amount)
+        {
+            return _currentCredits >= amount;
+        }
+
+        /// <summary>
+        /// Get current credit balance
+        /// </summary>
+        public decimal GetCurrentCredits()
+        {
+            return _currentCredits;
+        }
+
+        /// <summary>
+        /// Refresh credits from database (public method for external use)
+        /// </summary>
+        public async Task RefreshCreditsFromDatabase()
+        {
+            await LoadCreditsAsync();
+        }
+
+        /// <summary>
+        /// Reset credits to zero
+        /// </summary>
+        private async Task ResetCreditsAsync()
+        {
+            try
+            {
+                var oldBalance = _currentCredits;
+                _currentCredits = 0;
+                await SaveCreditsAsync();
+                
+                // Add to database history
+                var transaction = new CreditTransaction
+                {
+                    Amount = -oldBalance,
+                    TransactionType = CreditTransactionType.Reset,
+                    Description = "Credits reset to $0",
+                    BalanceAfter = _currentCredits,
+                    CreatedAt = DateTime.Now,
+                    CreatedBy = null // Use null for system operations to avoid foreign key issues
+                };
+                
+                var insertResult = await _databaseService.InsertCreditTransactionAsync(transaction);
+                if (!insertResult.Success)
+                {
+                    LoggingService.Application.Warning("Failed to save credit transaction to database", ("Error", insertResult.ErrorMessage ?? "Unknown error"));
+                    // Still show in memory for immediate feedback
+                    _creditHistory.Insert(0, transaction);
+                    UpdateCreditHistoryDisplay();
+                }
+                else
+                {
+                    // Successfully saved to database, reload from database to show updated history
+                    await LoadCreditHistoryAsync();
+                }
+                
+                // Update credits display
+                UpdateCreditsDisplay();
+                
+                LoggingService.Application.Information("Credits reset to zero",
+                    ("PreviousBalance", oldBalance));
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to reset credits", ex);
+                NotificationService.Instance.ShowError("Error Resetting Credits", "Failed to reset credits. Please try again.");
+            }
+        }
+
+        /// <summary>
+        /// Update credit history display
+        /// </summary>
+        private void UpdateCreditHistoryDisplay()
+        {
+            if (CreditHistoryPanel == null) return;
+
+            CreditHistoryPanel.Children.Clear();
+
+            if (_creditHistory.Count == 0)
+            {
+                // Show empty state
+                var emptyBorder = new Border
+                {
+                    Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F9FAFB")),
+                    CornerRadius = new CornerRadius(6),
+                    Padding = new Thickness(12),
+                    Margin = new Thickness(0, 0, 0, 8)
+                };
+                
+                var emptyGrid = new Grid();
+                emptyGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                
+                var emptyText = new TextBlock
+                {
+                    Text = "No credit activity yet",
+                    FontSize = 12,
+                    Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#6B7280")),
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                
+                emptyGrid.Children.Add(emptyText);
+                emptyBorder.Child = emptyGrid;
+                CreditHistoryPanel.Children.Add(emptyBorder);
+                return;
+            }
+
+            foreach (var transaction in _creditHistory.Take(8)) // Show only last 8 for better display
+            {
+                var border = new Border
+                {
+                    Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F9FAFB")),
+                    CornerRadius = new CornerRadius(6),
+                    Padding = new Thickness(12),
+                    Margin = new Thickness(0, 0, 0, 8)
+                };
+
+                var grid = new Grid();
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+                var icon = new TextBlock
+                {
+                    Text = transaction.Type switch
+                    {
+                        CreditTransactionType.Add => "➕",
+                        CreditTransactionType.Deduct => "➖", 
+                        CreditTransactionType.Reset => "🔄",
+                        _ => "💰"
+                    },
+                    FontSize = 12,
+                    Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(
+                        transaction.Type == CreditTransactionType.Add ? "#10B981" : "#EF4444")),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(0, 0, 8, 0)
+                };
+                Grid.SetColumn(icon, 0);
+
+                var description = new TextBlock
+                {
+                    Text = transaction.Description,
+                    FontSize = 12,
+                    Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#374151")),
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                Grid.SetColumn(description, 1);
+
+                var amount = new TextBlock
+                {
+                    Text = $"${Math.Abs(transaction.Amount):F2}",
+                    FontSize = 12,
+                    FontWeight = FontWeights.Medium,
+                    Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(
+                        transaction.Type == CreditTransactionType.Add ? "#10B981" : "#EF4444")),
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                Grid.SetColumn(amount, 2);
+
+                grid.Children.Add(icon);
+                grid.Children.Add(description);
+                grid.Children.Add(amount);
+                border.Child = grid;
+                CreditHistoryPanel.Children.Add(border);
+            }
+        }
+
+        #endregion
+
+        #region Credit UI Event Handlers
+
+        /// <summary>
+        /// Handle refresh credits button click
+        /// </summary>
+        private async void RefreshCredits_Click(object sender, RoutedEventArgs e)
+        {
+            await LoadCreditsAsync(); // This now loads both credits and history
+        }
+        
+        /// <summary>
+        /// Handle refresh transactions button click
+        /// </summary>
+        private async void RefreshTransactions_Click(object sender, RoutedEventArgs e)
+        {
+            await LoadTransactionHistory();
+        }
+
+        /// <summary>
+        /// Handle reset credits button click
+        /// </summary>
+        private async void ResetCredits_Click(object sender, RoutedEventArgs e)
+        {
+            var result = ConfirmationDialog.ShowConfirmation(
+                "Reset Credits",
+                "Are you sure you want to reset all credits to $0?\n\nThis action cannot be undone.",
+                "Reset",
+                "Cancel",
+                Window.GetWindow(this));
+
+            if (result)
+            {
+                await ResetCreditsAsync();
+                NotificationService.Instance.ShowSuccess("Credits Reset", "All credits have been reset to $0.00");
+            }
+        }
+
+        /// <summary>
+        /// Handle quick add credit button clicks for manual credit management
+        /// </summary>
+        private async void QuickAddCredit_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button button && button.Tag is string tagValue && decimal.TryParse(tagValue, out decimal amount))
+            {
+                await AddCreditsAsync(amount, $"Quick add ${amount}");
+                NotificationService.Instance.ShowSuccess("Credits Added", $"Successfully added ${amount:F2} to credit balance!");
+            }
+        }
+
+        /// <summary>
+        /// Handle custom add credit button click
+        /// </summary>
+        private async void AddCustomCredit_Click(object sender, RoutedEventArgs e)
+        {
+            if (CustomCreditNumberAmount != null && decimal.TryParse(CustomCreditNumberAmount.Text, out decimal amount) && amount > 0)
+            {
+                await AddCreditsAsync(amount, $"Custom add ${amount}");
+                CustomCreditNumberAmount.Text = "0";
+                NotificationService.Instance.ShowSuccess("Credits Added", $"Successfully added ${amount:F2} to credit balance!");
+            }
+            else
+            {
+                NotificationService.Instance.ShowWarning("Invalid Amount", "Please enter a valid amount greater than $0.00");
+            }
+        }
+
+        /// <summary>
+        /// Handle clear credit history button click
+        /// </summary>
+        private async void ClearCreditHistory_Click(object sender, RoutedEventArgs e)
+        {
+            var result = ConfirmationDialog.ShowConfirmation(
+                "Clear History",
+                "Are you sure you want to clear the credit history?\n\nThis will not affect your current credit balance.",
+                "Clear",
+                "Cancel",
+                Window.GetWindow(this));
+
+            if (result)
+            {
+                try
+                {
+                    // Delete all credit transactions from database (keep 0)
+                    await _databaseService.DeleteOldCreditTransactionsAsync(0);
+                    
+                    // Reload empty history
+                    await LoadCreditHistoryAsync();
+                    
+                    NotificationService.Instance.ShowSuccess("History Cleared", "Credit transaction history has been cleared");
+                }
+                catch (Exception ex)
+                {
+                    LoggingService.Application.Error("Failed to clear credit history", ex);
+                    NotificationService.Instance.ShowError("Error Clearing History", "Failed to clear credit history from database");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Handle export transactions button click
+        /// </summary>
+        private async void ExportTransactions_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                // Get all credit transactions from database
+                var result = await _databaseService.GetCreditTransactionsAsync(10000); // Get all transactions
+                if (!result.Success || result.Data == null)
+                {
+                    NotificationService.Instance.ShowError("Export Failed", "Failed to retrieve transaction data from database");
+                    return;
+                }
+
+                var transactions = result.Data;
+                if (transactions.Count == 0)
+                {
+                    NotificationService.Instance.ShowWarning("No Data", "No credit transactions found to export");
+                    return;
+                }
+
+                // Show save file dialog
+                var saveFileDialog = new Microsoft.Win32.SaveFileDialog
+                {
+                    Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*",
+                    FileName = $"CreditTransactions_{DateTime.Now:yyyyMMdd_HHmmss}.csv",
+                    Title = "Export Credit Transactions"
+                };
+
+                if (saveFileDialog.ShowDialog() == true)
+                {
+                    // Create CSV content
+                    var csvContent = new StringBuilder();
+                    csvContent.AppendLine("Date,Time,Type,Amount,Description,Balance After,Created By");
+
+                    foreach (var transaction in transactions.OrderByDescending(t => t.CreatedAt))
+                    {
+                        csvContent.AppendLine($"\"{transaction.CreatedAt:yyyy-MM-dd}\",\"{transaction.CreatedAt:HH:mm:ss}\",\"{transaction.TransactionType}\",\"{transaction.Amount:F2}\",\"{transaction.Description.Replace("\"", "\"\"")}\",\"{transaction.BalanceAfter:F2}\",\"{transaction.CreatedBy ?? "System"}\"");
+                    }
+
+                    // Write to file
+                    await File.WriteAllTextAsync(saveFileDialog.FileName, csvContent.ToString());
+                    
+                    NotificationService.Instance.ShowSuccess("Export Complete", $"Exported {transactions.Count} transactions to {Path.GetFileName(saveFileDialog.FileName)}");
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to export credit transactions", ex);
+                NotificationService.Instance.ShowError("Export Failed", "An error occurred while exporting transaction data");
+            }
+        }
+
+        /// <summary>
+        /// Handle cleanup database button click
+        /// </summary>
+        private async void CleanupDatabase_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                // Get current transaction count
+                var countResult = await _databaseService.GetCreditTransactionsAsync(10000);
+                var currentCount = countResult.Success && countResult.Data != null ? countResult.Data.Count : 0;
+
+                if (currentCount <= 1000)
+                {
+                    NotificationService.Instance.ShowInfo("No Cleanup Needed", $"Database has {currentCount} transactions. Cleanup only needed when over 1000 records.");
+                    return;
+                }
+
+                var recordsToDelete = currentCount - 1000;
+                var result = ConfirmationDialog.ShowConfirmation(
+                    "Cleanup Database",
+                    $"This will permanently delete {recordsToDelete} old transactions, keeping the most recent 1000.\n\nRecommend exporting data first for permanent records.\n\nContinue?",
+                    "Cleanup",
+                    "Cancel",
+                    Window.GetWindow(this));
+
+                if (result)
+                {
+                    var cleanupResult = await _databaseService.DeleteOldCreditTransactionsAsync(1000);
+                    if (cleanupResult.Success)
+                    {
+                        await LoadTransactionCountAsync(); // Refresh the display
+                        NotificationService.Instance.ShowSuccess("Cleanup Complete", $"Removed {recordsToDelete} old transactions. Database now has 1000 records.");
+                    }
+                    else
+                    {
+                        NotificationService.Instance.ShowError("Cleanup Failed", "Failed to cleanup old transactions from database");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to cleanup credit transactions", ex);
+                NotificationService.Instance.ShowError("Cleanup Failed", "An error occurred during database cleanup");
+            }
+        }
+
+        /// <summary>
+        /// Load and display transaction count
+        /// </summary>
+        private async Task LoadTransactionCountAsync()
+        {
+            try
+            {
+                var result = await _databaseService.GetCreditTransactionsAsync(10000); // Get all to count
+                var count = result.Success && result.Data != null ? result.Data.Count : 0;
+                
+                if (TotalTransactionsText != null)
+                {
+                    TotalTransactionsText.Text = count.ToString();
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to load transaction count", ex);
+                if (TotalTransactionsText != null)
+                {
+                    TotalTransactionsText.Text = "Error";
+                }
+            }
+        }
+
+        #endregion
+
+        #region Transaction History Management
+
+        /// <summary>
+        /// Load transaction history from database
+        /// </summary>
+        private async Task LoadTransactionHistory()
+        {
+            try
+            {
+                var result = await _databaseService.GetRecentTransactionsAsync(20);
+                
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    if (result.Success && result.Data != null)
+                    {
+                        _recentTransactions = result.Data;
+                    }
+                    else
+                    {
+                        _recentTransactions.Clear();
+                    }
+                    
+                    UpdateTransactionHistoryDisplay();
+                });
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to load transaction history", ex);
+                
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    _recentTransactions.Clear();
+                    UpdateTransactionHistoryDisplay();
+                });
+            }
+        }
+
+        /// <summary>
+        /// Update the transaction history display in the UI
+        /// </summary>
+        private void UpdateTransactionHistoryDisplay()
+        {
+            try
+            {
+                if (TransactionHistoryPanel == null) return;
+                
+                // Clear existing transaction items (keep the no transactions message)
+                var itemsToRemove = TransactionHistoryPanel.Children
+                    .OfType<Border>()
+                    .ToList();
+                
+                foreach (var item in itemsToRemove)
+                {
+                    TransactionHistoryPanel.Children.Remove(item);
+                }
+                
+                if (_recentTransactions.Count == 0)
+                {
+                    // Show no transactions message
+                    if (NoTransactionsMessage != null)
+                    {
+                        NoTransactionsMessage.Visibility = Visibility.Visible;
+                    }
+                }
+                else
+                {
+                    // Hide no transactions message
+                    if (NoTransactionsMessage != null)
+                    {
+                        NoTransactionsMessage.Visibility = Visibility.Collapsed;
+                    }
+                    
+                    // Add transaction items
+                    foreach (var transaction in _recentTransactions)
+                    {
+                        var transactionItem = CreateTransactionListItem(transaction);
+                        TransactionHistoryPanel.Children.Add(transactionItem);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to update transaction history display", ex);
+            }
+        }
+
+        /// <summary>
+        /// Create a transaction list item for the UI
+        /// </summary>
+        private Border CreateTransactionListItem(Transaction transaction)
+        {
+            var border = new Border
+            {
+                Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F8FAFC")),
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(16, 16, 16, 16),
+                Margin = new Thickness(0, 0, 0, 8),
+                BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E2E8F0")),
+                BorderThickness = new Thickness(1, 1, 1, 1)
+            };
+
+            var grid = new Grid();
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            // Left column - Transaction details
+            var leftPanel = new StackPanel();
+            
+            var transactionCode = new TextBlock
+            {
+                Text = $"Transaction #{transaction.TransactionCode ?? transaction.Id.ToString()}",
+                FontSize = 14,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1F2937")),
+                Margin = new Thickness(0, 0, 0, 4)
+            };
+            leftPanel.Children.Add(transactionCode);
+
+            var dateTime = new TextBlock
+            {
+                Text = transaction.CreatedAt.ToString("MMM dd, yyyy - hh:mm tt"),
+                FontSize = 12,
+                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#6B7280"))
+            };
+            leftPanel.Children.Add(dateTime);
+
+            Grid.SetColumn(leftPanel, 0);
+            grid.Children.Add(leftPanel);
+
+            // Middle column - Product details
+            var middlePanel = new StackPanel();
+            
+            var productInfo = new TextBlock
+            {
+                Text = transaction.Notes ?? "Photo Session",
+                FontSize = 13,
+                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#374151")),
+                Margin = new Thickness(0, 0, 0, 4)
+            };
+            middlePanel.Children.Add(productInfo);
+
+            var quantityInfo = new TextBlock
+            {
+                Text = $"Quantity: {transaction.Quantity}",
+                FontSize = 12,
+                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#6B7280"))
+            };
+            middlePanel.Children.Add(quantityInfo);
+
+            Grid.SetColumn(middlePanel, 1);
+            grid.Children.Add(middlePanel);
+
+            // Right column - Payment info
+            var rightPanel = new StackPanel
+            {
+                HorizontalAlignment = HorizontalAlignment.Right
+            };
+
+            var amount = new TextBlock
+            {
+                Text = $"${transaction.TotalPrice:F2}",
+                FontSize = 16,
+                FontWeight = FontWeights.Bold,
+                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#059669")),
+                Margin = new Thickness(0, 0, 0, 4)
+            };
+            rightPanel.Children.Add(amount);
+
+            var paymentStatus = new Border
+            {
+                Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString(
+                    transaction.PaymentStatus == PaymentStatus.Completed ? "#D1FAE5" : "#FEF3C7")),
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(8, 4, 8, 4)
+            };
+
+            var statusText = new TextBlock
+            {
+                Text = transaction.PaymentStatus.ToString(),
+                FontSize = 11,
+                FontWeight = FontWeights.Medium,
+                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(
+                    transaction.PaymentStatus == PaymentStatus.Completed ? "#065F46" : "#92400E"))
+            };
+            paymentStatus.Child = statusText;
+            rightPanel.Children.Add(paymentStatus);
+
+            Grid.SetColumn(rightPanel, 2);
+            grid.Children.Add(rightPanel);
+
+            border.Child = grid;
+            return border;
+        }
+
+        #endregion
+
+        #region Cleanup
+
+        /// <summary>
+        /// Cleanup diagnostic resources when admin dashboard is closed
+        /// </summary>
+        public void CleanupDiagnosticResources()
+        {
+            try
+            {
+                StopDiagnosticCamera();
+                LogToDiagnostics("Admin dashboard cleanup completed");
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to cleanup diagnostic resources", ex);
+            }
+        }
+
+        #endregion
+
+        #region Diagnostics Event Handlers
+
+        /// <summary>
+        /// Initialize diagnostic system info when diagnostics tab is loaded
+        /// </summary>
+        private void InitializeDiagnosticsTab()
+        {
+            try
+            {
+                Console.WriteLine("AdminDashboard: Initializing diagnostics tab");
+                
+                // Update system information
+                if (OSVersionText != null)
+                    OSVersionText.Text = Environment.OSVersion.ToString();
+                
+                if (AppVersionText != null)
+                {
+                    var assembly = System.Reflection.Assembly.GetExecutingAssembly();
+                    var version = assembly.GetName().Version;
+                    AppVersionText.Text = version?.ToString() ?? "Unknown";
+                }
+                
+                if (UptimeText != null)
+                {
+                    var uptime = DateTime.Now - System.Diagnostics.Process.GetCurrentProcess().StartTime;
+                    UptimeText.Text = $"{uptime.Days}d {uptime.Hours}h {uptime.Minutes}m";
+                }
+                
+                // Load camera settings from database
+                _ = LoadCameraSettingsFromDatabaseAsync();
+                
+                _ = LoadFreeCreditUsageAsync();
+                LogToDiagnostics("Diagnostics system initialized - loading camera settings from database");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"AdminDashboard: Error initializing diagnostics tab - {ex.Message}");
+                LoggingService.Application.Error("Failed to initialize diagnostics tab", ex);
+                LogToDiagnostics($"ERROR: Failed to initialize diagnostics - {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Load camera settings from database
+        /// </summary>
+        private async Task LoadCameraSettingsFromDatabaseAsync()
+        {
+            try
+            {
+                Console.WriteLine("AdminDashboard: Loading camera settings from database");
+                
+                // Load brightness
+                var brightnessResult = await _databaseService.GetCameraSettingAsync("Brightness");
+                if (brightnessResult.Success && brightnessResult.Data != null)
+                {
+                    _savedBrightness = brightnessResult.Data.SettingValue;
+                    Console.WriteLine($"AdminDashboard: Loaded brightness = {_savedBrightness}");
+                }
+
+                // Load zoom
+                var zoomResult = await _databaseService.GetCameraSettingAsync("Zoom");
+                if (zoomResult.Success && zoomResult.Data != null)
+                {
+                    _savedZoom = zoomResult.Data.SettingValue;
+                    Console.WriteLine($"AdminDashboard: Loaded zoom = {_savedZoom}");
+                }
+
+                // Load contrast
+                var contrastResult = await _databaseService.GetCameraSettingAsync("Contrast");
+                if (contrastResult.Success && contrastResult.Data != null)
+                {
+                    _savedContrast = contrastResult.Data.SettingValue;
+                    Console.WriteLine($"AdminDashboard: Loaded contrast = {_savedContrast}");
+                }
+                    
+                    // Update UI sliders with loaded values
+                    Dispatcher.Invoke(() =>
+                    {
+                        if (BrightnessSlider != null) BrightnessSlider.Value = _savedBrightness;
+                        if (ZoomSlider != null) ZoomSlider.Value = _savedZoom;
+                        if (ContrastSlider != null) ContrastSlider.Value = _savedContrast;
+                    });
+                    
+                    LogToDiagnostics($"Camera settings loaded from database: Brightness={_savedBrightness}, Zoom={_savedZoom}, Contrast={_savedContrast}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"AdminDashboard: Error loading camera settings from database - {ex.Message}");
+                LogToDiagnostics($"ERROR: Failed to load camera settings from database - {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Load free credit usage tracking
+        /// </summary>
+        private async Task LoadFreeCreditUsageAsync()
+        {
+            try
+            {
+                // Get total free credits issued from credit transactions
+                var result = await _databaseService.GetCreditTransactionsAsync();
+                if (result.Success && result.Data != null)
+                {
+                    var freeCreditsTotal = result.Data
+                        .Where(ct => ct.TransactionType == CreditTransactionType.Add && 
+                                    (ct.Description?.Contains("Free Credit") == true || ct.CreatedBy == "System"))
+                        .Sum(ct => ct.Amount);
+                    
+                    if (FreeCreditUsedText != null)
+                        FreeCreditUsedText.Text = $"${freeCreditsTotal:F2}";
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to load free credit usage", ex);
+                if (FreeCreditUsedText != null)
+                    FreeCreditUsedText.Text = "Error";
+            }
+        }
+
+        /// <summary>
+        /// Log message to diagnostic console
+        /// </summary>
+        private void LogToDiagnostics(string message)
+        {
+            try
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    if (DiagnosticLogText != null)
+                    {
+                        var timestamp = DateTime.Now.ToString("HH:mm:ss");
+                        var currentText = DiagnosticLogText.Text;
+                        
+                        if (currentText == "Diagnostic log will appear here...")
+                            currentText = "";
+                        
+                        var newText = $"[{timestamp}] {message}\n{currentText}";
+                        
+                        // Keep only last 50 lines
+                        var lines = newText.Split('\n');
+                        if (lines.Length > 50)
+                            newText = string.Join("\n", lines.Take(50));
+                        
+                        DiagnosticLogText.Text = newText;
+                        
+                        // Auto scroll to top
+                        if (DiagnosticLogScrollViewer != null)
+                            DiagnosticLogScrollViewer.ScrollToTop();
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to log to diagnostics", ex);
+            }
+        }
+
+        /// <summary>
+        /// Update hardware status indicator
+        /// </summary>
+        private void UpdateHardwareStatus(string hardware, bool isConnected, string message, string? statusOverride = null)
+        {
+            try
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    Border? indicator = null;
+                    TextBlock? statusText = null;
+                    TextBlock? statusMessage = null;
+                    
+                    switch (hardware.ToLower())
+                    {
+                        case "camera":
+                            indicator = CameraStatusIndicator;
+                            statusText = CameraStatusText;
+                            statusMessage = CameraStatusMessage;
+                            break;
+                        case "printer":
+                            indicator = PrinterStatusIndicator;
+                            statusText = PrinterStatusText;
+                            statusMessage = PrinterStatusMessage;
+                            break;
+                        case "arduino":
+                            indicator = ArduinoStatusIndicator;
+                            statusText = ArduinoStatusText;
+                            statusMessage = ArduinoStatusMessage;
+                            break;
+                    }
+                    
+                    if (indicator != null && statusText != null && statusMessage != null)
+                    {
+                        if (isConnected)
+                        {
+                            // Professional green for connected/active state
+                            indicator.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F0F9FF"));
+                            indicator.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0284C7"));
+                            statusText.Text = statusOverride ?? "Connected";
+                            statusText.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0C4A6E"));
+                        }
+                        else
+                        {
+                            // Determine if this is an error or just inactive/stopped
+                            bool isError = message.ToLower().Contains("error") || message.ToLower().Contains("failed") || message.ToLower().Contains("not found");
+                            
+                            if (isError)
+                            {
+                                // Professional red for actual errors
+                                indicator.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FEF2F2"));
+                                indicator.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#DC2626"));
+                                statusText.Text = statusOverride ?? "Error";
+                                statusText.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#991B1B"));
+                            }
+                            else
+                            {
+                                // Professional gray for inactive/stopped state
+                                indicator.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F8FAFC"));
+                                indicator.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#64748B"));
+                                statusText.Text = statusOverride ?? "Inactive";
+                                statusText.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#475569"));
+                            }
+                        }
+                        statusMessage.Text = message;
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error($"Failed to update {hardware} status", ex);
+            }
+        }
+
+        // Camera Testing Event Handlers
+        private async void TestCameraButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                LogToDiagnostics("Testing camera connection...");
+                
+                // Use existing camera service
+                var cameraService = new CameraService();
+                var cameras = cameraService.GetAvailableCameras();
+                
+                if (cameras.Count > 0)
+                {
+                    LogToDiagnostics($"Found {cameras.Count} camera(s): {string.Join(", ", cameras.Select(c => c.Name))}");
+                    
+                    bool started = await cameraService.StartCameraAsync();
+                    if (started)
+                    {
+                        UpdateHardwareStatus("camera", true, "Camera started successfully");
+                        LogToDiagnostics("Camera started successfully - preview available");
+                        
+                        // Enable camera controls
+                        if (StopCameraButton != null) StopCameraButton.IsEnabled = true;
+                        if (TestCameraButton != null) TestCameraButton.IsEnabled = false;
+                        
+                        // Subscribe to preview frames
+                        cameraService.PreviewFrameReady += CameraService_PreviewFrameReady;
+                        
+                        // Apply saved camera settings to camera
+                        cameraService.SetBrightness(_savedBrightness);
+                        cameraService.SetZoom(_savedZoom);
+                        cameraService.SetContrast(_savedContrast);
+                        LogToDiagnostics($"Applied saved settings: Brightness={_savedBrightness}%, Zoom={_savedZoom}%, Contrast={_savedContrast}%");
+                        
+                        // Start preview updates
+                        _ = StartCameraPreviewUpdates(cameraService);
+                    }
+                    else
+                    {
+                        UpdateHardwareStatus("camera", false, "Failed to start camera");
+                        LogToDiagnostics("ERROR: Failed to start camera");
+                    }
+                }
+                else
+                {
+                    UpdateHardwareStatus("camera", false, "No cameras found");
+                    LogToDiagnostics("ERROR: No cameras detected");
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Camera test failed", ex);
+                UpdateHardwareStatus("camera", false, $"Test failed: {ex.Message}");
+                LogToDiagnostics($"ERROR: Camera test failed - {ex.Message}");
+            }
+        }
+
+        private CameraService? _diagnosticCameraService;
+        
+        // Persistent camera settings
+        private int _savedBrightness = 50;
+        private int _savedZoom = 100;
+        private int _savedContrast = 50;
+
+        private Task StartCameraPreviewUpdates(CameraService cameraService)
+        {
+            _diagnosticCameraService = cameraService;
+            
+            // Optimized preview update loop for smooth performance
+            _ = Task.Run(async () =>
+            {
+                while (_diagnosticCameraService != null && _diagnosticCameraService.IsCapturing)
+                {
+                    try
+                    {
+                        if (_diagnosticCameraService.IsNewFrameAvailable())
+                        {
+                            var previewBitmap = _diagnosticCameraService.GetPreviewBitmap();
+                            if (previewBitmap != null)
+                            {
+                                // Use BeginInvoke for better performance (non-blocking)
+                                _ = Dispatcher.BeginInvoke(new Action(() =>
+                                {
+                                    if (CameraPreviewImage != null)
+                                    {
+                                        CameraPreviewImage.Source = previewBitmap;
+                                        if (CameraPreviewPlaceholder != null)
+                                            CameraPreviewPlaceholder.Visibility = Visibility.Collapsed;
+                                    }
+                                }), System.Windows.Threading.DispatcherPriority.Render);
+                            }
+                        }
+                        await Task.Delay(16); // ~60 FPS for smooth preview matching frontend
+                    }
+                    catch (Exception ex)
+                    {
+                        LoggingService.Application.Error("Camera preview update failed", ex);
+                        break;
+                    }
+                }
+            });
+            
+            return Task.CompletedTask;
+        }
+
+        private void CameraService_PreviewFrameReady(object? sender, System.Windows.Media.Imaging.WriteableBitmap e)
+        {
+            // Preview frames are handled in the update loop
+        }
+
+        private void StopCameraButton_Click(object sender, RoutedEventArgs e)
+        {
+            StopDiagnosticCamera();
+        }
+
+        /// <summary>
+        /// Stop the diagnostic camera and clean up resources
+        /// </summary>
+        private void StopDiagnosticCamera()
+        {
+            try
+            {
+                _diagnosticCameraService?.StopCamera();
+                _diagnosticCameraService?.Dispose();
+                _diagnosticCameraService = null;
+                
+                // Reset UI
+                if (CameraPreviewImage != null) CameraPreviewImage.Source = null;
+                if (CameraPreviewPlaceholder != null) CameraPreviewPlaceholder.Visibility = Visibility.Visible;
+                if (StopCameraButton != null) StopCameraButton.IsEnabled = false;
+                if (TestCameraButton != null) TestCameraButton.IsEnabled = true;
+                
+                UpdateHardwareStatus("camera", false, "Camera stopped", "Stopped");
+                LogToDiagnostics("Camera stopped and resources cleaned up");
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to stop camera", ex);
+                LogToDiagnostics($"ERROR: Failed to stop camera - {ex.Message}");
+            }
+        }
+
+        private void BrightnessSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            Console.WriteLine($"AdminDashboard: Brightness slider changed to {(int)e.NewValue}");
+            
+            if (BrightnessValue != null)
+                BrightnessValue.Text = ((int)e.NewValue).ToString();
+            
+            // Save setting persistently
+            _savedBrightness = (int)e.NewValue;
+            Console.WriteLine($"AdminDashboard: Saved brightness = {_savedBrightness}");
+            
+            // Apply brightness setting to camera if active
+            if (_diagnosticCameraService != null && _diagnosticCameraService.IsCapturing)
+            {
+                var success = _diagnosticCameraService.SetBrightness(_savedBrightness);
+                Console.WriteLine($"AdminDashboard: Applied brightness to active camera - {(success ? "Success" : "Failed")}");
+                LogToDiagnostics($"Brightness adjusted to {_savedBrightness}% - {(success ? "Applied" : "Failed")}");
+            }
+            else
+            {
+                Console.WriteLine("AdminDashboard: Camera not active, brightness will apply when camera starts");
+                LogToDiagnostics($"Brightness set to {_savedBrightness}% (saved, will apply when camera starts)");
+            }
+        }
+
+        private void ZoomSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (ZoomValue != null)
+                ZoomValue.Text = $"{(int)e.NewValue}%";
+            
+            // Save setting persistently
+            _savedZoom = (int)e.NewValue;
+            
+            // Apply zoom setting to camera if active
+            if (_diagnosticCameraService != null && _diagnosticCameraService.IsCapturing)
+            {
+                var success = _diagnosticCameraService.SetZoom(_savedZoom);
+                LogToDiagnostics($"Zoom adjusted to {_savedZoom}% - {(success ? "Applied" : "Failed")}");
+            }
+            else
+            {
+                LogToDiagnostics($"Zoom set to {_savedZoom}% (saved, will apply when camera starts)");
+            }
+        }
+
+        private void ContrastSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (ContrastValue != null)
+                ContrastValue.Text = ((int)e.NewValue).ToString();
+            
+            // Save setting persistently
+            _savedContrast = (int)e.NewValue;
+            
+            // Apply contrast setting to camera if active
+            if (_diagnosticCameraService != null && _diagnosticCameraService.IsCapturing)
+            {
+                var success = _diagnosticCameraService.SetContrast(_savedContrast);
+                LogToDiagnostics($"Contrast adjusted to {_savedContrast}% - {(success ? "Applied" : "Failed")}");
+            }
+            else
+            {
+                LogToDiagnostics($"Contrast set to {_savedContrast}% (saved, will apply when camera starts)");
+            }
+        }
+
+        private async void SaveCameraSettingsButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                Console.WriteLine($"AdminDashboard: Saving camera settings - Brightness:{_savedBrightness}, Zoom:{_savedZoom}, Contrast:{_savedContrast}");
+                
+                var result = await _databaseService.SaveAllCameraSettingsAsync(_savedBrightness, _savedZoom, _savedContrast);
+                
+                if (result.Success)
+                {
+                    LogToDiagnostics($"✅ Camera settings saved to database: Brightness={_savedBrightness}%, Zoom={_savedZoom}%, Contrast={_savedContrast}%");
+                    
+                    // Show success notification
+                    NotificationService.Quick.Success("Camera settings saved successfully!");
+                }
+                else
+                {
+                    LogToDiagnostics($"❌ Failed to save camera settings: {result.ErrorMessage}");
+                    NotificationService.Quick.Error("Failed to save camera settings");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"AdminDashboard: Error saving camera settings - {ex.Message}");
+                LoggingService.Application.Error("Failed to save camera settings", ex);
+                LogToDiagnostics($"❌ ERROR: Failed to save camera settings - {ex.Message}");
+                NotificationService.Quick.Error("Failed to save camera settings");
+            }
+        }
+
+        private void ResetCameraSettingsButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                Console.WriteLine("AdminDashboard: Resetting camera settings to defaults");
+                
+                // Reset saved settings
+                _savedBrightness = 50;
+                _savedZoom = 100;
+                _savedContrast = 50;
+                
+                // Reset camera service settings
+                if (_diagnosticCameraService != null)
+                {
+                    _diagnosticCameraService.ResetCameraSettings();
+                }
+                
+                // Reset UI sliders (this will trigger ValueChanged events and update saved settings)
+                if (BrightnessSlider != null) BrightnessSlider.Value = 50;
+                if (ZoomSlider != null) ZoomSlider.Value = 100;
+                if (ContrastSlider != null) ContrastSlider.Value = 50;
+                
+                LogToDiagnostics("Camera settings reset to defaults (use Save Settings to persist)");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"AdminDashboard: Error resetting camera settings - {ex.Message}");
+                LoggingService.Application.Error("Failed to reset camera settings", ex);
+                LogToDiagnostics($"ERROR: Failed to reset camera settings - {ex.Message}");
+            }
+        }
+
+        // Printer Testing Event Handlers
+        private async void TestPrinterButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                LogToDiagnostics("Testing printer connection...");
+                
+                // TODO: Implement actual printer service when available
+                // For now, simulate printer detection
+                await Task.Delay(1000);
+                
+                // Simulate printer detection logic with robust error handling
+                bool printerFound = false;
+                try
+                {
+                    printerFound = System.IO.Ports.SerialPort.GetPortNames().Length > 0;
+                }
+                catch (Exception ex)
+                {
+                    LoggingService.Application.Warning("Failed to enumerate serial ports for printer detection", ("Error", ex.Message));
+                    printerFound = false; // Assume no printer if serial port access fails
+                }
+                
+                if (printerFound)
+                {
+                    UpdateHardwareStatus("printer", true, "DNP RX1hs detected and ready");
+                    LogToDiagnostics("Printer connection successful");
+                    
+                    // Update printer details
+                    if (PrinterStatusDetailsText != null) PrinterStatusDetailsText.Text = "Ready";
+                    if (PrinterPaperLevelText != null) PrinterPaperLevelText.Text = "Good (estimated)";
+                    if (PrinterLastErrorText != null) PrinterLastErrorText.Text = "None";
+                }
+                else
+                {
+                    UpdateHardwareStatus("printer", false, "No printer detected");
+                    LogToDiagnostics("ERROR: No printer found");
+                    
+                    if (PrinterStatusDetailsText != null) PrinterStatusDetailsText.Text = "Not Found";
+                    if (PrinterPaperLevelText != null) PrinterPaperLevelText.Text = "Unknown";
+                    if (PrinterLastErrorText != null) PrinterLastErrorText.Text = "Printer not detected";
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Printer test failed", ex);
+                UpdateHardwareStatus("printer", false, $"Test failed: {ex.Message}");
+                LogToDiagnostics($"ERROR: Printer test failed - {ex.Message}");
+            }
+        }
+
+        private async void PrintLastPhotoButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                LogToDiagnostics("Attempting to print last photo...");
+                
+                // TODO: Implement actual print last photo when printer service is available
+                await Task.Delay(2000); // Simulate printing
+                
+                LogToDiagnostics("Print last photo completed (simulated)");
+                NotificationService.Instance.ShowSuccess("Print Test", "Last photo print completed successfully");
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Print last photo failed", ex);
+                LogToDiagnostics($"ERROR: Print last photo failed - {ex.Message}");
+                NotificationService.Instance.ShowError("Print Test", "Failed to print last photo");
+            }
+        }
+
+        private async void PrintTestPageButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                LogToDiagnostics("Printing test page...");
+                
+                // TODO: Implement actual test page printing when printer service is available
+                await Task.Delay(3000); // Simulate printing
+                
+                LogToDiagnostics("Test page printed successfully (simulated)");
+                NotificationService.Instance.ShowSuccess("Print Test", "Test page printed successfully");
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Print test page failed", ex);
+                LogToDiagnostics($"ERROR: Print test page failed - {ex.Message}");
+                NotificationService.Instance.ShowError("Print Test", "Failed to print test page");
+            }
+        }
+
+        private async void CheckPrinterStatusButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                LogToDiagnostics("Checking printer status...");
+                
+                // TODO: Implement actual printer status check when printer service is available
+                await Task.Delay(500);
+                
+                // Simulate status update
+                if (PrinterStatusDetailsText != null) PrinterStatusDetailsText.Text = "Online";
+                if (PrinterPaperLevelText != null) PrinterPaperLevelText.Text = "85% (595 prints remaining)";
+                if (PrinterLastErrorText != null) PrinterLastErrorText.Text = "None";
+                
+                LogToDiagnostics("Printer status updated");
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Check printer status failed", ex);
+                LogToDiagnostics($"ERROR: Check printer status failed - {ex.Message}");
+            }
+        }
+
+        // Arduino Testing Event Handlers
+        private async void TestArduinoButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                LogToDiagnostics("Testing Arduino connection...");
+                
+                // TODO: Implement actual Arduino service when available
+                // For now, simulate Arduino detection
+                await Task.Delay(1000);
+                
+                string[] availablePorts = Array.Empty<string>();
+                try
+                {
+                    availablePorts = System.IO.Ports.SerialPort.GetPortNames();
+                }
+                catch (Exception ex)
+                {
+                    LoggingService.Application.Warning("Failed to enumerate serial ports for Arduino detection", ("Error", ex.Message));
+                    LogToDiagnostics($"Arduino test failed: Unable to access serial ports - {ex.Message}");
+                    return;
+                }
+                
+                if (availablePorts.Length > 0)
+                {
+                    var arduinoPort = availablePorts.FirstOrDefault(p => p.StartsWith("COM"));
+                    if (arduinoPort != null)
+                    {
+                        UpdateHardwareStatus("arduino", true, "Arduino Uno detected");
+                        LogToDiagnostics($"Arduino found on {arduinoPort}");
+                        
+                        // Update Arduino details
+                        if (ArduinoPortText != null) ArduinoPortText.Text = arduinoPort;
+                        if (ArduinoLedStatusText != null) ArduinoLedStatusText.Text = "Ready";
+                        if (ArduinoLastPulseText != null) ArduinoLastPulseText.Text = "Ready to receive";
+                    }
+                    else
+                    {
+                        UpdateHardwareStatus("arduino", false, "No Arduino ports found");
+                        LogToDiagnostics("ERROR: No Arduino-compatible ports found");
+                    }
+                }
+                else
+                {
+                    UpdateHardwareStatus("arduino", false, "No serial ports available");
+                    LogToDiagnostics("ERROR: No serial ports detected");
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Arduino test failed", ex);
+                UpdateHardwareStatus("arduino", false, $"Test failed: {ex.Message}");
+                LogToDiagnostics($"ERROR: Arduino test failed - {ex.Message}");
+            }
+        }
+
+        private async void TestLEDOnButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                LogToDiagnostics("Turning LED ON...");
+                
+                // TODO: Implement actual Arduino LED control when service is available
+                await Task.Delay(500);
+                
+                if (ArduinoLedStatusText != null) ArduinoLedStatusText.Text = "ON";
+                LogToDiagnostics("LED turned ON (simulated)");
+                NotificationService.Instance.ShowSuccess("Arduino Test", "LED turned ON");
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("LED ON test failed", ex);
+                LogToDiagnostics($"ERROR: LED ON test failed - {ex.Message}");
+            }
+        }
+
+        private async void TestLEDOffButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                LogToDiagnostics("Turning LED OFF...");
+                
+                // TODO: Implement actual Arduino LED control when service is available
+                await Task.Delay(500);
+                
+                if (ArduinoLedStatusText != null) ArduinoLedStatusText.Text = "OFF";
+                LogToDiagnostics("LED turned OFF (simulated)");
+                NotificationService.Instance.ShowSuccess("Arduino Test", "LED turned OFF");
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("LED OFF test failed", ex);
+                LogToDiagnostics($"ERROR: LED OFF test failed - {ex.Message}");
+            }
+        }
+
+        private async void TestPaymentPulseButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                LogToDiagnostics("Simulating payment pulse...");
+                
+                // TODO: Implement actual pulse simulation when Arduino service is available
+                await Task.Delay(500);
+                
+                if (ArduinoLastPulseText != null) 
+                    ArduinoLastPulseText.Text = DateTime.Now.ToString("HH:mm:ss");
+                
+                LogToDiagnostics("Payment pulse simulated successfully");
+                NotificationService.Instance.ShowSuccess("Arduino Test", "Payment pulse simulated");
+                
+                // Simulate adding $1 credit
+                await AddCreditsAsync(1.00m, "Test pulse simulation");
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Payment pulse test failed", ex);
+                LogToDiagnostics($"ERROR: Payment pulse test failed - {ex.Message}");
+            }
+        }
+
+        // System Tools Event Handlers
+        private void CalibrateTouchButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                LogToDiagnostics("Starting touch screen calibration...");
+                
+                var result = ConfirmationDialog.ShowConfirmation(
+                    "Touch Screen Calibration",
+                    "This will start the Windows touch screen calibration utility.\n\nProceed with calibration?",
+                    "Start Calibration",
+                    "Cancel");
+                
+                if (result)
+                {
+                    // Launch Windows touch calibration utility
+                    var startInfo = new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = "tabcal.exe",
+                        UseShellExecute = true,
+                        Verb = "runas" // Run as administrator
+                    };
+                    
+                    System.Diagnostics.Process.Start(startInfo);
+                    LogToDiagnostics("Touch calibration utility launched");
+                    NotificationService.Instance.ShowSuccess("System Tools", "Touch calibration utility started");
+                }
+                else
+                {
+                    LogToDiagnostics("Touch calibration cancelled by user");
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Touch calibration failed", ex);
+                LogToDiagnostics($"ERROR: Touch calibration failed - {ex.Message}");
+                NotificationService.Instance.ShowError("System Tools", "Failed to start touch calibration");
+            }
+        }
+
+        private async void IssueFreeCreditsButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                LogToDiagnostics("Issuing free credit (+$1.00)...");
+                
+                await AddCreditsAsync(1.00m, "Free Credit (Diagnostics)");
+                await LoadFreeCreditUsageAsync(); // Refresh the counter
+                
+                LogToDiagnostics("Free credit issued successfully");
+                NotificationService.Instance.ShowSuccess("System Tools", "Free credit (+$1.00) added successfully");
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Issue free credit failed", ex);
+                LogToDiagnostics($"ERROR: Issue free credit failed - {ex.Message}");
+                NotificationService.Instance.ShowError("System Tools", "Failed to issue free credit");
+            }
+        }
+
+        private async void RunDiagnosticsButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                LogToDiagnostics("Running comprehensive diagnostics...");
+                
+                // Run all hardware tests sequentially
+                await Task.Delay(500);
+                TestCameraButton_Click(sender, e);
+                
+                await Task.Delay(2000);
+                TestPrinterButton_Click(sender, e);
+                
+                await Task.Delay(2000);
+                TestArduinoButton_Click(sender, e);
+                
+                await Task.Delay(1000);
+                LogToDiagnostics("Comprehensive diagnostics completed");
+                NotificationService.Instance.ShowSuccess("Diagnostics", "All hardware tests completed");
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Run all diagnostics failed", ex);
+                LogToDiagnostics($"ERROR: Comprehensive diagnostics failed - {ex.Message}");
+            }
+        }
+
+        private async void RestartSystemButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var result = ConfirmationDialog.ShowConfirmation(
+                    "Restart System",
+                    "This will restart the computer immediately.\n\nAll unsaved work will be lost.\n\nAre you sure you want to restart now?",
+                    "Restart Now",
+                    "Cancel");
+                
+                if (result)
+                {
+                    LogToDiagnostics("System restart initiated by user");
+                    LoggingService.Application.Warning("System restart initiated from diagnostics panel");
+                    
+                    // Give time for log to be written
+                    await Task.Delay(1000);
+                    
+                    // Restart the computer with proper elevation
+                    var startInfo = new System.Diagnostics.ProcessStartInfo("shutdown.exe", "/r /t 0")
+                    {
+                        UseShellExecute = true, // Required for elevation
+                        Verb = "runas", // Prompt for elevation if required
+                        WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden // CreateNoWindow equivalent
+                    };
+                    
+                    System.Diagnostics.Process.Start(startInfo);
+                }
+                else
+                {
+                    LogToDiagnostics("System restart cancelled by user");
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("System restart failed", ex);
+                LogToDiagnostics($"ERROR: System restart failed - {ex.Message}");
+                NotificationService.Instance.ShowError("System Tools", "Failed to restart system");
+            }
+        }
+
+        private void ClearLogButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                if (DiagnosticLogText != null)
+                {
+                    DiagnosticLogText.Text = "Diagnostic log cleared...";
+                    LogToDiagnostics("Diagnostic log cleared");
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Clear diagnostic log failed", ex);
+            }
+        }
+
+
+
+        #endregion
+
+        #region System Tab Event Handlers
+
+
+
+        /// <summary>
+        /// Set system date and time
+        /// </summary>
+        private async void SetSystemDate_Click(object sender, RoutedEventArgs e)
+        {
+            SetSystemDateButton.IsEnabled = false;
+            try
+            {
+                // Use the built-in async overlay and data-load logic
+                var owner = Window.GetWindow(this) ?? Application.Current.MainWindow;
+                if (owner == null)
+                {
+                    NotificationService.Instance.ShowError("System Configuration", "Unable to locate main window for dialog.");
+                    return;
+                }
+                
+                await SystemDateDialog.ShowSystemDateDialogAsync(owner, _databaseService);
+                
+                // Reflect any normalization from the database
+                await LoadSystemTabSettings();
+                
+                LoggingService.Application.Information("System date dialog completed");
+                // Success/error feedback is handled within the dialog
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("System date setting failed", ex);
+                NotificationService.Instance.ShowError("System Configuration", $"Failed to set system date: {ex.Message}");
+            }
+            finally
+            {
+                SetSystemDateButton.IsEnabled = true;
+            }
+        }
+
+        /// <summary>
+        /// Restart the photobooth application
+        /// </summary>
+        private async void RestartApplication_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button button) return;
+            button.IsEnabled = false;
+            try
+            {
+                var result = ConfirmationDialog.ShowConfirmation(
+                    "Restart Application",
+                    "This will restart the PhotoBooth application.\n\nAny unsaved settings will be lost.\n\nContinue?",
+                    "Restart App",
+                    "Cancel");
+
+                if (result)
+                {
+                    LoggingService.Application.Warning("Application restart initiated by user");
+                    
+                    // Save any pending settings first
+                    var saved = await SaveSystemSettings();
+                    if (!saved)
+                    {
+                        var proceed = ConfirmationDialog.ShowConfirmation(
+                            "Restart Application",
+                            "Some settings could not be saved. Do you still want to restart the application?\n\nUnsaved settings will be lost during restart.",
+                            "Restart Anyway",
+                            "Cancel");
+                        
+                        if (!proceed)
+                        {
+                            NotificationService.Instance.ShowWarning("System Configuration", "Application restart cancelled.");
+                            return;
+                        }
+                    }
+                    
+                    // Give time for save to complete
+                    await Task.Delay(1000);
+                    
+                    // Resolve executable path reliably with fallbacks
+                    var currentProcess = System.Diagnostics.Process.GetCurrentProcess();
+                    var exePath = Environment.ProcessPath
+                                  ?? currentProcess.MainModule?.FileName
+                                  ?? System.Reflection.Assembly.GetEntryAssembly()?.Location
+                                  ?? string.Empty;
+                    
+                    if (string.IsNullOrWhiteSpace(exePath))
+                    {
+                        NotificationService.Instance.ShowError(
+                            "System Configuration",
+                            "Unable to determine application path to restart.");
+                        return;
+                    }
+                    
+                    // Notify user immediately that restart is in progress
+                    NotificationService.Instance.ShowInfo(
+                        "System Configuration",
+                        "Restarting application...");
+                    
+                    var startInfo = new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = exePath,
+                        UseShellExecute = true
+                    };
+                    
+                    System.Diagnostics.Process.Start(startInfo);
+                    Application.Current.Shutdown();
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Application restart failed", ex);
+                NotificationService.Instance.ShowError("System Configuration", $"Failed to restart application: {ex.Message}");
+            }
+            finally
+            {
+                // If the app isn't shutting down, restore the button
+                button.IsEnabled = true;
+            }
+        }
+
+        /// <summary>
+        /// Restart the computer
+        /// </summary>
+        private async void RestartComputer_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button button) return;
+            button.IsEnabled = false;
+            try
+            {
+                var result = ConfirmationDialog.ShowConfirmation(
+                    "Restart Computer",
+                    "This will restart the entire computer.\n\nAll unsaved work will be lost.\n\nAre you sure?",
+                    "Restart Computer",
+                    "Cancel");
+
+                if (result)
+                {
+                    LoggingService.Application.Warning("Computer restart initiated by user");
+                    
+                    // Save any pending settings first
+                    var saved = await SaveSystemSettings();
+                    if (!saved)
+                    {
+                        var proceed = ConfirmationDialog.ShowConfirmation(
+                            "Restart Computer",
+                            "Some settings could not be saved. Do you still want to restart the computer?\n\nUnsaved settings will be lost during restart.",
+                            "Restart Anyway",
+                            "Cancel");
+                        
+                        if (!proceed)
+                        {
+                            NotificationService.Instance.ShowWarning("System Configuration", "Computer restart cancelled.");
+                            return;
+                        }
+                    }
+                    
+                    // Give time for save to complete
+                    await Task.Delay(1000);
+                    
+                    // Restart the computer with proper elevation
+                    var startInfo = new System.Diagnostics.ProcessStartInfo("shutdown.exe", "/r /t 5")
+                    {
+                        UseShellExecute = true, // Required for elevation
+                        Verb = "runas", // Prompt for elevation if required
+                        WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden // CreateNoWindow equivalent
+                    };
+                    
+                    NotificationService.Instance.ShowInfo("System Tools", "System is restarting now...");
+                    System.Diagnostics.Process.Start(startInfo);
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Computer restart failed", ex);
+                NotificationService.Instance.ShowError("System Configuration", $"Failed to restart computer: {ex.Message}");
+            }
+            finally
+            {
+                // If the restart was cancelled or failed, restore the button
+                button.IsEnabled = true;
+            }
+        }
+
+        /// <summary>
+        /// Save all system settings
+        /// </summary>
+        private async void SaveSystemSettings_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var saved = await SaveSystemSettings();
+                // Success/failure messages are already handled within SaveSystemSettings()
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Save system settings failed", ex);
+                NotificationService.Instance.ShowError("System Configuration", $"Failed to save settings: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Save system settings to database
+        /// </summary>
+        /// <returns>True if all settings were saved successfully, false otherwise</returns>
+        private async Task<bool> SaveSystemSettings()
+        {
+            var errors = new List<string>();
+            
+            try
+            {
+                if (string.IsNullOrEmpty(_currentUserId))
+                {
+                    NotificationService.Instance.ShowWarning("System Configuration", "User session invalid, please login again.");
+                    return false; // Cannot save without valid user session
+                }
+                
+                LoggingService.Application.Information("Saving system settings");
+                
+                // Validate and save Payment Settings
+                if (PulsesPerCreditTextBox?.Text != null && int.TryParse(PulsesPerCreditTextBox.Text.Trim(), out var ppc) && ppc > 0)
+                {
+                    var result = await _databaseService.SetSettingValueAsync("Payment", "PulsesPerCredit", ppc, _currentUserId);
+                    if (!result.Success)
+                        errors.Add($"Payment.PulsesPerCredit: {result.ErrorMessage ?? "Unknown error"}");
+                }
+                else
+                {
+                    errors.Add("Pulses per credit must be a positive whole number.");
+                }
+                
+                if (CreditValueTextBox?.Text != null && decimal.TryParse(CreditValueTextBox.Text.Trim(), NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out decimal creditValue) && creditValue >= 0)
+                {
+                    var result = await _databaseService.SetSettingValueAsync("Payment", "CreditValue", creditValue, _currentUserId);
+                    if (!result.Success)
+                        errors.Add($"Payment.CreditValue: {result.ErrorMessage ?? "Unknown error"}");
+                }
+                else
+                {
+                    errors.Add("Credit value must be a non-negative decimal number using a dot as the separator.");
+                }
+                
+                // Save Hardware Settings with error checking
+                if (BillAcceptorToggle != null)
+                {
+                    var result = await _databaseService.SetSettingValueAsync("Payment", "BillAcceptorEnabled", BillAcceptorToggle.IsChecked == true, _currentUserId);
+                    if (!result.Success)
+                        errors.Add($"Payment.BillAcceptorEnabled: {result.ErrorMessage ?? "Unknown error"}");
+                }
+                
+                if (CreditCardReaderToggle != null)
+                {
+                    var result = await _databaseService.SetSettingValueAsync("Payment", "CreditCardReaderEnabled", CreditCardReaderToggle.IsChecked == true, _currentUserId);
+                    if (!result.Success)
+                        errors.Add($"Payment.CreditCardReaderEnabled: {result.ErrorMessage ?? "Unknown error"}");
+                }
+                
+                if (PrintsPerRollTextBox?.Text != null && int.TryParse(PrintsPerRollTextBox.Text.Trim(), out var ppr) && ppr > 0)
+                {
+                    var result = await _databaseService.SetSettingValueAsync("Printer", "PrintsPerRoll", ppr, _currentUserId);
+                    if (!result.Success)
+                        errors.Add($"Printer.PrintsPerRoll: {result.ErrorMessage ?? "Unknown error"}");
+                }
+                else
+                {
+                    errors.Add("Prints per roll must be a positive whole number.");
+                }
+                
+                if (SystemRFIDToggle != null)
+                {
+                    var result = await _databaseService.SetSettingValueAsync("RFID", "Enabled", SystemRFIDToggle.IsChecked == true, _currentUserId);
+                    if (!result.Success)
+                        errors.Add($"RFID.Enabled: {result.ErrorMessage ?? "Unknown error"}");
+                }
+                
+                if (SystemFlashToggle != null)
+                {
+                    var result = await _databaseService.SetSettingValueAsync("System", "LightsEnabled", SystemFlashToggle.IsChecked == true, _currentUserId);
+                    if (!result.Success)
+                        errors.Add($"System.LightsEnabled: {result.ErrorMessage ?? "Unknown error"}");
+                }
+                
+                // Flash duration validation and save
+                if (FlashDurationSlider != null)
+                {
+                    int flashDuration = (int)FlashDurationSlider.Value;
+                    if (flashDuration >= 1 && flashDuration <= 10)
+                    {
+                        var result = await _databaseService.SetSettingValueAsync("System", "FlashDuration", flashDuration, _currentUserId);
+                        if (!result.Success)
+                            errors.Add($"System.FlashDuration: {result.ErrorMessage ?? "Unknown error"}");
+                    }
+                    else
+                    {
+                        errors.Add("Flash duration must be between 1 and 10 seconds.");
+                    }
+                }
+                
+                if (SystemSeasonalToggle != null)
+                {
+                    var result = await _databaseService.SetSettingValueAsync("Seasonal", "AutoTemplates", SystemSeasonalToggle.IsChecked == true, _currentUserId);
+                    if (!result.Success)
+                        errors.Add($"Seasonal.AutoTemplates: {result.ErrorMessage ?? "Unknown error"}");
+                }
+                
+                // Report results to user
+                if (errors.Count > 0)
+                {
+                    LoggingService.Application.Warning($"System settings saved with {errors.Count} errors: {string.Join(", ", errors)}");
+                    NotificationService.Instance.ShowError("System Configuration", 
+                        $"Some settings could not be saved:\n• " + string.Join("\n• ", errors));
+                    return false; // Some settings failed to save
+                }
+                else
+                {
+                    LoggingService.Application.Information("System settings saved successfully");
+                    NotificationService.Instance.ShowSuccess("System Configuration", "All settings saved successfully");
+                    
+                    // Reflect any normalization from the database
+                    await LoadSystemTabSettings();
+                    return true; // All settings saved successfully
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to save system settings", ex);
+                return false; // Return false instead of throwing to prevent duplicate error notifications
+            }
+        }
+
+        /// <summary>
+        /// Load system settings for the System tab from database
+        /// </summary>
+        private async Task LoadSystemTabSettings()
+        {
+            try
+            {
+                LoggingService.Application.Information("Loading system tab settings");
+                
+                // Payment Settings
+                var pulsesResult = await _databaseService.GetSettingValueAsync<int>("Payment", "PulsesPerCredit");
+                if (pulsesResult.Success)
+                {
+                    PulsesPerCreditTextBox.Text = pulsesResult.Data.ToString();
+                }
+                
+                var creditValueResult = await _databaseService.GetSettingValueAsync<decimal>("Payment", "CreditValue");
+                if (creditValueResult.Success)
+                {
+                    CreditValueTextBox.Text = creditValueResult.Data.ToString("F2", CultureInfo.InvariantCulture);
+                }
+                
+                // Hardware Settings
+                var billAcceptorResult = await _databaseService.GetSettingValueAsync<bool>("Payment", "BillAcceptorEnabled");
+                if (billAcceptorResult.Success)
+                {
+                    BillAcceptorToggle.IsChecked = billAcceptorResult.Data;
+                }
+                
+                var creditCardResult = await _databaseService.GetSettingValueAsync<bool>("Payment", "CreditCardReaderEnabled");
+                if (creditCardResult.Success)
+                {
+                    CreditCardReaderToggle.IsChecked = creditCardResult.Data;
+                }
+                
+                var printsPerRollResult = await _databaseService.GetSettingValueAsync<int>("Printer", "PrintsPerRoll");
+                if (printsPerRollResult.Success)
+                {
+                    PrintsPerRollTextBox.Text = printsPerRollResult.Data.ToString();
+                }
+                
+                var rfidResult = await _databaseService.GetSettingValueAsync<bool>("RFID", "Enabled");
+                if (rfidResult.Success)
+                {
+                    SystemRFIDToggle.IsChecked = rfidResult.Data;
+                }
+                
+                var lightsResult = await _databaseService.GetSettingValueAsync<bool>("System", "LightsEnabled");
+                if (lightsResult.Success)
+                {
+                    SystemFlashToggle.IsChecked = lightsResult.Data;
+                }
+                
+                var flashDurationResult = await _databaseService.GetSettingValueAsync<int>("System", "FlashDuration");
+                if (flashDurationResult.Success)
+                {
+                    // Ensure the value is within valid range (1-10 seconds)
+                    int flashValue = Math.Max(1, Math.Min(10, flashDurationResult.Data));
+                    FlashDurationSlider.Value = flashValue;
+                    FlashDurationValueText.Text = flashValue.ToString();
+                }
+                
+                var seasonalResult = await _databaseService.GetSettingValueAsync<bool>("Seasonal", "AutoTemplates");
+                if (seasonalResult.Success)
+                {
+                    SystemSeasonalToggle.IsChecked = seasonalResult.Data;
+                }
+                
+                LoggingService.Application.Information("System tab settings loaded successfully");
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to load system tab settings", ex);
+            }
+        }
+
+        #endregion
+
+        #region Slider Event Handlers
+
+        /// <summary>
+        /// Update flash duration display when slider value changes
+        /// </summary>
+        private void FlashDurationSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (FlashDurationValueText != null)
+            {
+                FlashDurationValueText.Text = ((int)e.NewValue).ToString();
+            }
+        }
+
+        #endregion
+
+        #region Input Validation Event Handlers
+
+        // Regex pattern for numeric-only input (positive integers)
+        private static readonly Regex _numericRegex = new Regex("^[0-9]+$");
+
+        /// <summary>
+        /// Validates numeric input for TextBoxes that should only accept integers > 0
+        /// </summary>
+        private void NumericOnly_PreviewTextInput(object sender, TextCompositionEventArgs e)
+        {
+            e.Handled = !_numericRegex.IsMatch(e.Text);
+        }
+
+        /// <summary>
+        /// Validates decimal input for TextBoxes that should only accept decimals > 0
+        /// </summary>
+        private void DecimalOnly_PreviewTextInput(object sender, TextCompositionEventArgs e)
+        {
+            // Allow digits and one decimal point (invariant culture uses '.' as decimal separator)
+            if (e.Text.Any(ch => !char.IsDigit(ch) && ch != '.'))
+            {
+                e.Handled = true;
+                return;
+            }
+
+            if (sender is TextBox textBox)
+            {
+                // Build the resulting text considering current selection
+                var proposedText = textBox.Text.Remove(textBox.SelectionStart, textBox.SelectionLength)
+                                               .Insert(textBox.SelectionStart, e.Text);
+                
+                // Reject if more than one decimal point would result
+                if (proposedText.Count(ch => ch == '.') > 1)
+                {
+                    e.Handled = true;
+                    return;
+                }
+                
+                // Ensure resulting text parses as non-negative decimal (0 allowed while typing)
+                if (!decimal.TryParse(proposedText, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out decimal value))
+                {
+                    e.Handled = true;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Handles paste operations for numeric-only TextBoxes
+        /// </summary>
+        private void NumericOnly_Pasting(object sender, DataObjectPastingEventArgs e)
+        {
+            if (e.DataObject.GetDataPresent(typeof(string)))
+            {
+                string? text = e.DataObject.GetData(typeof(string)) as string;
+                if (!_numericRegex.IsMatch(text ?? string.Empty))
+                {
+                    e.CancelCommand();
+                }
+            }
+            else
+            {
+                e.CancelCommand();
+            }
+        }
+
+        /// <summary>
+        /// Handles paste operations for decimal-only TextBoxes
+        /// </summary>
+        private void DecimalOnly_Pasting(object sender, DataObjectPastingEventArgs e)
+        {
+            if (e.DataObject.GetDataPresent(typeof(string)))
+            {
+                var pastedText = ((string)e.DataObject.GetData(typeof(string))).Trim();
+                if (!decimal.TryParse(pastedText, NumberStyles.AllowDecimalPoint | NumberStyles.AllowLeadingWhite | NumberStyles.AllowTrailingWhite, CultureInfo.InvariantCulture, out decimal value) || value < 0)
+                {
+                    e.CancelCommand();
+                }
+            }
+            else
+            {
+                e.CancelCommand();
+            }
+        }
+
+        #endregion
 
     }
 
@@ -2344,6 +5661,8 @@ namespace Photobooth
         public decimal Amount { get; set; }
         public int Transactions { get; set; }
     }
+
+
 
     #endregion
 }

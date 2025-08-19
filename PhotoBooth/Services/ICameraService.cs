@@ -49,7 +49,7 @@ namespace Photobooth.Services
         /// <summary>
         /// Start camera capture with optimized settings
         /// </summary>
-        bool StartCamera(int cameraIndex = 0);
+        Task<bool> StartCameraAsync(int cameraIndex = 0);
 
         /// <summary>
         /// Stop camera capture
@@ -80,6 +80,41 @@ namespace Photobooth.Services
         /// Run comprehensive camera diagnostics to identify common issues
         /// </summary>
         Task<CameraDiagnosticResult> RunDiagnosticsAsync();
+
+        /// <summary>
+        /// Set camera brightness (0-100)
+        /// </summary>
+        bool SetBrightness(int brightness);
+
+        /// <summary>
+        /// Set camera zoom (100-300, where 100 = no zoom)
+        /// </summary>
+        bool SetZoom(int zoomPercentage);
+
+        /// <summary>
+        /// Set camera contrast (0-100)
+        /// </summary>
+        bool SetContrast(int contrast);
+
+        /// <summary>
+        /// Get current camera brightness setting
+        /// </summary>
+        int GetBrightness();
+
+        /// <summary>
+        /// Get current camera zoom setting
+        /// </summary>
+        int GetZoom();
+
+        /// <summary>
+        /// Get current camera contrast setting
+        /// </summary>
+        int GetContrast();
+
+        /// <summary>
+        /// Reset all camera settings to defaults
+        /// </summary>
+        void ResetCameraSettings();
 
         #endregion
     }

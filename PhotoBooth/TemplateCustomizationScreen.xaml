@@ -112,6 +112,17 @@
                 </DoubleAnimation.EasingFunction>
             </DoubleAnimation>
         </Storyboard>
+
+        <!-- Credits Display Style -->
+        <Style x:Key="CreditsStyle" TargetType="Border">
+            <Setter Property="Background">
+                <Setter.Value>
+                    <SolidColorBrush Color="White" Opacity="0.15"/>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="CornerRadius" Value="20"/>
+            <Setter Property="Padding" Value="16,8"/>
+        </Style>
     </UserControl.Resources>
 
     <Grid Background="{StaticResource MainBackgroundGradient}" ClipToBounds="True">
@@ -169,13 +180,19 @@
 
             <!-- Header with Back Button -->
             <Grid Grid.Row="0" Margin="0,0,0,40">
-                <Button Name="BackButton" 
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <Button Grid.Column="0"
+                        Name="BackButton" 
                         Style="{StaticResource BackButtonStyle}"
-                        HorizontalAlignment="Left"
-                        VerticalAlignment="Top"
+                        VerticalAlignment="Center"
                         Click="BackButton_Click"/>
                 
-                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                <StackPanel Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center">
                     <TextBlock Name="TemplateNameText" 
                                Text="Template Preview" 
                                FontSize="36" 
@@ -190,7 +207,19 @@
                                HorizontalAlignment="Center"
                                Margin="0,8,0,0"/>
                 </StackPanel>
+
+                <!-- Credits Display -->
+                <Border Grid.Column="2" 
+                        Style="{StaticResource CreditsStyle}"
+                        VerticalAlignment="Center">
+                    <TextBlock Text="Credits: $0" 
+                               Foreground="White" 
+                               FontSize="16"
+                               Name="CreditsDisplay"/>
+                </Border>
             </Grid>
+
+
 
             <!-- Template Preview - Full Center -->
             <Grid Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center">
@@ -201,7 +230,7 @@
                     
                     <Border CornerRadius="20" 
                             ClipToBounds="True"
-                            Background="White">
+                            Background="Transparent">
                         <Border.Effect>
                             <DropShadowEffect Color="Black" 
                                             Opacity="0.15" 

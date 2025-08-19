@@ -14,6 +14,7 @@ namespace Photobooth.Tests.Services
     public class DatabaseServiceTests
     {
         private DatabaseService _databaseService = null!;
+        private string _tempDbPath = null!;
         private static SqliteConnection? _sharedConnection;
         private static string _connectionString = "Data Source=:memory:";
 
@@ -38,31 +39,25 @@ namespace Photobooth.Tests.Services
             // Use the shared connection for testing by creating a custom database path
             // that will be used by all methods. Since we can't easily inject the connection,
             // we'll use a temporary file that gets cleaned up
-            var tempPath = System.IO.Path.GetTempFileName();
-            _databaseService = new DatabaseService(tempPath);
+            _tempDbPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"db_{Guid.NewGuid()}.db");
+            _databaseService = new DatabaseService(_tempDbPath);
             await _databaseService.InitializeAsync();
         }
 
         [TestCleanup]
         public void Cleanup()
         {
-            // Clean up temp database files
+            // Clean up temp database file created in Setup
             try
             {
-                var tempFiles = System.IO.Directory.GetFiles(System.IO.Path.GetTempPath(), "tmp*.tmp");
-                foreach (var file in tempFiles)
+                if (!string.IsNullOrEmpty(_tempDbPath) && System.IO.File.Exists(_tempDbPath))
                 {
-                    try
-                    {
-                        if (file.Contains("tmp") && System.IO.File.Exists(file))
-                        {
-                            System.IO.File.Delete(file);
-                        }
-                    }
-                    catch
-                    {
-                        // Ignore cleanup errors
-                    }
+                    // Force garbage collection to ensure all connections are closed
+                    _databaseService = null!;
+                    GC.Collect();
+                    GC.WaitForPendingFinalizers();
+                    
+                    System.IO.File.Delete(_tempDbPath);
                 }
             }
             catch
@@ -1039,6 +1034,31 @@ namespace Photobooth.Tests.Services
             }
         }
         #endregion
+
+        [TestMethod]
+        public async Task GetProductsAsync_DefaultProducts_ShouldHaveCorrectPrices()
+        {
+            // Act
+            var result = await _databaseService.GetProductsAsync();
+
+            // Assert
+            result.Success.Should().BeTrue();
+            result.Data.Should().NotBeNull();
+            result.Data!.Should().HaveCount(3, "Should have 3 default products");
+
+            // Verify each product has the correct default price
+            var photoStrips = result.Data!.FirstOrDefault(p => p.ProductType == ProductType.PhotoStrips);
+            photoStrips.Should().NotBeNull("Photo Strips product should exist");
+            photoStrips!.Price.Should().Be(6.00m, "Photo Strips should cost $6.00");
+
+            var photo4x6 = result.Data!.FirstOrDefault(p => p.ProductType == ProductType.Photo4x6);
+            photo4x6.Should().NotBeNull("4x6 Photos product should exist");
+            photo4x6!.Price.Should().Be(6.00m, "4x6 Photos should cost $6.00");
+
+            var smartphonePrint = result.Data!.FirstOrDefault(p => p.ProductType == ProductType.SmartphonePrint);
+            smartphonePrint.Should().NotBeNull("Smartphone Print product should exist");
+            smartphonePrint!.Price.Should().Be(6.00m, "Smartphone Print should cost $6.00");
+        }
 
         [TestMethod]
         public async Task GetTemplatesByTypeAsync_QueryContainsIsActiveFilter()

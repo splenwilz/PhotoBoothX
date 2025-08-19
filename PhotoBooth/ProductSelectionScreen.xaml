@@ -122,7 +122,7 @@
                                 Padding="{TemplateBinding Padding}">
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
                                 <TextBlock Text="📱" FontSize="20" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                                <TextBlock Text="Print from Phone • $2" VerticalAlignment="Center"/>
+                                <TextBlock Text="{TemplateBinding Content}" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Border>
                         <ControlTemplate.Triggers>
@@ -217,7 +217,7 @@
 
         <!-- Title -->
         <TextBlock Grid.Row="1" 
-                   Text="Choose Your Style" 
+                   Text="Choose your style!" 
                    FontSize="64" 
                    FontWeight="Bold" 
                    Foreground="White" 
@@ -262,7 +262,8 @@
                                        FontSize="18" 
                                        Foreground="#E5E5E5"
                                        Margin="0,0,0,16"/>
-                            <TextBlock Text="$5" 
+                            <TextBlock Name="PhotoStripsPriceText"
+                                       Text="$5" 
                                        FontSize="48" 
                                        FontWeight="Bold" 
                                        Foreground="White"/>
@@ -302,7 +303,8 @@
                                        FontSize="18" 
                                        Foreground="#E5E5E5"
                                        Margin="0,0,0,16"/>
-                            <TextBlock Text="$3" 
+                            <TextBlock Name="Photo4x6PriceText"
+                                       Text="$3" 
                                        FontSize="48" 
                                        FontWeight="Bold" 
                                        Foreground="White"/>
@@ -314,7 +316,9 @@
 
         <!-- Phone Print Button -->
         <Button Grid.Row="3" 
+                Name="PhonePrintButton"
                 Style="{StaticResource PhonePrintButtonStyle}"
+                Content="Print from Phone • $2"
                 HorizontalAlignment="Center"
                 Margin="0,40,0,0"
                 Click="PhonePrint_Click"/>

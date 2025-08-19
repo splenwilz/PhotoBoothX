@@ -98,10 +98,10 @@ namespace Photobooth.Tests.Mocks
             return new List<CameraDevice>(_mockCameras);
         }
 
-        public bool StartCamera(int cameraIndex = 0)
+        public async Task<bool> StartCameraAsync(int cameraIndex = 0)
         {
-            // Synchronous simulation - no need for Task.Delay in non-async method
-            System.Threading.Thread.Sleep(10); // Simulate startup time
+            // Async simulation with proper delay
+            await Task.Delay(10); // Simulate startup time
 
             if (cameraIndex < 0 || cameraIndex >= _mockCameras.Count)
             {
@@ -286,6 +286,76 @@ namespace Photobooth.Tests.Mocks
                 Solutions = new List<string>(),
                 ConflictingProcesses = new List<string>()
             };
+        }
+
+        #endregion
+
+        #region Camera Property Controls
+
+        // Mock camera setting storage
+        private int _mockBrightness = 50;
+        private int _mockZoom = 100;
+        private int _mockContrast = 50;
+
+        /// <summary>
+        /// Set camera brightness (0-100) - Mock implementation
+        /// </summary>
+        public bool SetBrightness(int brightness)
+        {
+            _mockBrightness = Math.Clamp(brightness, 0, 100);
+            return true; // Always succeeds in mock
+        }
+
+        /// <summary>
+        /// Set camera zoom (100-300, where 100 = no zoom) - Mock implementation
+        /// </summary>
+        public bool SetZoom(int zoomPercentage)
+        {
+            _mockZoom = Math.Clamp(zoomPercentage, 100, 300);
+            return true; // Always succeeds in mock
+        }
+
+        /// <summary>
+        /// Set camera contrast (0-100) - Mock implementation
+        /// </summary>
+        public bool SetContrast(int contrast)
+        {
+            _mockContrast = Math.Clamp(contrast, 0, 100);
+            return true; // Always succeeds in mock
+        }
+
+        /// <summary>
+        /// Get current camera brightness setting - Mock implementation
+        /// </summary>
+        public int GetBrightness()
+        {
+            return _mockBrightness;
+        }
+
+        /// <summary>
+        /// Get current camera zoom setting - Mock implementation
+        /// </summary>
+        public int GetZoom()
+        {
+            return _mockZoom;
+        }
+
+        /// <summary>
+        /// Get current camera contrast setting - Mock implementation
+        /// </summary>
+        public int GetContrast()
+        {
+            return _mockContrast;
+        }
+
+        /// <summary>
+        /// Reset all camera settings to defaults - Mock implementation
+        /// </summary>
+        public void ResetCameraSettings()
+        {
+            _mockBrightness = 50;
+            _mockZoom = 100;
+            _mockContrast = 50;
         }
 
         #endregion

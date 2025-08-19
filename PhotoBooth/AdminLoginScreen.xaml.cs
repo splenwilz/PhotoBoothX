@@ -42,8 +42,11 @@ namespace Photobooth
             InitializeComponent();
             _databaseService = new DatabaseService();
             
-            // Set focus when the control is fully loaded
-            this.Loaded += (s, e) => UsernameInput.Focus();
+            // Set focus when the control is fully loaded and setup window event handlers
+            this.Loaded += AdminLoginScreen_Loaded;
+            
+            // Handle cleanup when control is unloaded
+            this.Unloaded += AdminLoginScreen_Unloaded;
         }
 
         #endregion
@@ -264,13 +267,13 @@ namespace Photobooth
         #region Public Methods
 
         /// <summary>
-        /// Reset the login screen state
+        /// Reset the login screen to its initial state
         /// </summary>
         public void Reset()
         {
-            // Hide virtual keyboard when resetting login screen
-            VirtualKeyboardService.Instance.HideKeyboard();
+            Console.WriteLine("=== AdminLoginScreen.Reset() called ===");
             
+            // Clear form fields
             UsernameInput.Text = "";
             ClearPassword();
             ErrorMessage.Visibility = Visibility.Collapsed;
@@ -290,8 +293,104 @@ namespace Photobooth
             LoginButton.Content = "Login";
             LoadingOverlay.Visibility = Visibility.Collapsed;
             
-            // Set focus to username input (use Dispatcher to ensure it happens after UI updates)
-            Dispatcher.BeginInvoke(new Action(() => UsernameInput.Focus()));
+            Console.WriteLine("AdminLoginScreen.Reset() - About to set focus with delay");
+            
+            // Don't immediately hide keyboard - let navigation handle it
+            // Instead, use a delayed approach to ensure UI is fully loaded before setting focus
+            Dispatcher.BeginInvoke(new Action(async () =>
+            {
+                try
+                {
+                    Console.WriteLine("AdminLoginScreen.Reset() - Delay callback started");
+                    
+                    // Small delay to ensure the control is fully loaded and visible
+                    await System.Threading.Tasks.Task.Delay(100);
+                    
+                    Console.WriteLine("AdminLoginScreen.Reset() - About to focus UsernameInput");
+                    Console.WriteLine($"UsernameInput.IsLoaded: {UsernameInput.IsLoaded}");
+                    Console.WriteLine($"UsernameInput.IsVisible: {UsernameInput.IsVisible}");
+                    Console.WriteLine($"UsernameInput.Focusable: {UsernameInput.Focusable}");
+                    
+                    // Now set focus - this will trigger the virtual keyboard to show
+                    var focusResult = UsernameInput.Focus();
+                    Console.WriteLine($"UsernameInput.Focus() result: {focusResult}");
+                    
+                    // Also ensure keyboard focus
+                    var keyboardFocusResult = System.Windows.Input.Keyboard.Focus(UsernameInput);
+                    Console.WriteLine($"Keyboard.Focus() result: {keyboardFocusResult?.GetType().Name ?? "null"}");
+                    
+                    Console.WriteLine("AdminLoginScreen.Reset() - Focus attempt completed");
+                }
+                catch (Exception ex)
+                {
+                    LoggingService.Application.Error("Error during delayed focus operation in AdminLoginScreen", ex);
+                    // Don't rethrow - this is a UI enhancement, not critical functionality
+                }
+            }));
+            
+            Console.WriteLine("=== AdminLoginScreen.Reset() completed ===");
+        }
+
+        /// <summary>
+        /// Handle control loaded - setup window deactivation monitoring
+        /// </summary>
+        private void AdminLoginScreen_Loaded(object sender, RoutedEventArgs e)
+        {
+            // Set focus on username input
+            UsernameInput.Focus();
+            
+            // Find parent window and setup deactivation handler
+            var parentWindow = Window.GetWindow(this);
+            if (parentWindow != null)
+            {
+                // Remove any existing handler to prevent duplicates
+                parentWindow.Deactivated -= ParentWindow_Deactivated;
+                // Add deactivation handler
+                parentWindow.Deactivated += ParentWindow_Deactivated;
+            }
+        }
+
+        /// <summary>
+        /// Handle control unloaded - cleanup virtual keyboard
+        /// </summary>
+        private void AdminLoginScreen_Unloaded(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                LoggingService.Application.Information("AdminLoginScreen unloaded, cleaning up virtual keyboard");
+                
+                // Reset virtual keyboard state completely for navigation cleanup
+                VirtualKeyboardService.Instance.ResetState();
+                
+                // Cleanup parent window event handler
+                var parentWindow = Window.GetWindow(this);
+                if (parentWindow != null)
+                {
+                    parentWindow.Deactivated -= ParentWindow_Deactivated;
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Error during AdminLoginScreen cleanup", ex);
+            }
+        }
+
+        /// <summary>
+        /// Handle parent window deactivated - hide virtual keyboard
+        /// </summary>
+        private void ParentWindow_Deactivated(object? sender, EventArgs e)
+        {
+            try
+            {
+                LoggingService.Application.Information("Parent window deactivated, hiding virtual keyboard");
+                
+                // Hide keyboard when window loses focus
+                VirtualKeyboardService.Instance.HideKeyboard();
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Error hiding keyboard on window deactivation", ex);
+            }
         }
 
         #endregion

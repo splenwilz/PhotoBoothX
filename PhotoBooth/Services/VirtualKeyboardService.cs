@@ -1,8 +1,11 @@
 using System;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Data;
+using System.Windows.Media;
 using Photobooth.Controls;
 using System.Collections.Generic;
 
@@ -10,8 +13,10 @@ namespace Photobooth.Services
 {
     public class VirtualKeyboardService
     {
+        // Use lazy initialization pattern for thread-safe singleton
         private static readonly Lazy<VirtualKeyboardService> _instance = 
             new Lazy<VirtualKeyboardService>(() => new VirtualKeyboardService());
+
         private VirtualKeyboard? _currentKeyboard;
         private Panel? _keyboardContainer;
         private Control? _activeInput;
@@ -19,24 +24,90 @@ namespace Photobooth.Services
 
         public static VirtualKeyboardService Instance => _instance.Value;
 
-        // Event to notify when keyboard visibility changes
+        // Events
         public event EventHandler<bool>? KeyboardVisibilityChanged;
 
+        /// <summary>
+        /// Callback to be invoked when price input is completed (Enter key pressed on price fields)
+        /// </summary>
+        public Action<string>? OnPriceInputComplete { get; set; }
+
         private VirtualKeyboardService() { }
+
+        // Add flag to prevent recursive operations during text manipulation
+        private bool _isManipulatingText = false;
+        private bool _bindingReenabled = false;
+        private Dictionary<TextBox, BindingExpression> _textBoxBindingExpressions = new Dictionary<TextBox, BindingExpression>();
 
         /// <summary>
         /// Show virtual keyboard for the specified input control
         /// </summary>
-        public void ShowKeyboard(Control inputControl, Window parentWindow)
+        public async Task ShowKeyboardAsync(Control inputControl, Window parentWindow)
         {
             try
             {
+                LoggingService.Application.Debug("VirtualKeyboardService.ShowKeyboard called", 
+                    ("InputControlType", inputControl?.GetType().Name ?? "null"),
+                    ("InputControlName", inputControl?.Name ?? "null"),
+                    ("ParentWindowType", parentWindow?.GetType().Name ?? "null"),
+                    ("CurrentKeyboardExists", _currentKeyboard != null));
+                
+                // Prevent recursive calls during text manipulation
+                if (_isManipulatingText)
+                {
+                    LoggingService.Application.Debug("Skipping ShowKeyboard - currently manipulating text");
+                    return;
+                }
+                
+                // Validate input parameters
+                if (inputControl == null)
+                {
+                    LoggingService.Application.Warning("ShowKeyboard called with null inputControl");
+                    return;
+                }
+                
+                if (parentWindow == null)
+                {
+                    LoggingService.Application.Warning("ShowKeyboard called with null parentWindow");
+                    return;
+                }
+
+                // CRITICAL FIX: If switching to a different input, restore binding for previous input
+                if (_activeInput != null && _activeInput != inputControl)
+                {
+                    LoggingService.Application.Debug("Switching from previous input, restoring binding for previous input");
+                    ReenableBinding(_activeInput);
+                }
+
+                // Store the active input and disable binding if it's a bound TextBox
+                _activeInput = inputControl;
+                
+                // Only disable binding if this is a new input or the input has changed
+                if (inputControl is TextBox textBox && !_textBoxBindingExpressions.ContainsKey(textBox))
+                {
+                    DisableBindingDuringEdit(_activeInput);
+                }
+                else if (inputControl is TextBox)
+                {
+                    LoggingService.Application.Debug("Binding already disabled for TextBox", ("TextBoxName", inputControl.Name));
+                }
+                else
+                {
+                    // Not a TextBox, no binding to disable
+                    LoggingService.Application.Debug("No binding to disable for non-TextBox control", 
+                        ("ControlType", inputControl.GetType().Name),
+                        ("ControlName", inputControl.Name));
+                }
+
                 // Determine keyboard mode based on input type
                 var keyboardMode = DetermineKeyboardMode(inputControl);
+                LoggingService.Application.Debug("Keyboard mode determined", ("Mode", keyboardMode.ToString()));
 
                 // Check if we can reuse the existing keyboard
-                if (_currentKeyboard != null && _activeInput != null && _parentWindow == parentWindow)
+                if (_currentKeyboard != null && _parentWindow == parentWindow)
                 {
+                    LoggingService.Application.Debug("Checking if existing keyboard can be reused");
+                    
                     // Check if the keyboard mode matches and we're on the same window
                     var currentMode = _currentKeyboard.GetCurrentMode();
                     
@@ -45,10 +116,14 @@ namespace Photobooth.Services
                     bool canReuse = (currentMode == keyboardMode) || 
                                    (IsTextBasedMode(currentMode) && IsTextBasedMode(keyboardMode));
                     
+                    LoggingService.Application.Debug("Keyboard reuse decision", 
+                        ("CanReuse", canReuse),
+                        ("CurrentMode", currentMode.ToString()),
+                        ("NewMode", keyboardMode.ToString()));
+                    
                     if (canReuse)
                     {
-                        // Just switch the active input and update mode if needed - preserve keyboard position
-                        _activeInput = inputControl;
+                        LoggingService.Application.Debug("Reusing existing keyboard");
                         
                         // Ensure the new input has focus
                         EnsureInputFocus();
@@ -57,91 +132,86 @@ namespace Photobooth.Services
                         if (currentMode != keyboardMode)
                         {
                             _currentKeyboard.ChangeMode(keyboardMode);
-
                         }
                         else
                         {
-
+                            LoggingService.Application.Debug("Reusing existing keyboard for login screen");
                         }
+                        
+                        LoggingService.Application.Debug("VirtualKeyboardService.ShowKeyboard completed (reused)");
                         return;
                     }
                     else
                     {
-
+                        LoggingService.Application.Debug("Cannot reuse existing keyboard, creating new one");
+                        // Hide the existing keyboard first
+                        HideKeyboard();
                     }
-                }
-
-                // Need to create a new keyboard - hide existing one first
-                if (_currentKeyboard != null && _keyboardContainer != null)
-                {
-                    // Find and remove the canvas wrapper that contains the keyboard
-                    Canvas? canvasWrapper = null;
-                    foreach (var child in _keyboardContainer.Children.OfType<Canvas>())
-                    {
-                        if (child.Children.Contains(_currentKeyboard))
-                        {
-                            canvasWrapper = child;
-                            break;
-                        }
-                    }
-
-                    if (canvasWrapper != null)
-                    {
-                        _keyboardContainer.Children.Remove(canvasWrapper);
                     }
                     else
                     {
-                        // Fallback - try to remove directly (for older keyboards)
-                        _keyboardContainer.Children.Remove(_currentKeyboard);
+                        LoggingService.Application.Debug("No existing keyboard to reuse");
                     }
-                    
-                    _currentKeyboard.OnKeyPressed -= HandleKeyPressed;
-                    _currentKeyboard.OnSpecialKeyPressed -= HandleSpecialKeyPressed;
-                    _currentKeyboard.OnKeyboardClosed -= HandleKeyboardClosed;
-                    _currentKeyboard = null;
 
-                }
-
-                // Set the new active input and determine the correct parent window
-                _activeInput = inputControl;
-
+                // Store parent window for future reference
+                _parentWindow = parentWindow;
 
                 // Always use the main application window for keyboard positioning, even for modal dialogs
                 var mainWindow = GetMainApplicationWindow(parentWindow);
                 _parentWindow = mainWindow;
 
-
-                // Check if input control's window is different from main window
-                var inputWindow = Window.GetWindow(_activeInput);
-
-
                 // Find the main container (usually a Grid or Panel at the root) in the main window
-                if (_parentWindow?.Content is Panel mainPanel)
+                // Try multiple attempts with small delays to handle timing issues
+                var attempts = 0;
+                const int maxAttempts = 3;
+                
+                while (_keyboardContainer == null && attempts < maxAttempts)
                 {
-                    _keyboardContainer = mainPanel;
-                }
-                else if (_parentWindow?.Content is Border border && border.Child is Panel panel)
-                {
-                    _keyboardContainer = panel;
-                }
-                else if (_parentWindow?.Content is Grid grid)
-                {
-                    _keyboardContainer = grid;
+                    attempts++;
+                    LoggingService.Application.Debug("Finding keyboard container", ("Attempt", attempts), ("MaxAttempts", maxAttempts));
+                    
+                    if (_parentWindow?.Content is Panel mainPanel)
+                    {
+                        _keyboardContainer = mainPanel;
+                        LoggingService.Application.Debug("Found keyboard container as Panel");
+                    }
+                    else if (_parentWindow?.Content is Border border && border.Child is Panel panel)
+                    {
+                        _keyboardContainer = panel;
+                        LoggingService.Application.Debug("Found keyboard container as Border > Panel");
+                    }
+                    else if (_parentWindow?.Content is Grid grid)
+                    {
+                        _keyboardContainer = grid;
+                        LoggingService.Application.Debug("Found keyboard container as Grid");
+                    }
+
+                    // If still not found and we have more attempts, wait a bit
+                    if (_keyboardContainer == null && attempts < maxAttempts)
+                    {
+                        LoggingService.Application.Debug("Container not found, waiting before retry");
+                        await Task.Delay(100);
+                    }
                 }
 
                 if (_keyboardContainer == null)
                 {
-
+                    LoggingService.Application.Error("Failed to find keyboard container after multiple attempts", null,
+                        ("ParentWindowContent", _parentWindow?.Content?.GetType().Name ?? "null"),
+                        ("InputControl", inputControl.GetType().Name),
+                        ("Attempts", attempts));
                     return;
                 }
 
-                // Use delayed login screen check to ensure visual tree is fully loaded
-                // Pass the original parentWindow for login detection, but use mainWindow for positioning
-                CheckLoginScreenWithDelayAndCreate(parentWindow, keyboardMode);
+                // Try to find keyboard container with retries
+                LoggingService.Application.Debug("Successfully found keyboard container, creating keyboard");
+                CreateAndShowKeyboard(keyboardMode, IsLoginScreen(parentWindow));
+                
+                LoggingService.Application.Debug("VirtualKeyboardService.ShowKeyboard completed (new keyboard)");
             }
             catch (Exception ex)
             {
-                LoggingService.Application.Error("Failed to show keyboard", ex);
+                LoggingService.Application.Error("Failed to show virtual keyboard", ex);
             }
         }
 
@@ -354,22 +424,75 @@ namespace Photobooth.Services
         {
             try
             {
+                LoggingService.Application.Debug("VirtualKeyboardService.CreateAndShowKeyboard called",
+                    ("KeyboardMode", keyboardMode.ToString()),
+                    ("IsLoginScreen", isLoginScreen),
+                    ("CurrentKeyboardExists", _currentKeyboard != null));
+                
+                // CRITICAL FIX: If a keyboard already exists, clean it up first to prevent duplicates
+                if (_currentKeyboard != null)
+                {
+                    LoggingService.Application.Debug("A keyboard already exists, cleaning it up before creating new one");
+                    
+                    // Remove existing keyboard from container
+                    if (_keyboardContainer != null)
+                    {
+                        Canvas? existingCanvasWrapper = null;
+                        foreach (var child in _keyboardContainer.Children.OfType<Canvas>())
+                        {
+                            if (child.Children.Contains(_currentKeyboard))
+                            {
+                                existingCanvasWrapper = child;
+                                break;
+                            }
+                        }
+
+                        if (existingCanvasWrapper != null)
+                        {
+                            LoggingService.Application.Debug("Removing existing keyboard canvas wrapper");
+                            _keyboardContainer.Children.Remove(existingCanvasWrapper);
+                        }
+                        else
+                        {
+                            LoggingService.Application.Debug("Removing existing keyboard directly");
+                            _keyboardContainer.Children.Remove(_currentKeyboard);
+                        }
+                    }
+                    
+                    // Detach existing event handlers
+                    LoggingService.Application.Debug("Detaching existing keyboard event handlers");
+                    _currentKeyboard.OnKeyPressed -= HandleKeyPressed;
+                    _currentKeyboard.OnSpecialKeyPressed -= HandleSpecialKeyPressed;
+                    _currentKeyboard.OnKeyboardClosed -= HandleKeyboardClosed;
+                    _currentKeyboard = null;
+                    LoggingService.Application.Debug("Existing keyboard cleaned up successfully");
+                }
+                
                 // Create and configure virtual keyboard
                 _currentKeyboard = new VirtualKeyboard(keyboardMode, isLoginScreen);
+                LoggingService.Application.Debug("Virtual keyboard created", ("InstanceId", _currentKeyboard.GetHashCode()));
 
-
+                LoggingService.Application.Debug("Attaching event handlers");
                 _currentKeyboard.OnKeyPressed += HandleKeyPressed;
                 _currentKeyboard.OnSpecialKeyPressed += HandleSpecialKeyPressed;
                 _currentKeyboard.OnKeyboardClosed += HandleKeyboardClosed;
+                LoggingService.Application.Debug("Event handlers attached successfully", ("KeyboardId", _currentKeyboard.GetHashCode()));
 
                 // Position keyboard at bottom of screen initially
                 _currentKeyboard.VerticalAlignment = VerticalAlignment.Bottom;
                 _currentKeyboard.HorizontalAlignment = HorizontalAlignment.Stretch;
                 _currentKeyboard.Margin = new Thickness(0, 0, 0, 0);
+#if DEBUG
+                Console.WriteLine("Keyboard positioning set");
+#endif
 
                 // Add keyboard to container
                 if (_keyboardContainer != null)
                 {
+#if DEBUG
+                    Console.WriteLine("Adding keyboard to container...");
+#endif
+                    
                     // Create a Canvas wrapper for proper drag functionality
                     var canvasWrapper = new Canvas
                     {
@@ -380,9 +503,11 @@ namespace Photobooth.Services
                     
                     Panel.SetZIndex(canvasWrapper, 9999); // Ensure wrapper is on top
                     _keyboardContainer.Children.Add(canvasWrapper);
+                    LoggingService.Application.Debug("Canvas wrapper added to container");
                     
                     // Add keyboard to canvas wrapper
                     canvasWrapper.Children.Add(_currentKeyboard);
+                    LoggingService.Application.Debug("Keyboard added to canvas wrapper", ("KeyboardId", _currentKeyboard.GetHashCode()));
                     
                     // Now Canvas positioning will work properly
                     // Center horizontally if possible, otherwise position at left
@@ -398,20 +523,26 @@ namespace Photobooth.Services
                     }
                     
                     Canvas.SetBottom(_currentKeyboard, 0);
+                    LoggingService.Application.Debug("Keyboard positioned in canvas");
                     
                     // Initialize drag and resize with the canvas wrapper as parent
                     _currentKeyboard.InitializeDragResize(canvasWrapper);
+                    LoggingService.Application.Debug("Drag and resize initialized");
                     
                     // Ensure the input field has focus when keyboard is shown
                     EnsureInputFocus();
+                    LoggingService.Application.Debug("Input focus ensured");
 
                     // Notify that keyboard is now visible
                     KeyboardVisibilityChanged?.Invoke(this, true);
+                    LoggingService.Application.Debug("KeyboardVisibilityChanged event invoked");
                 }
                 else
                 {
-
+                    LoggingService.Application.Error("No keyboard container available");
                 }
+
+                LoggingService.Application.Debug("VirtualKeyboardService.CreateAndShowKeyboard completed", ("FinalKeyboardId", _currentKeyboard?.GetHashCode() ?? -1));
             }
             catch (Exception ex)
             {
@@ -426,8 +557,17 @@ namespace Photobooth.Services
         {
             try
             {
+                LoggingService.Application.Debug("VirtualKeyboardService.HideKeyboard called",
+                    ("CurrentKeyboardExists", _currentKeyboard != null),
+                    ("CurrentKeyboardId", _currentKeyboard?.GetHashCode() ?? -1),
+                    ("CurrentContainerExists", _keyboardContainer != null));
+                
+                LoggingService.Application.Debug("Hiding virtual keyboard");
+                
                 if (_currentKeyboard != null && _keyboardContainer != null)
                 {
+                    LoggingService.Application.Debug("Looking for keyboard canvas wrapper", ("KeyboardId", _currentKeyboard.GetHashCode()));
+                    
                     // Find and remove the canvas wrapper that contains the keyboard
                     Canvas? canvasWrapper = null;
                     foreach (var child in _keyboardContainer.Children.OfType<Canvas>())
@@ -441,30 +581,99 @@ namespace Photobooth.Services
 
                     if (canvasWrapper != null)
                     {
+                        LoggingService.Application.Debug("Found canvas wrapper for keyboard, removing from container", ("KeyboardId", _currentKeyboard.GetHashCode()));
                         _keyboardContainer.Children.Remove(canvasWrapper);
+                        LoggingService.Application.Debug("Removed keyboard canvas wrapper from container");
                     }
                     else
                     {
+                        LoggingService.Application.Debug("No canvas wrapper found for keyboard, trying direct removal", ("KeyboardId", _currentKeyboard.GetHashCode()));
                         // Fallback - try to remove directly (for older keyboards)
                         _keyboardContainer.Children.Remove(_currentKeyboard);
+                        LoggingService.Application.Debug("Removed keyboard directly from container");
                     }
                     
+                    LoggingService.Application.Debug("Detaching event handlers from keyboard", ("KeyboardId", _currentKeyboard.GetHashCode()));
                     _currentKeyboard.OnKeyPressed -= HandleKeyPressed;
                     _currentKeyboard.OnSpecialKeyPressed -= HandleSpecialKeyPressed;
                     _currentKeyboard.OnKeyboardClosed -= HandleKeyboardClosed;
+                    var hiddenKeyboardId = _currentKeyboard.GetHashCode();
                     _currentKeyboard = null;
+                    LoggingService.Application.Debug("Event handlers detached, keyboard set to null", ("HiddenKeyboardId", hiddenKeyboardId));
 
                     // Notify that keyboard is now hidden
                     KeyboardVisibilityChanged?.Invoke(this, false);
+                    LoggingService.Application.Debug("KeyboardVisibilityChanged event invoked");
+                }
+                else
+                {
+                    LoggingService.Application.Debug("No keyboard or container to hide");
                 }
 
+                // Re-enable binding for the active input before clearing it (unless already done)
+                if (_activeInput != null && !_bindingReenabled)
+                {
+                    ReenableBinding(_activeInput);
+                }
+                _bindingReenabled = false; // Reset flag
+
+                // Reset manipulation flag
+                _isManipulatingText = false;
+
+                // Clear the active input reference
                 _activeInput = null;
-                _keyboardContainer = null;
-                _parentWindow = null;
+                LoggingService.Application.Debug("Active input cleared");
+                
+                // Don't clear _keyboardContainer and _parentWindow - preserve them for next show
+                // This prevents timing issues when quickly hiding and showing keyboard
+                LoggingService.Application.Debug("Virtual keyboard hidden, preserving container for next show");
+                LoggingService.Application.Debug("VirtualKeyboardService.HideKeyboard completed");
             }
             catch (Exception ex)
             {
                 LoggingService.Application.Error("Failed to hide keyboard", ex);
+            }
+        }
+
+        /// <summary>
+        /// Reset the keyboard service state completely
+        /// Call this when navigating between different screens/windows
+        /// </summary>
+        public void ResetState()
+        {
+            try
+            {
+                System.Diagnostics.Debug.WriteLine("=== VirtualKeyboardService.ResetState CALLED ===");
+                System.Diagnostics.Debug.WriteLine($"Current keyboard exists: {_currentKeyboard != null}");
+                System.Diagnostics.Debug.WriteLine($"Current container exists: {_keyboardContainer != null}");
+                System.Diagnostics.Debug.WriteLine($"Current active input exists: {_activeInput != null}");
+                System.Diagnostics.Debug.WriteLine($"Current parent window exists: {_parentWindow != null}");
+                
+                LoggingService.Application.Debug("Resetting virtual keyboard service state");
+                
+                // Hide any existing keyboard first
+                System.Diagnostics.Debug.WriteLine("Calling HideKeyboard()...");
+                HideKeyboard();
+                System.Diagnostics.Debug.WriteLine("HideKeyboard() completed");
+                
+                // Clear all state
+                _currentKeyboard = null;
+                _keyboardContainer = null;
+                _activeInput = null;
+                _parentWindow = null;
+                _isManipulatingText = false;
+                _textBoxBindingExpressions.Clear();
+                _bindingReenabled = false;
+                
+                System.Diagnostics.Debug.WriteLine("All state cleared");
+                LoggingService.Application.Debug("Virtual keyboard service state reset complete");
+                System.Diagnostics.Debug.WriteLine("=== VirtualKeyboardService.ResetState COMPLETED ===");
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to reset keyboard service state", ex);
+                System.Diagnostics.Debug.WriteLine($"ResetState failed: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"Stack trace: {ex.StackTrace}");
             }
         }
 
@@ -483,9 +692,19 @@ namespace Photobooth.Services
         {
             // Check control name or properties to determine mode
             var controlName = inputControl.Name?.ToLower() ?? "";
+            var controlTag = inputControl.Tag?.ToString()?.ToLower() ?? "";
             
+            // Check both Name and Tag for price/number indicators (case-insensitive)
             if (controlName.Contains("price") || controlName.Contains("number") || 
-                controlName.Contains("priority") || controlName.Contains("sort"))
+                controlName.Contains("priority") || controlName.Contains("sort") ||
+                controlName.Contains("discount") || controlName.Contains("amount") ||
+                controlTag.Contains("price") || controlTag.Contains("number") ||
+                controlTag.Contains("discount") || controlTag.Contains("amount") ||
+                // Specific product keys that should use numeric keyboard for pricing
+                controlTag.Contains("photostrips") || controlTag.Contains("photo4x6") || 
+                controlTag.Contains("smartphoneprint") ||
+                // Specific TextBox names for the new simplified pricing system
+                controlName.Contains("extracopypriceinput") || controlName.Contains("multiplecopydiscountinput"))
             {
                 return VirtualKeyboardMode.Numeric;
             }
@@ -636,119 +855,108 @@ namespace Photobooth.Services
         }
 
         /// <summary>
-        /// Handle key presses from the virtual keyboard
+        /// Handle regular key press
         /// </summary>
         private void HandleKeyPressed(string key)
         {
-            if (_activeInput == null) 
-            {
-                return;
-            }
-
-            try
-            {
-                // Ensure the input control has focus before processing key
-                EnsureInputFocus();
-                
-                // Check focus after ensuring focus
-                var currentFocusAfter = Keyboard.FocusedElement;
-
-                if (_activeInput is TextBox textBox)
-                {
-                    // Use Dispatcher to ensure proper threading for cross-window operations
-                    textBox.Dispatcher.BeginInvoke(new Action(() =>
-                    {
-                        try
+#if DEBUG
+            Console.WriteLine($"=== VirtualKeyboardService.HandleKeyPressed CALLED ===");
+            Console.WriteLine($"Key pressed: {(_activeInput is PasswordBox ? "<hidden>" : $"'{key}'")}");
+            Console.WriteLine($"Active input: {_activeInput?.GetType().Name ?? "null"} '{_activeInput?.Name ?? "null"}'");
+#endif
+            
+            if (_activeInput != null)
                         {
-                            var caretIndex = textBox.CaretIndex;
-                            var currentText = textBox.Text ?? "";
-
-                            // Insert character at caret position
-                            var newText = currentText.Insert(caretIndex, key);
-                            textBox.Text = newText;
-                            textBox.CaretIndex = caretIndex + 1;
-                            
-                            // Ensure focus is maintained after text change
-                            var focusResult = textBox.Focus();
-
-                        }
-                        catch (Exception ex)
-                        {
-                            LoggingService.Application.Error("Failed to handle key press for TextBox", ex);
-                        }
-                    }), System.Windows.Threading.DispatcherPriority.Input);
-                }
-                else if (_activeInput is PasswordBox passwordBox)
-                {
-                    // For password boxes, just append (can't get caret position easily)
-                    passwordBox.Password += key;
+#if DEBUG
+                Console.WriteLine($"Active input current text: '{(_activeInput is PasswordBox ? "<hidden>" : GetInputText(_activeInput))}'");
+                Console.WriteLine("Sending key to active input...");
+#endif
                     
-                    // Use Dispatcher to ensure proper focus and cursor positioning after password change
-                    passwordBox.Dispatcher.BeginInvoke(new Action(() =>
-                    {
-                        try
-                        {
-                            passwordBox.Focus();
-                            
-                            // Use reflection to position cursor at end
-                            var passwordLength = passwordBox.Password?.Length ?? 0;
-                            var selectMethod = passwordBox.GetType().GetMethod("Select", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                            selectMethod?.Invoke(passwordBox, new object[] { passwordLength, 0 });
+                // Send the key to the active input control
+                SendKeyToInput(key);
+                
+#if DEBUG
+                Console.WriteLine($"Active input text after key: '{(_activeInput is PasswordBox ? "<hidden>" : GetInputText(_activeInput))}'");
+#endif
                         }
-                        catch (Exception ex)
-                        {
-                            LoggingService.Application.Error("Failed to set password box cursor position in HandleKeyPressed", ex);
-                            passwordBox.Focus(); // Fallback
-                        }
-                    }), System.Windows.Threading.DispatcherPriority.Input);
-
-                }
-            }
-            catch (Exception ex)
+            else
             {
-                LoggingService.Application.Error("Failed to handle key press", ex);
+#if DEBUG
+                Console.WriteLine("WARNING: No active input to send key to");
+#endif
             }
-
+#if DEBUG
+            Console.WriteLine($"=== VirtualKeyboardService.HandleKeyPressed COMPLETED ===");
+#endif
         }
 
         /// <summary>
-        /// Handle special key presses (backspace, enter, etc.)
+        /// Handle special key press (backspace, enter, etc.)
         /// </summary>
         private void HandleSpecialKeyPressed(VirtualKeyboardSpecialKey specialKey)
         {
+#if DEBUG
+            Console.WriteLine($"=== VirtualKeyboardService.HandleSpecialKeyPressed CALLED ===");
+            Console.WriteLine($"Special key pressed: {specialKey}");
+            Console.WriteLine($"Active input: {_activeInput?.GetType().Name ?? "null"} '{_activeInput?.Name ?? "null"}'");
+#endif
 
-            if (_activeInput == null) 
+            if (_activeInput != null)
             {
-
-                return;
+#if DEBUG
+                Console.WriteLine($"Active input current text: '{GetInputText(_activeInput)}'");
+#endif
             }
 
-            try
-            {
                 switch (specialKey)
                 {
                     case VirtualKeyboardSpecialKey.Backspace:
-
+#if DEBUG
+                    Console.WriteLine("Processing backspace...");
+#endif
                         HandleBackspace();
                         break;
                     case VirtualKeyboardSpecialKey.Enter:
-
+#if DEBUG
+                    Console.WriteLine("Processing enter...");
+#endif
                         HandleEnter();
                         break;
                     case VirtualKeyboardSpecialKey.Space:
-
-                        HandleKeyPressed(" ");
+#if DEBUG
+                    Console.WriteLine("Processing space...");
+#endif
+                    SendKeyToInput(" ");
                         break;
                     case VirtualKeyboardSpecialKey.Tab:
-
+#if DEBUG
+                    Console.WriteLine("Processing tab...");
+#endif
                         HandleTab();
                         break;
-                }
+                case VirtualKeyboardSpecialKey.Shift:
+#if DEBUG
+                    Console.WriteLine("Processing shift...");
+#endif
+                    // Note: Shift handling is done internally by the keyboard control
+                    break;
+                case VirtualKeyboardSpecialKey.CapsLock:
+#if DEBUG
+                    Console.WriteLine("Processing caps lock...");
+#endif
+                    // Note: CapsLock handling is done internally by the keyboard control
+                    break;
             }
-            catch (Exception ex)
+            
+            if (_activeInput != null)
             {
-                LoggingService.Application.Error("Failed to handle special key press", ex);
+#if DEBUG
+                Console.WriteLine($"Active input text after special key: '{GetInputText(_activeInput)}'");
+#endif
             }
+#if DEBUG
+            Console.WriteLine($"=== VirtualKeyboardService.HandleSpecialKeyPressed COMPLETED ===");
+#endif
         }
 
         /// <summary>
@@ -756,62 +964,99 @@ namespace Photobooth.Services
         /// </summary>
         private void HandleBackspace()
         {
-            // Ensure the input control has focus before processing backspace
-            EnsureInputFocus();
+#if DEBUG
+            Console.WriteLine($"=== VirtualKeyboardService.HandleBackspace CALLED ===");
+            Console.WriteLine($"Active input: {_activeInput?.GetType().Name ?? "null"} '{_activeInput?.Name ?? "null"}'");
+#endif
+            
+            if (_activeInput == null)
+            {
+#if DEBUG
+                Console.WriteLine("WARNING: No active input for backspace");
+#endif
+                return;
+            }
+
+#if DEBUG
+            Console.WriteLine($"Active input current text before backspace: '{GetInputText(_activeInput)}'");
+#endif
+
+            try
+            {
+                // Set manipulation flag to prevent interference
+                _isManipulatingText = true;
             
             if (_activeInput is TextBox textBox)
             {
-                // Use Dispatcher to ensure proper threading for cross-window operations
-                textBox.Dispatcher.BeginInvoke(new Action(() =>
-                {
-                    try
-                    {
+#if DEBUG
+                    Console.WriteLine($"Processing backspace for TextBox, CaretIndex: {textBox.CaretIndex}");
+#endif
+                    
                         var caretIndex = textBox.CaretIndex;
                         var currentText = textBox.Text ?? "";
                         
                         if (caretIndex > 0 && currentText.Length > 0)
                         {
+#if DEBUG
+                        Console.WriteLine($"Removing character at position {caretIndex - 1}");
+#endif
+                        // Remove character before caret
                             var newText = currentText.Remove(caretIndex - 1, 1);
                             textBox.Text = newText;
                             textBox.CaretIndex = caretIndex - 1;
-                            
-                            // Ensure focus is maintained after text change
-                            textBox.Focus();
+#if DEBUG
+                        Console.WriteLine($"New text after backspace: '{newText}', New caret: {caretIndex - 1}");
+#endif
                         }
-                    }
-                    catch (Exception ex)
+                    else
                     {
-                        LoggingService.Application.Error("Failed to handle backspace for TextBox", ex);
+#if DEBUG
+                        Console.WriteLine("Nothing to delete - caret at beginning or empty text");
+#endif
                     }
-                }), System.Windows.Threading.DispatcherPriority.Input);
             }
             else if (_activeInput is PasswordBox passwordBox)
             {
-                var currentPassword = passwordBox.Password;
+#if DEBUG
+                    Console.WriteLine($"Processing backspace for PasswordBox, current length: {passwordBox.Password?.Length ?? 0}");
+#endif
+                    
+                    var currentPassword = passwordBox.Password ?? "";
                 if (currentPassword.Length > 0)
                 {
+#if DEBUG
+                        Console.WriteLine($"Removing last character from password");
+#endif
+                        // Remove last character
                     passwordBox.Password = currentPassword.Substring(0, currentPassword.Length - 1);
-                    
-                    // Use Dispatcher to ensure proper focus and cursor positioning after password change
-                    passwordBox.Dispatcher.BeginInvoke(new Action(() =>
+#if DEBUG
+                        Console.WriteLine($"New password length: {passwordBox.Password.Length}");
+#endif
+                    }
+                    else
                     {
-                        try
-                        {
-                            passwordBox.Focus();
-                            
-                            // Use reflection to position cursor at end
-                            var passwordLength = passwordBox.Password?.Length ?? 0;
-                            var selectMethod = passwordBox.GetType().GetMethod("Select", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                            selectMethod?.Invoke(passwordBox, new object[] { passwordLength, 0 });
+#if DEBUG
+                        Console.WriteLine("Nothing to delete - password is empty");
+#endif
+                    }
+                }
                         }
                         catch (Exception ex)
                         {
-                            LoggingService.Application.Error("Failed to set password box cursor position in HandleBackspace", ex);
-                            passwordBox.Focus(); // Fallback
+#if DEBUG
+                Console.WriteLine($"ERROR in HandleBackspace: {ex.Message}");
+#endif
+                LoggingService.Application.Error("Failed to handle backspace", ex);
                         }
-                    }), System.Windows.Threading.DispatcherPriority.Input);
+            finally
+            {
+                // Reset manipulation flag
+                _isManipulatingText = false;
                 }
-            }
+            
+#if DEBUG
+            Console.WriteLine($"=== VirtualKeyboardService.HandleBackspace COMPLETED ===");
+#endif
         }
 
         /// <summary>
@@ -819,7 +1064,31 @@ namespace Photobooth.Services
         /// </summary>
         private void HandleEnter()
         {
-            // Simulate Enter key press
+            // Check if we're in a price input field in the Admin Dashboard
+            if (_activeInput is TextBox textBox)
+            {
+                var textBoxName = textBox.Name?.ToLower() ?? "";
+                var textBoxTag = textBox.Tag?.ToString() ?? "";
+                var textBoxTagLower = textBoxTag.ToLowerInvariant();
+                
+                // Check for both old tag-based and new name-based price fields
+                if (textBoxTagLower == "photostrips" || textBoxTagLower == "photo4x6" || textBoxTagLower == "smartphoneprint" ||
+                    textBoxName.Contains("extracopypriceinput") || textBoxName.Contains("multiplecopydiscountinput"))
+                {
+                    // This is a product price field - update binding first, then invoke callback and close keyboard
+                    _bindingReenabled = true;
+                    ReenableBinding(_activeInput);
+                    
+                    // Invoke callback with tag (if present) else name for context
+                    var contextId = !string.IsNullOrWhiteSpace(textBoxTag) ? textBoxTag : textBoxName;
+                    OnPriceInputComplete?.Invoke(contextId);
+                    
+                    HideKeyboard();
+                    return;
+                }
+            }
+
+            // Default Enter behavior for other inputs
             var enterKey = new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(_activeInput), 0, Key.Enter)
             {
                 RoutedEvent = UIElement.KeyDownEvent
@@ -830,6 +1099,8 @@ namespace Photobooth.Services
             // Also try to move focus to next control or close keyboard
             _activeInput?.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
         }
+
+
 
         /// <summary>
         /// Handle tab key
@@ -845,7 +1116,171 @@ namespace Photobooth.Services
         /// </summary>
         private void HandleKeyboardClosed()
         {
+#if DEBUG
+            Console.WriteLine("=== VirtualKeyboardService.HandleKeyboardClosed CALLED ===");
+            Console.WriteLine($"Current tracked keyboard ID: {_currentKeyboard?.GetHashCode() ?? -1}");
+            Console.WriteLine("Close button clicked, calling HideKeyboard()");
+#endif
             HideKeyboard();
+#if DEBUG
+            Console.WriteLine("=== VirtualKeyboardService.HandleKeyboardClosed COMPLETED ===");
+#endif
+        }
+
+        /// <summary>
+        /// Send a key to the active input control
+        /// </summary>
+        private void SendKeyToInput(string key)
+        {
+            if (_activeInput == null)
+            {
+                LoggingService.Application.Warning("Attempted to send key to null active input");
+                return;
+            }
+
+            try
+            {
+                // Set manipulation flag to prevent interference
+                _isManipulatingText = true;
+
+                if (_activeInput is TextBox textBox)
+                {
+                    // Directly manipulate text without focus changes
+                    var caretIndex = textBox.CaretIndex;
+                    var currentText = textBox.Text ?? "";
+
+                    // Insert character at caret position
+                    var newText = currentText.Insert(caretIndex, key);
+                    textBox.Text = newText;
+                    textBox.CaretIndex = caretIndex + 1;
+                    
+                    Console.WriteLine($"SendKeyToInput - Inserted character at position {caretIndex}, new text length: {newText.Length}");
+                }
+                else if (_activeInput is PasswordBox passwordBox)
+                {
+                    // For password boxes, just append (can't get caret position easily)
+                    passwordBox.Password += key;
+                    
+                    Console.WriteLine($"SendKeyToInput - Added character to password, new length: {passwordBox.Password?.Length ?? 0}");
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to send key to input", ex);
+            }
+            finally
+            {
+                // Reset manipulation flag
+                _isManipulatingText = false;
+            }
+        }
+
+        /// <summary>
+        /// Get the current text content of the active input control
+        /// </summary>
+        private string GetInputText(Control inputControl)
+        {
+            if (inputControl == null)
+            {
+                return "null";
+            }
+
+            if (inputControl is TextBox textBox)
+            {
+                return textBox.Text;
+            }
+            else if (inputControl is PasswordBox passwordBox)
+            {
+                return "<hidden>";
+            }
+            return "N/A";
+        }
+
+        /// <summary>
+        /// Temporarily disable binding on TextBox controls to prevent auto-formatting
+        /// </summary>
+        private void DisableBindingDuringEdit(Control inputControl)
+        {
+            if (inputControl is TextBox textBox)
+            {
+                // Store the original binding expression and current text
+                var bindingExpression = textBox.GetBindingExpression(TextBox.TextProperty);
+                if (bindingExpression != null)
+                {
+                    _textBoxBindingExpressions[textBox] = bindingExpression;
+                    var currentText = textBox.Text; // Store current text value
+                    
+                    var textBoxId = string.IsNullOrEmpty(textBox.Name) ? textBox.Tag?.ToString() ?? "Unknown" : textBox.Name;
+#if DEBUG
+                    Console.WriteLine($"About to disable binding for TextBox: {textBoxId}");
+#endif
+                    
+                    // Actually remove the binding by setting to null
+                    BindingOperations.ClearBinding(textBox, TextBox.TextProperty);
+                    
+                    // Restore the current text value after clearing binding
+                    textBox.Text = currentText;
+                    
+#if DEBUG
+                    Console.WriteLine($"Temporarily disabled binding for TextBox: {textBoxId}");
+#endif
+                }
+                else
+                {
+                    var textBoxId = string.IsNullOrEmpty(textBox.Name) ? textBox.Tag?.ToString() ?? "Unknown" : textBox.Name;
+#if DEBUG
+                    Console.WriteLine($"No binding found for TextBox: {textBoxId}");
+#endif
+                }
+            }
+        }
+
+        /// <summary>
+        /// Re-enable binding on TextBox controls if they were previously disabled
+        /// </summary>
+        private void ReenableBinding(Control inputControl)
+        {
+            if (inputControl is TextBox textBox && _textBoxBindingExpressions.ContainsKey(textBox))
+            {
+                var bindingExpression = _textBoxBindingExpressions[textBox];
+                if (bindingExpression != null)
+                {
+                    // Preserve the current user input before restoring binding
+                    var currentUserInput = textBox.Text;
+#if DEBUG
+                    Console.WriteLine($"Preserving user input before binding restore");
+#endif
+                    
+                    // Restore the original binding
+                    var binding = bindingExpression.ParentBinding;
+                    textBox.SetBinding(TextBox.TextProperty, binding);
+                    
+                    // Set the user's input back to prevent ViewModel overwrite
+                    var currentTextAfterBinding = textBox.Text;
+#if DEBUG
+                    Console.WriteLine($"Text after binding restore, setting back to user input");
+#endif
+                    textBox.Text = currentUserInput;
+                    
+                    // CRITICAL FIX: Force binding to update the source (ViewModel) IMMEDIATELY
+                    // This ensures the ViewModel gets the new value even with UpdateSourceTrigger=LostFocus
+                    var newBindingExpression = textBox.GetBindingExpression(TextBox.TextProperty);
+                    if (newBindingExpression != null)
+                    {
+                        var textBoxId = string.IsNullOrEmpty(textBox.Name) ? textBox.Tag?.ToString() ?? "Unknown" : textBox.Name;
+#if DEBUG
+                        Console.WriteLine($"Manually updating binding source for TextBox: {textBoxId}");
+#endif
+                        newBindingExpression.UpdateSource();
+                    }
+                    
+                    var textBoxId2 = string.IsNullOrEmpty(textBox.Name) ? textBox.Tag?.ToString() ?? "Unknown" : textBox.Name;
+#if DEBUG
+                    Console.WriteLine($"Re-enabled binding for TextBox: {textBoxId2}, restored user input");
+#endif
+                }
+                _textBoxBindingExpressions.Remove(textBox);
+            }
         }
     }
 

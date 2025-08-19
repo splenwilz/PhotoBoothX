@@ -50,9 +50,29 @@ CREATE TABLE Products (
     PhotoCount INTEGER DEFAULT 1, -- For strips: 4 photos, for 4x6: 1 photo
     MaxCopies INTEGER DEFAULT 10,
     ProductType TEXT NOT NULL DEFAULT 'PhotoStrips' CHECK (ProductType IN ('PhotoStrips', 'Photo4x6', 'SmartphonePrint')),
+    -- Legacy extra copy pricing configuration (deprecated - use product-specific pricing below)
+    UseCustomExtraCopyPricing BOOLEAN DEFAULT 0, -- If false, extra copies cost same as base price
+    ExtraCopy1Price DECIMAL(10,2), -- Price for 1 extra copy (nullable, uses base price if null)
+    ExtraCopy2Price DECIMAL(10,2), -- Price for 2 extra copies (nullable, uses base price if null)  
+    ExtraCopy4BasePrice DECIMAL(10,2), -- Base price for 4+ extra copies (nullable, uses base price if null)
+    ExtraCopyAdditionalPrice DECIMAL(10,2), -- Price per additional copy beyond 4 (nullable, uses base price if null)
+    
+    -- Simplified product-specific extra copy pricing configuration
+    -- Photo Strips extra copy pricing
+    StripsExtraCopyPrice DECIMAL(10,2), -- Price per extra strip copy
+    StripsMultipleCopyDiscount DECIMAL(5,2) DEFAULT 0.00 CHECK (StripsMultipleCopyDiscount >= 0 AND StripsMultipleCopyDiscount <= 100), -- Discount percentage for 2+ copies (0-100)
+    
+    -- 4x6 Photos extra copy pricing
+    Photo4x6ExtraCopyPrice DECIMAL(10,2), -- Price per extra 4x6 copy
+    Photo4x6MultipleCopyDiscount DECIMAL(5,2) DEFAULT 0.00 CHECK (Photo4x6MultipleCopyDiscount >= 0 AND Photo4x6MultipleCopyDiscount <= 100), -- Discount percentage for 2+ copies (0-100)
+    
+    -- Smartphone Print extra copy pricing
+    SmartphoneExtraCopyPrice DECIMAL(10,2), -- Price per extra smartphone print copy
+    SmartphoneMultipleCopyDiscount DECIMAL(5,2) DEFAULT 0.00 CHECK (SmartphoneMultipleCopyDiscount >= 0 AND SmartphoneMultipleCopyDiscount <= 100), -- Discount percentage for 2+ copies (0-100)
     CreatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UpdatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (CategoryId) REFERENCES ProductCategories(Id)
+    FOREIGN KEY (CategoryId) REFERENCES ProductCategories(Id),
+    UNIQUE(ProductType) -- Ensure only one product per type
 );
 
 -- =============================================
@@ -103,6 +123,8 @@ CREATE TABLE TemplatePhotoAreas (
     Width INTEGER NOT NULL,
     Height INTEGER NOT NULL,
     Rotation REAL DEFAULT 0, -- Rotation in degrees
+    BorderRadius INTEGER DEFAULT 0, -- Border radius for rounded corners
+    ShapeType TEXT DEFAULT 'Rectangle' CHECK (ShapeType IN ('Rectangle', 'RoundedRectangle', 'Circle', 'Heart', 'Petal')), -- Explicit shape type instead of using rotation magic numbers
     FOREIGN KEY (LayoutId) REFERENCES TemplateLayouts(Id) ON DELETE CASCADE,
     UNIQUE(LayoutId, PhotoIndex)
 );
@@ -118,7 +140,7 @@ CREATE TABLE Templates (
     PreviewPath TEXT NOT NULL, -- Path to preview image
     IsActive BOOLEAN NOT NULL DEFAULT 1,
     IsSeasonal BOOLEAN NOT NULL DEFAULT 0,
-    Price DECIMAL(10,2) DEFAULT 0, -- Premium templates
+    Price DECIMAL(10,2) DEFAULT 0, -- Template pricing: Strip=$5.00, 4x6=$3.00 (set by application based on TemplateType)
     SortOrder INTEGER NOT NULL DEFAULT 0,
     FileSize INTEGER DEFAULT 0, -- In bytes
     Description TEXT DEFAULT '', -- Template description
@@ -202,6 +224,20 @@ CREATE TABLE PrintJobs (
     FOREIGN KEY (TransactionId) REFERENCES Transactions(Id)
 );
 
+-- Credit transaction history for tracking credit additions/deductions
+CREATE TABLE CreditTransactions (
+    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+    Amount DECIMAL(10,2) NOT NULL, -- Positive for additions, negative for deductions
+    TransactionType TEXT NOT NULL CHECK (TransactionType IN ('Add', 'Deduct', 'Reset')),
+    Description TEXT NOT NULL,
+    BalanceAfter DECIMAL(10,2) NOT NULL, -- Credit balance after this transaction
+    CreatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CreatedBy TEXT, -- Admin user who performed the action (for manual additions)
+    RelatedTransactionId INTEGER, -- Link to main transaction if this was from a purchase
+    FOREIGN KEY (CreatedBy) REFERENCES AdminUsers(UserId),
+    FOREIGN KEY (RelatedTransactionId) REFERENCES Transactions(Id)
+);
+
 -- =============================================
 -- 5. SYSTEM SETTINGS & CONFIGURATION
 -- =============================================
@@ -246,6 +282,16 @@ CREATE TABLE HardwareStatus (
     ErrorCode TEXT,
     ErrorMessage TEXT,
     LastMaintenanceAt DATETIME
+);
+
+-- Camera settings storage
+CREATE TABLE CameraSettings (
+    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+    SettingName TEXT NOT NULL UNIQUE,
+    SettingValue INTEGER NOT NULL,
+    Description TEXT,
+    CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UpdatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Print supply tracking
@@ -373,11 +419,11 @@ INSERT INTO ProductCategories (Name, Description, SortOrder) VALUES
     ('4x6', 'Single 4x6 photo prints', 2),
     ('Smartphone', 'Customer phone photo prints', 3);
 
--- Insert default products
-INSERT INTO Products (CategoryId, Name, Description, Price, PhotoCount, ProductType) VALUES
-    (1, 'Photo Strip', '4 photos in classic strip format', 5.00, 4, 'PhotoStrips'),
-    (2, '4x6 Photo', 'Single high-quality 4x6 print', 3.00, 1, 'Photo4x6'),
-    (3, 'Phone Print', 'Print photos from your phone', 2.00, 1, 'SmartphonePrint');
+-- Insert default products only if they don't exist (by default, extra copies cost same as base price)
+INSERT OR IGNORE INTO Products (CategoryId, Name, Description, Price, PhotoCount, ProductType, UseCustomExtraCopyPricing, ExtraCopy1Price, ExtraCopy2Price, ExtraCopy4BasePrice, ExtraCopyAdditionalPrice, StripsExtraCopyPrice, Photo4x6ExtraCopyPrice, SmartphoneExtraCopyPrice) VALUES
+    (1, 'Photo Strip', '4 photos in classic strip format', 6.00, 4, 'PhotoStrips', 0, NULL, NULL, NULL, NULL, 6.00, NULL, NULL),
+    (2, '4x6 Photo', 'Single high-quality 4x6 print', 6.00, 1, 'Photo4x6', 0, NULL, NULL, NULL, NULL, NULL, 6.00, NULL),
+    (3, 'Phone Print', 'Print photos from your phone', 6.00, 1, 'SmartphonePrint', 0, NULL, NULL, NULL, NULL, NULL, NULL, 6.00);
 
 -- Insert default template categories
 INSERT INTO TemplateCategories (Name, Description, SortOrder, IsSeasonalCategory, SeasonStartDate, SeasonEndDate, SeasonalPriority) VALUES
@@ -385,53 +431,118 @@ INSERT INTO TemplateCategories (Name, Description, SortOrder, IsSeasonalCategory
     ('Fun', 'Colorful and playful templates', 2, 0, NULL, NULL, 0),
     ('Elegant', 'Sophisticated template designs', 3, 0, NULL, NULL, 0),
     ('Premium', 'High-end template designs', 4, 0, NULL, NULL, 0),
-    -- Seasonal Categories
-    ('Valentine''s Day', 'Love and romance themed templates', 10, 1, '02-01', '02-20', 100),
-    ('Easter', 'Spring and Easter celebration templates', 11, 1, '03-15', '04-15', 90),
-    ('Halloween', 'Spooky and fun Halloween templates', 12, 1, '10-15', '11-01', 85),
-    ('Christmas', 'Holiday and winter celebration templates', 13, 1, '12-01', '01-05', 95),
-    ('New Year', 'Party and celebration templates', 14, 1, '12-25', '01-15', 80),
-    ('Summer', 'Bright and sunny summer templates', 15, 1, '06-01', '08-31', 70),
-    ('Back to School', 'Education and school-themed templates', 16, 1, '08-15', '09-15', 75);
+    -- Seasonal Categories (ordered chronologically through the year)
+    ('New Year', 'New Year celebration and party templates', 10, 1, '12-26', '01-07', 95),
+    ('Valentine''s Day', 'Love and romance themed templates', 11, 1, '02-01', '02-15', 100),
+    ('Mardi Gras', 'Carnival and Mardi Gras celebration templates', 12, 1, '02-12', '02-20', 85),
+    ('St Patrick''s Day', 'Irish celebration and green themed templates', 13, 1, '03-10', '03-25', 80),
+    ('Easter', 'Spring and Easter celebration templates', 14, 1, '03-15', '04-15', 90),
+    ('Cinco De Mayo', 'Mexican celebration and fiesta templates', 15, 1, '05-01', '05-10', 75),
+    ('Pride Day', 'Pride celebration and rainbow themed templates', 16, 1, '06-20', '06-30', 85),
+    ('Fourth of July', 'Independence Day and patriotic templates', 17, 1, '06-25', '07-05', 90),
+    ('Summer', 'Bright and sunny summer templates', 18, 1, '06-01', '08-31', 70),
+    ('Halloween', 'Spooky and fun Halloween templates', 20, 1, '10-01', '10-31', 85),
+    ('Thanksgiving', 'Thanksgiving and autumn harvest templates', 21, 1, '11-01', '11-30', 80),
+    ('Christmas', 'Holiday and winter celebration templates', 22, 1, '12-01', '12-26', 95);
 
 -- Insert template layouts (predefined photo area configurations)
+-- 4x6 template layouts (1864x1228 dimension)
 INSERT INTO TemplateLayouts (Id, LayoutKey, Name, Description, Width, Height, PhotoCount, ProductCategoryId, SortOrder) VALUES
-    ('550e8400-e29b-41d4-a716-446655440001', 'strip-591x1772', 'Compact Photo Strip', 'Compact 4-photo vertical strip layout', 591, 1772, 4, 1, 2),
-    ('550e8400-e29b-41d4-a716-446655440002', 'strip-591x1772b', 'Compact Photo Strip', 'Compact 4-photo vertical strip layout', 591, 1772, 4, 1, 2),
-    ('550e8400-e29b-41d4-a716-446655440003', '4x6-1864x1228', 'Standard 4x6', 'Single photo 4x6 print layout', 1864, 1228, 1, 2, 1),
-    ('550e8400-e29b-41d4-a716-446655440004', 'strip-1080x1920', 'Compact Photo Strip', 'Compact 3-photo vertical strip layout', 1080, 1920, 3, 1, 2),
-    ('550e8400-e29b-41d4-a716-446655440005', 'strip-707x2000', 'Compact Photo Strip', 'Compact 4-photo vertical strip layout', 707, 2000, 4, 1, 2);
+    ('4x6-550e8400-e29b-41d4-a716-446655440001', '4x6-1864x1228', 'Standard 4x6 Photo', 'Single photo 4x6 landscape layout', 1864, 1228, 1, 2, 1);
 
--- strip-591x1772 layout (4 photos in vertical strip - compact)
-INSERT INTO TemplatePhotoAreas (LayoutId, PhotoIndex, X, Y, Width, Height, Rotation) VALUES
-    ('550e8400-e29b-41d4-a716-446655440001', 1, 61, 130, 473, 354, 0),
-    ('550e8400-e29b-41d4-a716-446655440001', 2, 61, 515, 473, 354, 0),
-    ('550e8400-e29b-41d4-a716-446655440001', 3, 61, 903, 473, 354, 0),
-    ('550e8400-e29b-41d4-a716-446655440001', 4, 61, 1290, 473, 354, 0);
+-- Strip template layouts (614x1864 dimension only)
+INSERT INTO TemplateLayouts (Id, LayoutKey, Name, Description, Width, Height, PhotoCount, ProductCategoryId, SortOrder) VALUES
+    ('550e8400-e29b-41d4-a716-446655440001', 'strip-614x1864a', 'Standard Photo Strip A', '3-photo vertical strip layout with circular photos', 614, 1864, 3, 1, 1),
+    ('550e8400-e29b-41d4-a716-446655440002', 'strip-614x1864b', 'Standard Photo Strip B', '3-photo vertical strip layout with rounded corners', 614, 1864, 3, 1, 2),
+    ('550e8400-e29b-41d4-a716-446655440003', 'strip-614x1864c', 'Standard Photo Strip C', '4-photo vertical strip layout with rounded corners', 614, 1864, 4, 1, 3),
+    ('550e8400-e29b-41d4-a716-446655440004', 'strip-614x1864d', 'Standard Photo Strip D', '2-photo vertical strip layout with large photos', 614, 1864, 2, 1, 4),
+    ('550e8400-e29b-41d4-a716-446655440005', 'strip-614x1864e', 'Standard Photo Strip E', '3-photo vertical strip layout with square photos', 614, 1864, 3, 1, 5),
+    ('550e8400-e29b-41d4-a716-446655440006', 'strip-614x1864f', 'Standard Photo Strip F', '3-photo staggered layout with rectangular photos', 614, 1864, 3, 1, 6),
+    ('550e8400-e29b-41d4-a716-446655440007', 'strip-614x1864g', 'Standard Photo Strip G', '3-photo heart-shaped layout', 614, 1864, 3, 1, 7),
+    ('550e8400-e29b-41d4-a716-446655440008', 'strip-614x1864h', 'Standard Photo Strip H', '3-photo petal-shaped layout', 614, 1864, 3, 1, 8),
+    ('550e8400-e29b-41d4-a716-446655440009', 'strip-614x1864i', 'Standard Photo Strip I', '4-photo regular rectangle layout', 614, 1864, 4, 1, 9),
+    ('550e8400-e29b-41d4-a716-446655440010', 'strip-614x1864j', 'Standard Photo Strip J', '3-photo regular rectangle layout', 614, 1864, 3, 1, 10),
+    ('550e8400-e29b-41d4-a716-446655440011', 'strip-614x1864k', 'Standard Photo Strip K', '3-photo regular rectangle layout', 614, 1864, 3, 1, 11),
+    ('550e8400-e29b-41d4-a716-446655440012', 'strip-614x1864l', 'Standard Photo Strip L', '3-photo regular rectangle layout', 614, 1864, 3, 1, 12);
 
--- strip-591x1772b layout (4 photos in vertical strip - compact)
-INSERT INTO TemplatePhotoAreas (LayoutId, PhotoIndex, X, Y, Width, Height, Rotation) VALUES
-    ('550e8400-e29b-41d4-a716-446655440002', 1, 72, 60, 451, 326, 0),
-    ('550e8400-e29b-41d4-a716-446655440002', 2, 72, 443, 451, 326, 0),
-    ('550e8400-e29b-41d4-a716-446655440002', 3, 72, 824, 451, 326, 0),
-    ('550e8400-e29b-41d4-a716-446655440002', 4, 72, 1204, 451, 326, 0);
+-- Photo area definitions for 4x6-1864x1228 templates
+INSERT INTO TemplatePhotoAreas (LayoutId, PhotoIndex, X, Y, Width, Height, Rotation, BorderRadius, ShapeType) VALUES
+    ('4x6-550e8400-e29b-41d4-a716-446655440001', 1, 100, 100, 1664, 1028, 0, 0, 'Rectangle');
 
--- 4x6-1864x1228 layout (single photo)
-INSERT INTO TemplatePhotoAreas (LayoutId, PhotoIndex, X, Y, Width, Height, Rotation) VALUES
-    ('550e8400-e29b-41d4-a716-446655440003', 1, 433, 200, 952, 715, 0);
+-- Photo area definitions for strip-614x1864 templates only
 
--- strip-1080x1920 layout (3 photos in vertical strip)
-INSERT INTO TemplatePhotoAreas (LayoutId, PhotoIndex, X, Y, Width, Height, Rotation) VALUES
-    ('550e8400-e29b-41d4-a716-446655440004', 1, 249, 5, 582, 459, 0),
-    ('550e8400-e29b-41d4-a716-446655440004', 2, 249, 492, 582, 459, 0),
-    ('550e8400-e29b-41d4-a716-446655440004', 3, 249, 981, 582, 459, 0);
+-- strip-614x1864a layout (3 photos in vertical strip with fully rounded circles)
+INSERT INTO TemplatePhotoAreas (LayoutId, PhotoIndex, X, Y, Width, Height, Rotation, BorderRadius, ShapeType) VALUES
+    ('550e8400-e29b-41d4-a716-446655440001', 1, 56, 53, 503, 503, 0, 0, 'Circle'),   -- Fully rounded circle
+    ('550e8400-e29b-41d4-a716-446655440001', 2, 56, 583, 503, 503, 0, 0, 'Circle'),   -- Fully rounded circle
+    ('550e8400-e29b-41d4-a716-446655440001', 3, 56, 1115, 503, 503, 0, 0, 'Circle');  -- Fully rounded circle
 
--- strip-707x2000 layout (4 photos in vertical strip - compact)
-INSERT INTO TemplatePhotoAreas (LayoutId, PhotoIndex, X, Y, Width, Height, Rotation) VALUES
-    ('550e8400-e29b-41d4-a716-446655440005', 1, 95, 95, 523, 319, 356.945), --3.055
-    ('550e8400-e29b-41d4-a716-446655440005', 2, 101, 497, 523, 319, 1.056), --358.948
-    ('550e8400-e29b-41d4-a716-446655440005', 3, 104, 895, 523, 319, 356.955), --3.045
-    ('550e8400-e29b-41d4-a716-446655440005', 4, 89, 1291, 533, 329, 1.786); --358.214
+-- strip-614x1864b layout (3 photos in vertical strip with rounded corners)
+INSERT INTO TemplatePhotoAreas (LayoutId, PhotoIndex, X, Y, Width, Height, Rotation, BorderRadius, ShapeType) VALUES
+    ('550e8400-e29b-41d4-a716-446655440002', 1, 54, 513, 508, 425, 0, 80, 'RoundedRectangle'),
+    ('550e8400-e29b-41d4-a716-446655440002', 2, 54, 50, 508, 425, 0, 80, 'RoundedRectangle'),
+    ('550e8400-e29b-41d4-a716-446655440002', 3, 54, 977, 508, 425, 0, 80, 'RoundedRectangle');
+
+-- strip-614x1864c layout (4 photos in vertical strip with rounded corners)
+INSERT INTO TemplatePhotoAreas (LayoutId, PhotoIndex, X, Y, Width, Height, Rotation, BorderRadius, ShapeType) VALUES
+    ('550e8400-e29b-41d4-a716-446655440003', 1, 41, 50, 543, 414, 0, 80, 'RoundedRectangle'),
+    ('550e8400-e29b-41d4-a716-446655440003', 2, 41, 500, 543, 414, 0, 80, 'RoundedRectangle'),
+    ('550e8400-e29b-41d4-a716-446655440003', 3, 41, 951, 543, 414, 0, 80, 'RoundedRectangle'),
+    ('550e8400-e29b-41d4-a716-446655440003', 4, 41, 1402, 543, 414, 0, 80, 'RoundedRectangle');
+
+-- strip-614x1864d layout (2 photos in vertical strip with large photos)
+INSERT INTO TemplatePhotoAreas (LayoutId, PhotoIndex, X, Y, Width, Height, Rotation, BorderRadius, ShapeType) VALUES
+    ('550e8400-e29b-41d4-a716-446655440004', 1, 41, 50, 543, 698, 0, 0, 'Rectangle'),
+    ('550e8400-e29b-41d4-a716-446655440004', 2, 41, 795, 543, 698, 0, 0, 'Rectangle');
+
+-- strip-614x1864e layout (3 photos in vertical strip with square photos)
+INSERT INTO TemplatePhotoAreas (LayoutId, PhotoIndex, X, Y, Width, Height, Rotation, BorderRadius, ShapeType) VALUES
+    ('550e8400-e29b-41d4-a716-446655440005', 1, 43, 42, 529, 528, 0, 0, 'Rectangle'),
+    ('550e8400-e29b-41d4-a716-446655440005', 2, 43, 609, 529, 528, 0, 0, 'Rectangle'),
+    ('550e8400-e29b-41d4-a716-446655440005', 3, 43, 1177, 529, 528, 0, 0, 'Rectangle');
+
+-- strip-614x1864f layout (3 photos in staggered layout with rectangular photos)
+INSERT INTO TemplatePhotoAreas (LayoutId, PhotoIndex, X, Y, Width, Height, Rotation, BorderRadius, ShapeType) VALUES
+    ('550e8400-e29b-41d4-a716-446655440006', 1, 42, 41, 472, 444, 0, 0, 'Rectangle'),
+    ('550e8400-e29b-41d4-a716-446655440006', 2, 103, 518, 472, 444, 0, 0, 'Rectangle'),
+    ('550e8400-e29b-41d4-a716-446655440006', 3, 42, 996, 472, 444, 0, 0, 'Rectangle');
+
+-- strip-614x1864g layout (3 photos in heart-shaped layout)
+INSERT INTO TemplatePhotoAreas (LayoutId, PhotoIndex, X, Y, Width, Height, Rotation, BorderRadius, ShapeType) VALUES
+    ('550e8400-e29b-41d4-a716-446655440007', 1, 31, 38, 553, 445, 0, 0, 'Heart'),   -- Heart shape
+    ('550e8400-e29b-41d4-a716-446655440007', 2, 31, 487, 553, 445, 0, 0, 'Heart'),  -- Heart shape
+    ('550e8400-e29b-41d4-a716-446655440007', 3, 31, 935, 553, 445, 0, 0, 'Heart');  -- Heart shape
+
+-- strip-614x1864h layout (3 photos with petal shapes)
+INSERT INTO TemplatePhotoAreas (LayoutId, PhotoIndex, X, Y, Width, Height, Rotation, BorderRadius, ShapeType) VALUES
+    ('550e8400-e29b-41d4-a716-446655440008', 1, 51, 48, 514, 512, 0, 0, 'Petal'),   -- Petal shape
+    ('550e8400-e29b-41d4-a716-446655440008', 2, 51, 573, 514, 512, 0, 0, 'Petal'),  -- Petal shape
+    ('550e8400-e29b-41d4-a716-446655440008', 3, 51, 1100, 514, 512, 0, 0, 'Petal'); -- Petal shape
+
+-- strip-614x1864i layout (4 photos with regular rectangles)
+INSERT INTO TemplatePhotoAreas (LayoutId, PhotoIndex, X, Y, Width, Height, Rotation, BorderRadius, ShapeType) VALUES
+    ('550e8400-e29b-41d4-a716-446655440009', 1, 43, 74, 523, 389, 0, 0, 'Rectangle'),      -- Regular rectangle
+    ('550e8400-e29b-41d4-a716-446655440009', 2, 43, 515, 523, 389, 0, 0, 'Rectangle'),     -- Regular rectangle
+    ('550e8400-e29b-41d4-a716-446655440009', 3, 43, 956, 523, 389, 0, 0, 'Rectangle'),     -- Regular rectangle
+    ('550e8400-e29b-41d4-a716-446655440009', 4, 43, 1399, 523, 389, 0, 0, 'Rectangle');    -- Regular rectangle
+
+-- strip-614x1864j layout (3 photos with regular rectangles)
+INSERT INTO TemplatePhotoAreas (LayoutId, PhotoIndex, X, Y, Width, Height, Rotation, BorderRadius, ShapeType) VALUES
+    ('550e8400-e29b-41d4-a716-446655440010', 1, 40, 517, 528, 391, 0, 0, 'Rectangle'),     -- Regular rectangle
+    ('550e8400-e29b-41d4-a716-446655440010', 2, 40, 957, 528, 391, 0, 0, 'Rectangle'),     -- Regular rectangle
+    ('550e8400-e29b-41d4-a716-446655440010', 3, 40, 1397, 528, 391, 0, 0, 'Rectangle');    -- Regular rectangle
+
+-- strip-614x1864k layout (3 photos with regular rectangles)
+INSERT INTO TemplatePhotoAreas (LayoutId, PhotoIndex, X, Y, Width, Height, Rotation, BorderRadius, ShapeType) VALUES
+    ('550e8400-e29b-41d4-a716-446655440011', 1, 40, 73, 528, 391, 0, 0, 'Rectangle'),      -- Regular rectangle
+    ('550e8400-e29b-41d4-a716-446655440011', 2, 40, 514, 528, 391, 0, 0, 'Rectangle'),     -- Regular rectangle
+    ('550e8400-e29b-41d4-a716-446655440011', 3, 40, 955, 528, 391, 0, 0, 'Rectangle');     -- Regular rectangle
+
+-- strip-614x1864l layout (3 photos with regular rectangles)
+INSERT INTO TemplatePhotoAreas (LayoutId, PhotoIndex, X, Y, Width, Height, Rotation, BorderRadius, ShapeType) VALUES
+    ('550e8400-e29b-41d4-a716-446655440012', 1, 43, 74, 524, 392, 0, 0, 'Rectangle'),      -- Regular rectangle
+    ('550e8400-e29b-41d4-a716-446655440012', 2, 43, 515, 524, 392, 0, 0, 'Rectangle'),     -- Regular rectangle
+    ('550e8400-e29b-41d4-a716-446655440012', 3, 43, 1399, 524, 392, 0, 0, 'Rectangle');    -- Regular rectangle
 
 
 -- Insert default hardware components
@@ -441,6 +552,12 @@ INSERT INTO HardwareStatus (ComponentName, Status) VALUES
     ('Arduino', 'Online'),
     ('TouchScreen', 'Online'),
     ('RFID Reader', 'Online');
+
+-- Insert default camera settings
+INSERT INTO CameraSettings (SettingName, SettingValue, Description) VALUES
+    ('Brightness', 50, 'Camera brightness level (0-100)'),
+    ('Zoom', 100, 'Camera zoom level (100-300%)'),
+    ('Contrast', 50, 'Camera contrast level (0-100)');
 
 -- Insert default print supplies
 INSERT INTO PrintSupplies (SupplyType, TotalCapacity, CurrentCount, LowThreshold, CriticalThreshold) VALUES
@@ -508,3 +625,10 @@ SELECT
     LastCheckAt
 FROM HardwareStatus
 ORDER BY ComponentName; 
+
+-- =============================================
+-- INDEXES FOR PERFORMANCE
+-- =============================================
+
+-- Helpful index for filtering by product type (often used by pricing logic)
+CREATE INDEX IF NOT EXISTS IX_Products_ProductType ON Products(ProductType);

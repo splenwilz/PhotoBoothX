@@ -44,7 +44,7 @@ namespace Photobooth.Tests
             stripProduct.Type.Should().Be("strips");
             stripProduct.Name.Should().Be("Photo Strips");
             stripProduct.Description.Should().Be("Classic 4-photo strip");
-            stripProduct.Price.Should().Be(5.00m);
+            stripProduct.Price.Should().Be(6.00m);
         }
 
         [TestMethod]

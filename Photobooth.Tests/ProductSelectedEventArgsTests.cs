@@ -16,7 +16,7 @@ namespace Photobooth.Tests
                 Type = "strips",
                 Name = "Photo Strips",
                 Description = "Classic 4-photo strip",
-                Price = 5.00m
+                Price = 6.00m
             };
 
             // Act

@@ -24,6 +24,10 @@ namespace Photobooth.Controls
         private Template _template;
         private List<TemplateCategory> _categories = new List<TemplateCategory>();
         private Action<int>? _refreshTemplateCallback;
+        
+        // Track current values for button-based controls
+        private decimal _currentPrice;
+        private int _currentSortOrder;
 
         #endregion
 
@@ -91,47 +95,59 @@ namespace Photobooth.Controls
             ReplaceTemplateFile();
         }
 
+        // Button event handlers for price and sort order controls
+        private void PriceDecreaseButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_currentPrice > 0)
+            {
+                _currentPrice = Math.Max(0, _currentPrice - 0.25m); // Decrease by $0.25
+                UpdatePriceDisplay();
+            }
+        }
+
+        private void PriceIncreaseButton_Click(object sender, RoutedEventArgs e)
+        {
+            _currentPrice += 0.25m; // Increase by $0.25
+            UpdatePriceDisplay();
+        }
+
+        private void SortOrderDecreaseButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_currentSortOrder > 1)
+            {
+                _currentSortOrder--;
+                UpdateSortOrderDisplay();
+            }
+        }
+
+        private void SortOrderIncreaseButton_Click(object sender, RoutedEventArgs e)
+        {
+            _currentSortOrder++;
+            UpdateSortOrderDisplay();
+        }
+
         // EditConfigButton_Click method removed - no longer using config.json files in layout-based system
 
         #endregion
 
         #region Private Methods
 
-        #region Input Validation Methods
+        #region Button Control Helper Methods
 
         /// <summary>
-        /// Validate numeric input for price and sort order fields
+        /// Update the price display control with the current price value
         /// </summary>
-        private void NumericTextBox_PreviewTextInput(object sender, TextCompositionEventArgs e)
+        private void UpdatePriceDisplay()
         {
-            var textBox = sender as TextBox;
-            if (textBox == null) return;
+            PriceDisplay.Text = _currentPrice.ToString("C2", CultureInfo.CurrentCulture);
+        }
 
-            try
-            {
-                // Allow decimal point for price fields, only integers for sort order
-                bool allowDecimal = textBox.Name == "PriceTextBox";
-                
-                // Check if the input is a digit
-                if (char.IsDigit(e.Text, 0))
-                {
-                    return; // Allow digits
-                }
-                
-                // For price fields, allow decimal point if not already present
-                if (allowDecimal && e.Text == "." && !textBox.Text.Contains("."))
-                {
-                    return; // Allow single decimal point
-                }
-                
-                // Block all other characters
-                e.Handled = true;
-            }
-            catch (Exception ex)
-            {
-                LoggingService.Application.Error("Error validating numeric input", ex);
-                e.Handled = true; // Block input on error for safety
-            }
+        /// <summary>
+        /// Update the sort order display control with the current sort order value
+        /// </summary>
+        private void UpdateSortOrderDisplay()
+        {
+            SortOrderDisplay.Text = _currentSortOrder.ToString();
         }
 
         #endregion
@@ -265,7 +281,7 @@ namespace Photobooth.Controls
             }
             
             // Otherwise, try to find the template folder within the layout structure
-            var templateFolderName = Path.GetFileName(_template.FolderPath) ?? SanitizeFileName(_template.Name);
+            var templateFolderName = Path.GetFileName(_template.FolderPath) ?? _template.Name;
             
             // Search through layout folders to find the template
             if (Directory.Exists(templatesBaseFolder))
@@ -394,9 +410,9 @@ namespace Photobooth.Controls
             // Header
             TemplateNameHeader.Text = _template.Name;
             
-            // Basic Information
-            NameTextBox.Text = _template.Name;
-            DescriptionTextBox.Text = _template.Description ?? "";
+            // Basic Information (now read-only)
+            NameTextBlock.Text = _template.Name;
+            DescriptionTextBlock.Text = _template.Description ?? "No description provided";
             
             // Set selected category
             if (_template.CategoryId > 0)
@@ -407,9 +423,11 @@ namespace Photobooth.Controls
             // Set selected template type
             TemplateTypeComboBox.SelectedIndex = (int)_template.TemplateType;
             
-            // Pricing & Settings
-            PriceTextBox.Text = _template.Price.ToString("F2", CultureInfo.InvariantCulture);
-            SortOrderTextBox.Text = _template.SortOrder.ToString();
+            // Pricing & Settings (now button-based)
+            _currentPrice = _template.Price;
+            _currentSortOrder = _template.SortOrder;
+            UpdatePriceDisplay();
+            UpdateSortOrderDisplay();
             IsActiveCheckBox.IsChecked = _template.IsActive;
             
             // Template Information (Read-only)
@@ -455,27 +473,9 @@ namespace Photobooth.Controls
         {
             try
             {
-                // Validate inputs
-                if (string.IsNullOrWhiteSpace(NameTextBox.Text))
-                {
-                    _notificationService.ShowWarning("Validation Error", "Template name is required.");
-                    NameTextBox.Focus();
-                    return;
-                }
-
-                if (!decimal.TryParse(PriceTextBox.Text, NumberStyles.Currency | NumberStyles.Number, CultureInfo.InvariantCulture, out decimal price) || price < 0)
-                {
-                    _notificationService.ShowWarning("Validation Error", "Please enter a valid price (0 or greater).");
-                    PriceTextBox.Focus();
-                    return;
-                }
-
-                if (!int.TryParse(SortOrderTextBox.Text, out int sortOrder))
-                {
-                    _notificationService.ShowWarning("Validation Error", "Please enter a valid sort order number.");
-                    SortOrderTextBox.Focus();
-                    return;
-                }
+                // Get values from button-based controls (no validation needed since they're controlled)
+                decimal price = _currentPrice;
+                int sortOrder = _currentSortOrder;
 
                 // Photo count is now read-only and derived from PhotoAreas in config
                 int photoCount = _template.PhotoCount;
@@ -501,165 +501,11 @@ namespace Photobooth.Controls
                 SaveButton.IsEnabled = false;
                 SaveButton.Content = "Saving...";
 
-                var newTemplateName = NameTextBox.Text.Trim();
-                var nameChanged = newTemplateName != _template.Name;
+                // Name is now read-only, so use the existing template name
+                var newTemplateName = _template.Name;
                 string newFolderPath = _template.FolderPath;
                 string newTemplatePath = _template.TemplatePath;
                 string newPreviewPath = _template.PreviewPath;
-
-                // Handle folder renaming if name changed
-                if (nameChanged && !string.IsNullOrEmpty(_template.FolderPath))
-                {
-                    try
-                    {
-
-
-                        var currentFolderPath = GetActualTemplateFolderPath();
-                        var layoutFolder = Path.GetDirectoryName(currentFolderPath);
-
-
-                        var sanitizedName = SanitizeFileName(newTemplateName);
-
-                        // Maintain layout-based structure: Templates/layout-folder/template-folder
-                        if (layoutFolder != null)
-                        {
-                            newFolderPath = Path.Combine(layoutFolder, sanitizedName);
-                        }
-                        else
-                        {
-                            // Fallback: keep in same directory as current template
-                            var templatesBaseFolder = GetTemplatesFolderPath();
-                            newFolderPath = Path.Combine(templatesBaseFolder, sanitizedName);
-                        }
-
-                        // Ensure unique folder name if it already exists
-                        int suffix = 1;
-                        while (Directory.Exists(newFolderPath) && newFolderPath != currentFolderPath)
-                        {
-                            var newFolderName = $"{sanitizedName}_{suffix}";
-                            if (layoutFolder != null)
-                            {
-                                newFolderPath = Path.Combine(layoutFolder, newFolderName);
-                            }
-                            else
-                            {
-                                var templatesBaseFolder = GetTemplatesFolderPath();
-                                newFolderPath = Path.Combine(templatesBaseFolder, newFolderName);
-                            }
-                            suffix++;
-
-                        }
-
-
-                        // Only rename if the path actually changed
-                        if (newFolderPath != currentFolderPath)
-                        {
-                            if (Directory.Exists(currentFolderPath))
-                            {
-
-
-                                // Rename in runtime folder (bin/Debug/Templates)
-                                Directory.Move(currentFolderPath, newFolderPath);
-                                
-                                // Verify the move was successful
-                                var sourceStillExists = Directory.Exists(currentFolderPath);
-                                var destinationExists = Directory.Exists(newFolderPath);
-
-
-                                if (!sourceStillExists && destinationExists)
-                                {
-
-                                    // Also rename in project source folder (PhotoBooth/Templates)
-                                    try
-                                    {
-                                        var currentTemplateFolderName = Path.GetFileName(currentFolderPath);
-                                        var layoutFolderName = Path.GetFileName(Path.GetDirectoryName(currentFolderPath));
-                                        var newTemplateFolderName = Path.GetFileName(newFolderPath);
-                                        
-                                        if (!string.IsNullOrEmpty(currentTemplateFolderName) && !string.IsNullOrEmpty(layoutFolderName) && !string.IsNullOrEmpty(newTemplateFolderName))
-                                        {
-                                            // Get project root directory using robust method
-                                            var currentDir = AppDomain.CurrentDomain.BaseDirectory;
-                                            var projectRoot = FindProjectRoot(currentDir);
-                                            
-                                            if (projectRoot != null)
-                                            {
-                                                var currentSourcePath = Path.Combine(projectRoot, "Templates", layoutFolderName, currentTemplateFolderName);
-                                                var newSourcePath = Path.Combine(projectRoot, "Templates", layoutFolderName, newTemplateFolderName);
-                                            
-                                            if (Directory.Exists(currentSourcePath))
-                                            {
-
-                                                Directory.Move(currentSourcePath, newSourcePath);
-
-                                            }
-                                            else
-                                            {
-
-                                            }
-                                            }
-                                            else
-                                            {
-                                                // Project root not found, skip source folder renaming
-                                                Console.WriteLine("Warning: Could not find project root directory - skipping source template folder rename");
-                                            }
-                                        }
-                                    }
-                                    catch
-                                    {
-
-                                        // Continue anyway since runtime folder was successfully renamed
-                                    }
-
-                                    // Update all file paths
-                                    newTemplatePath = Path.Combine(newFolderPath, "template.png");
-                                    
-                                    // Detect actual preview file extension
-                                    var previewExtensions = new[] { ".png", ".jpg", ".jpeg" };
-                                    var actualPreviewFile = previewExtensions
-                                        .Select(ext => Path.Combine(newFolderPath, $"preview{ext}"))
-                                        .FirstOrDefault(File.Exists);
-                                    
-                                    if (actualPreviewFile != null)
-                                    {
-                                        newPreviewPath = actualPreviewFile;
-
-                                    }
-                                    else
-                                    {
-                                        // Fallback to .png if no preview file found
-                                        newPreviewPath = Path.Combine(newFolderPath, "preview.png");
-
-                                    }
-
-
-                                }
-                                else
-                                {
-
-
-                                    throw new InvalidOperationException("Folder rename operation did not complete successfully");
-                                }
-                            }
-                            else
-                            {
-
-                            }
-                        }
-                        else
-                        {
-
-                        }
-
-                    }
-                    catch (Exception ex)
-                    {
-
-
-                        _notificationService.ShowError("Folder Rename Error", $"Failed to rename template folder: {ex.Message}");
-                        // Continue with the update but keep old paths
-                    }
-                }
 
                 // Get the selected category name
                 var selectedCategory = _categories.FirstOrDefault(c => c.Id == selectedCategoryId);
@@ -670,7 +516,7 @@ namespace Photobooth.Controls
                 {
                     Id = _template.Id,
                     Name = newTemplateName,
-                    Description = DescriptionTextBox.Text.Trim(),
+                    Description = _template.Description, // Description is now read-only
                     CategoryId = selectedCategoryId,
                     CategoryName = categoryName,
                     Price = price,
@@ -699,7 +545,7 @@ namespace Photobooth.Controls
                     categoryId: updatedTemplate.CategoryId,
                     description: updatedTemplate.Description,
                     sortOrder: updatedTemplate.SortOrder,
-                    photoCount: updatedTemplate.PhotoCount,
+                    photoCount: photoCount,
                     templateType: updatedTemplate.TemplateType
                 );
 
@@ -710,39 +556,6 @@ namespace Photobooth.Controls
 
                 if (result.Success)
                 {
-                    // Update database paths if they changed
-                    if (nameChanged && newFolderPath != _template.FolderPath)
-                    {
-
-
-                        // Config path removed in layout-based system
-
-                        var pathUpdateResult = await _databaseService.UpdateTemplatePathsAsync(
-                            _template.Id,
-                            newFolderPath,
-                            newTemplatePath,
-                            newPreviewPath
-                        );
-
-                        if (!pathUpdateResult.Success)
-                        {
-
-                        }
-                        else
-                        {
-                            // Update the updatedTemplate object with the new paths
-
-                            updatedTemplate.FolderPath = newFolderPath;
-                            updatedTemplate.TemplatePath = newTemplatePath;
-                            updatedTemplate.PreviewPath = newPreviewPath;
-                            // ConfigPath removed in layout-based system
-
-                        }
-                    }
-                    else
-                    {
-
-                    }
 
                     // Note: Config files no longer used in layout-based system
 
@@ -790,30 +603,7 @@ namespace Photobooth.Controls
             return $"{size:0.##} {sizes[order]}";
         }
 
-        private static string SanitizeFileName(string fileName)
-        {
-            // Remove invalid characters for folder names
-            var invalidChars = Path.GetInvalidFileNameChars();
-            var sanitized = fileName;
-            
-            foreach (var invalidChar in invalidChars)
-            {
-                sanitized = sanitized.Replace(invalidChar, '_');
-            }
-            
-            // Also replace some additional problematic characters
-            sanitized = sanitized.Replace(' ', '-')  // Replace spaces with hyphens
-                                .Replace("--", "-")   // Replace double hyphens with single
-                                .Trim('-', '_');      // Remove leading/trailing hyphens and underscores
-            
-            // Ensure it's not empty
-            if (string.IsNullOrWhiteSpace(sanitized))
-            {
-                sanitized = "template";
-            }
-            
-            return sanitized;
-        }
+
 
         /// <summary>
         /// Find project root directory using robust method instead of fragile ".." navigation

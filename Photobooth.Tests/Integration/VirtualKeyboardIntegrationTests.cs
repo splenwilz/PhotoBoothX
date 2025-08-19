@@ -85,15 +85,15 @@ namespace Photobooth.Tests.Integration
         #region End-to-End Workflow Tests
 
         [TestMethod]
-        public void FullWorkflow_LoginForm_TypeUsernameAndPassword()
+        public async Task FullWorkflow_LoginForm_TypeUsernameAndPassword()
         {
             // Arrange - Start with username field
             var initialUsername = "admin";
             var initialPassword = "pass123";
 
             // Act & Assert - Show keyboard for username
-            var act1 = () => _service.ShowKeyboard(_usernameTextBox, _testWindow);
-            act1.Should().NotThrow();
+            var act1 = () => _service.ShowKeyboardAsync(_usernameTextBox, _testWindow);
+            await act1.Should().NotThrowAsync();
 
             // Simulate typing username
             SimulateTyping(initialUsername);
@@ -102,8 +102,8 @@ namespace Photobooth.Tests.Integration
             WaitForUIUpdates();
             
             // Switch to password field
-            var act2 = () => _service.ShowKeyboard(_passwordBox, _testWindow);
-            act2.Should().NotThrow();
+            var act2 = () => _service.ShowKeyboardAsync(_passwordBox, _testWindow);
+            await act2.Should().NotThrowAsync();
 
             // Simulate typing password
             SimulateTyping(initialPassword);
@@ -117,20 +117,20 @@ namespace Photobooth.Tests.Integration
         }
 
         [TestMethod]
-        public void FullWorkflow_SwitchBetweenTextAndNumeric_MaintainsKeyboard()
+        public async Task FullWorkflow_SwitchBetweenTextAndNumeric_MaintainsKeyboard()
         {
             // Arrange
             var textInput = "Product Name";
             var priceInput = "29.99";
 
             // Act - Start with text field
-            _service.ShowKeyboard(_usernameTextBox, _testWindow);
+            await _service.ShowKeyboardAsync(_usernameTextBox, _testWindow);
             SimulateTyping(textInput);
             
             WaitForUIUpdates();
 
             // Switch to numeric field
-            _service.ShowKeyboard(_priceTextBox, _testWindow);
+            await _service.ShowKeyboardAsync(_priceTextBox, _testWindow);
             SimulateTyping(priceInput);
             
             WaitForUIUpdates();
@@ -141,7 +141,7 @@ namespace Photobooth.Tests.Integration
         }
 
         [TestMethod]
-        public void FullWorkflow_LoginTransparency_AppliesCorrectly()
+        public async Task FullWorkflow_LoginTransparency_AppliesCorrectly()
         {
             // Arrange - Create login window with specific structure
             var loginWindow = CreateLoginWindow();
@@ -151,8 +151,8 @@ namespace Photobooth.Tests.Integration
             Assert.IsNotNull(usernameInput, "UsernameInput should be found in login window");
 
             // Act
-            var act = () => _service.ShowKeyboard(usernameInput, loginWindow);
-            act.Should().NotThrow();
+            var act = () => _service.ShowKeyboardAsync(usernameInput, loginWindow);
+            await act.Should().NotThrowAsync();
 
             // Assert - Should detect as login and apply transparency
             // This tests the login detection logic
@@ -162,21 +162,21 @@ namespace Photobooth.Tests.Integration
         }
 
         [TestMethod]
-        public void FullWorkflow_RapidInputSwitching_RemainsStable()
+        public async Task FullWorkflow_RapidInputSwitching_RemainsStable()
         {
             // Act - Rapidly switch between inputs multiple times
-            var act = () =>
+            var act = async () =>
             {
                 for (int i = 0; i < 10; i++)
                 {
-                    _service.ShowKeyboard(_usernameTextBox, _testWindow);
-                    _service.ShowKeyboard(_passwordBox, _testWindow);
-                    _service.ShowKeyboard(_priceTextBox, _testWindow);
+                    await _service.ShowKeyboardAsync(_usernameTextBox, _testWindow);
+                    await _service.ShowKeyboardAsync(_passwordBox, _testWindow);
+                    await _service.ShowKeyboardAsync(_priceTextBox, _testWindow);
                 }
             };
 
             // Assert - Should handle rapid switching without errors
-            act.Should().NotThrow();
+            await act.Should().NotThrowAsync();
         }
 
         #endregion
@@ -184,10 +184,10 @@ namespace Photobooth.Tests.Integration
         #region Focus and Input Tests
 
         [TestMethod]
-        public void FocusManagement_TextInput_MaintainsFocusAfterTyping()
+        public async Task FocusManagement_TextInput_MaintainsFocusAfterTyping()
         {
             // Arrange
-            _service.ShowKeyboard(_usernameTextBox, _testWindow);
+            await _service.ShowKeyboardAsync(_usernameTextBox, _testWindow);
             
             // Act
             SimulateTyping("test");
@@ -199,10 +199,10 @@ namespace Photobooth.Tests.Integration
         }
 
         [TestMethod]
-        public void FocusManagement_PasswordInput_MaintainsFocusAfterTyping()
+        public async Task FocusManagement_PasswordInput_MaintainsFocusAfterTyping()
         {
             // Arrange
-            _service.ShowKeyboard(_passwordBox, _testWindow);
+            await _service.ShowKeyboardAsync(_passwordBox, _testWindow);
             
             // Act
             SimulateTyping("secret");
@@ -213,12 +213,12 @@ namespace Photobooth.Tests.Integration
         }
 
         [TestMethod]
-        public void CaretPositioning_TextBox_InsertsAtCorrectPosition()
+        public async Task CaretPositioning_TextBox_InsertsAtCorrectPosition()
         {
             // Arrange
             _usernameTextBox.Text = "Hello World";
             _usernameTextBox.CaretIndex = 6; // After "Hello "
-            _service.ShowKeyboard(_usernameTextBox, _testWindow);
+            await _service.ShowKeyboardAsync(_usernameTextBox, _testWindow);
 
             // Act
             SimulateKeyPress("Beautiful ");
@@ -229,12 +229,12 @@ namespace Photobooth.Tests.Integration
         }
 
         [TestMethod]
-        public void BackspaceHandling_TextBox_RemovesCorrectCharacter()
+        public async Task BackspaceHandling_TextBox_RemovesCorrectCharacter()
         {
             // Arrange
             _usernameTextBox.Text = "Hello";
             _usernameTextBox.CaretIndex = 5;
-            _service.ShowKeyboard(_usernameTextBox, _testWindow);
+            await _service.ShowKeyboardAsync(_usernameTextBox, _testWindow);
 
             // Act
             SimulateBackspace();
@@ -245,11 +245,11 @@ namespace Photobooth.Tests.Integration
         }
 
         [TestMethod]
-        public void BackspaceHandling_PasswordBox_RemovesLastCharacter()
+        public async Task BackspaceHandling_PasswordBox_RemovesLastCharacter()
         {
             // Arrange
             _passwordBox.Password = "password123";
-            _service.ShowKeyboard(_passwordBox, _testWindow);
+            await _service.ShowKeyboardAsync(_passwordBox, _testWindow);
 
             // Act
             SimulateBackspace();
@@ -264,30 +264,30 @@ namespace Photobooth.Tests.Integration
         #region Mode Detection Tests
 
         [TestMethod]
-        public void ModeDetection_UsernameField_UsesTextMode()
+        public async Task ModeDetection_UsernameField_UsesTextMode()
         {
             // Act
-            _service.ShowKeyboard(_usernameTextBox, _testWindow);
+            await _service.ShowKeyboardAsync(_usernameTextBox, _testWindow);
 
             // Assert - Should not throw, indicating text mode was used
             Assert.IsNotNull(_service);
         }
 
         [TestMethod]
-        public void ModeDetection_PasswordField_UsesPasswordMode()
+        public async Task ModeDetection_PasswordField_UsesPasswordMode()
         {
             // Act
-            _service.ShowKeyboard(_passwordBox, _testWindow);
+            await _service.ShowKeyboardAsync(_passwordBox, _testWindow);
 
             // Assert - Should not throw, indicating password mode was used
             Assert.IsNotNull(_service);
         }
 
         [TestMethod]
-        public void ModeDetection_PriceField_UsesNumericMode()
+        public async Task ModeDetection_PriceField_UsesNumericMode()
         {
             // Act
-            _service.ShowKeyboard(_priceTextBox, _testWindow);
+            await _service.ShowKeyboardAsync(_priceTextBox, _testWindow);
 
             // Assert - Should not throw, indicating numeric mode was detected
             Assert.IsNotNull(_service);
@@ -298,32 +298,32 @@ namespace Photobooth.Tests.Integration
         #region Error Handling and Edge Cases
 
         [TestMethod]
-        public void ErrorHandling_NullInputControl_DoesNotCrash()
+        public async Task ErrorHandling_NullInputControl_DoesNotCrash()
         {
             // Act & Assert
-            var act = () => _service.ShowKeyboard(null!, _testWindow);
-            act.Should().NotThrow();
+            var act = async () => await _service.ShowKeyboardAsync(null!, _testWindow);
+            await act.Should().NotThrowAsync();
         }
 
         [TestMethod]
-        public void ErrorHandling_WindowWithoutContent_DoesNotCrash()
+        public async Task ErrorHandling_WindowWithoutContent_DoesNotCrash()
         {
             // Arrange
             var emptyWindow = new TestWindow { Content = null };
 
             // Act & Assert
-            var act = () => _service.ShowKeyboard(_usernameTextBox, emptyWindow);
-            act.Should().NotThrow();
+            var act = async () => await _service.ShowKeyboardAsync(_usernameTextBox, emptyWindow);
+            await act.Should().NotThrowAsync();
 
             // Cleanup
             emptyWindow?.Close();
         }
 
         [TestMethod]
-        public void ErrorHandling_MultipleHideKeyboard_DoesNotCrash()
+        public async Task ErrorHandling_MultipleHideKeyboard_DoesNotCrash()
         {
             // Arrange
-            _service.ShowKeyboard(_usernameTextBox, _testWindow);
+            await _service.ShowKeyboardAsync(_usernameTextBox, _testWindow);
 
             // Act & Assert
             var act = () =>
@@ -336,15 +336,15 @@ namespace Photobooth.Tests.Integration
         }
 
         [TestMethod]
-        public void ErrorHandling_ShowKeyboardAfterWindowClosed_DoesNotCrash()
+        public async Task ErrorHandling_ShowKeyboardAfterWindowClosed_DoesNotCrash()
         {
             // Arrange
             var tempWindow = new TestWindow();
             tempWindow.Close();
 
             // Act & Assert
-            var act = () => _service.ShowKeyboard(_usernameTextBox, tempWindow);
-            act.Should().NotThrow();
+            var act = async () => await _service.ShowKeyboardAsync(_usernameTextBox, tempWindow);
+            await act.Should().NotThrowAsync();
         }
 
         #endregion
@@ -352,10 +352,10 @@ namespace Photobooth.Tests.Integration
         #region Performance Tests
 
         [TestMethod]
-        public void Performance_RapidTyping_HandlesEfficiently()
+        public async Task Performance_RapidTyping_HandlesEfficiently()
         {
             // Arrange
-            _service.ShowKeyboard(_usernameTextBox, _testWindow);
+            await _service.ShowKeyboardAsync(_usernameTextBox, _testWindow);
             var startTime = DateTime.Now;
 
             // Act - Simulate rapid typing
@@ -374,7 +374,7 @@ namespace Photobooth.Tests.Integration
         }
 
         [TestMethod]
-        public void Performance_ModeSwitch_CompletesQuickly()
+        public async Task Performance_ModeSwitch_CompletesQuickly()
         {
             // Arrange
             var startTime = DateTime.Now;
@@ -382,9 +382,9 @@ namespace Photobooth.Tests.Integration
             // Act - Switch modes rapidly
             for (int i = 0; i < 20; i++)
             {
-                _service.ShowKeyboard(_usernameTextBox, _testWindow); // Text mode
-                _service.ShowKeyboard(_priceTextBox, _testWindow);    // Numeric mode
-                _service.ShowKeyboard(_passwordBox, _testWindow);     // Password mode
+                await _service.ShowKeyboardAsync(_usernameTextBox, _testWindow); // Text mode
+                await _service.ShowKeyboardAsync(_priceTextBox, _testWindow);    // Numeric mode
+                await _service.ShowKeyboardAsync(_passwordBox, _testWindow);     // Password mode
             }
 
             var endTime = DateTime.Now;

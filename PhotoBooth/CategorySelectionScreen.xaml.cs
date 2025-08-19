@@ -20,9 +20,11 @@ namespace Photobooth
         #region Private Fields
 
         private readonly IDatabaseService _databaseService;
+        private readonly MainWindow? _mainWindow; // Reference to MainWindow for operation mode check
         private List<TemplateCategory> _availableCategories;
         private ProductInfo? _currentProduct;
         private bool _disposed = false;
+        private decimal _currentCredits = 0;
 
         #endregion
 
@@ -45,15 +47,35 @@ namespace Photobooth
         /// <summary>
         /// Constructor with dependency injection
         /// </summary>
-        public CategorySelectionScreen(IDatabaseService databaseService)
+        public CategorySelectionScreen(IDatabaseService databaseService, MainWindow? mainWindow = null)
         {
             _databaseService = databaseService ?? throw new ArgumentNullException(nameof(databaseService));
+            _mainWindow = mainWindow;
             _availableCategories = new List<TemplateCategory>();
             
             InitializeComponent();
             
-            // Load categories when the control is loaded
-            Loaded += async (s, e) => await LoadCategoriesAsync();
+            // Load categories when the control is loaded - proper async handling
+            Loaded += OnLoadedAsync;
+            
+            // Initialize credits display
+            RefreshCreditsFromDatabase();
+        }
+
+        /// <summary>
+        /// Handle Loaded event with proper async/await pattern
+        /// </summary>
+        private async void OnLoadedAsync(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                await LoadCategoriesAsync();
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to load categories on control load", ex);
+                ShowEmptyState();
+            }
         }
 
         /// <summary>
@@ -70,7 +92,7 @@ namespace Photobooth
         /// <summary>
         /// Set the product type for this category selection
         /// </summary>
-        public void SetProductType(ProductInfo product)
+        public async Task SetProductTypeAsync(ProductInfo product)
         {
             _currentProduct = product;
             
@@ -98,7 +120,7 @@ namespace Photobooth
              }
             
             // Reload categories for the specific product type
-            LoadCategoriesWithErrorHandling();
+            await LoadCategoriesWithErrorHandlingAsync();
         }
 
         #endregion
@@ -567,7 +589,7 @@ namespace Photobooth
         /// <summary>
         /// Safely load categories with proper error handling
         /// </summary>
-        private async void LoadCategoriesWithErrorHandling()
+        private async Task LoadCategoriesWithErrorHandlingAsync()
         {
             try
             {
@@ -601,6 +623,83 @@ namespace Photobooth
             catch (Exception ex)
             {
                 LoggingService.Application.Error("Error handling back button click", ex);
+            }
+        }
+
+        #endregion
+
+        #region Credits Management
+
+        /// <summary>
+        /// Refresh credits from database
+        /// </summary>
+        private async void RefreshCreditsFromDatabase()
+        {
+            try
+            {
+                var creditsResult = await _databaseService.GetSettingValueAsync<decimal>("System", "CurrentCredits");
+                if (creditsResult.Success)
+                {
+                    _currentCredits = creditsResult.Data;
+                }
+                else
+                {
+                    _currentCredits = 0;
+                }
+                UpdateCreditsDisplay();
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Error refreshing credits from database", ex);
+                _currentCredits = 0;
+                UpdateCreditsDisplay();
+            }
+        }
+
+        /// <summary>
+        /// Updates the credits display with validation
+        /// </summary>
+        /// <param name="credits">Current credit amount</param>
+        public void UpdateCredits(decimal credits)
+        {
+            if (credits < 0)
+            {
+                credits = 0;
+            }
+
+            _currentCredits = credits;
+            UpdateCreditsDisplay();
+        }
+
+        /// <summary>
+        /// Update credits display
+        /// </summary>
+        private void UpdateCreditsDisplay()
+        {
+            try
+            {
+                if (!Dispatcher.CheckAccess())
+                {
+                    Dispatcher.Invoke(UpdateCreditsDisplay);
+                    return;
+                }
+                if (CreditsDisplay != null)
+                {
+                    string displayText;
+                    if (_mainWindow?.IsFreePlayMode == true)
+                    {
+                        displayText = "Free Play Mode";
+                    }
+                    else
+                    {
+                        displayText = $"Credits: ${_currentCredits:F2}";
+                    }
+                    CreditsDisplay.Text = displayText;
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to update credits display", ex);
             }
         }
 

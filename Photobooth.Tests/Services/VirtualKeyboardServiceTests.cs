@@ -95,58 +95,58 @@ namespace Photobooth.Tests.Services
         #region Keyboard Display Tests
 
         [TestMethod]
-        public void ShowKeyboard_ValidTextBox_DoesNotThrow()
+        public async Task ShowKeyboard_ValidTextBox_DoesNotThrow()
         {
             // Act & Assert
-            var act = () => _service.ShowKeyboard(_testTextBox, _testWindow);
-            act.Should().NotThrow();
+            var act = () => _service.ShowKeyboardAsync(_testTextBox, _testWindow);
+            await act.Should().NotThrowAsync();
         }
 
         [TestMethod]
-        public void ShowKeyboard_ValidPasswordBox_DoesNotThrow()
+        public async Task ShowKeyboard_ValidPasswordBox_DoesNotThrow()
         {
             // Act & Assert
-            var act = () => _service.ShowKeyboard(_testPasswordBox, _testWindow);
-            act.Should().NotThrow();
+            var act = () => _service.ShowKeyboardAsync(_testPasswordBox, _testWindow);
+            await act.Should().NotThrowAsync();
         }
 
         [TestMethod]
-        public void ShowKeyboard_NullInput_DoesNotThrow()
+        public async Task ShowKeyboard_NullInput_DoesNotThrow()
         {
             // Act & Assert
-            var act = () => _service.ShowKeyboard(null!, _testWindow);
-            act.Should().NotThrow();
+            var act = () => _service.ShowKeyboardAsync(null!, _testWindow);
+            await act.Should().NotThrowAsync();
         }
 
         [TestMethod]
-        public void ShowKeyboard_NullWindow_DoesNotThrow()
+        public async Task ShowKeyboard_NullWindow_DoesNotThrow()
         {
             // Act & Assert
-            var act = () => _service.ShowKeyboard(_testTextBox, null!);
-            act.Should().NotThrow();
+            var act = () => _service.ShowKeyboardAsync(_testTextBox, null!);
+            await act.Should().NotThrowAsync();
         }
 
         [TestMethod]
-        public void ShowKeyboard_SwitchBetweenInputs_DoesNotThrow()
+        public async Task ShowKeyboard_SwitchBetweenInputs_DoesNotThrow()
         {
             // Arrange
-            _service.ShowKeyboard(_testTextBox, _testWindow);
+            await _service.ShowKeyboardAsync(_testTextBox, _testWindow);
 
             // Act & Assert
-            var act = () => _service.ShowKeyboard(_testPasswordBox, _testWindow);
-            act.Should().NotThrow();
+            var act = () => _service.ShowKeyboardAsync(_testPasswordBox, _testWindow);
+            await act.Should().NotThrowAsync();
         }
 
         [TestMethod]
-        public void ShowKeyboard_SameInputTwice_DoesNotThrow()
+        public async Task ShowKeyboard_SameInputTwice_DoesNotThrow()
         {
             // Act & Assert
-            var act = () =>
+            var act = async () =>
             {
-                _service.ShowKeyboard(_testTextBox, _testWindow);
-                _service.ShowKeyboard(_testTextBox, _testWindow);
+                await _service.ShowKeyboardAsync(_testTextBox, _testWindow);
+                await _service.ShowKeyboardAsync(_testTextBox, _testWindow);
             };
-            act.Should().NotThrow();
+            await act.Should().NotThrowAsync();
         }
 
         #endregion
@@ -154,7 +154,7 @@ namespace Photobooth.Tests.Services
         #region Input Type Detection Tests
 
         [TestMethod]
-        public void ShowKeyboard_NumericTextBox_DoesNotThrow()
+        public async Task ShowKeyboard_NumericTextBox_DoesNotThrow()
         {
             // Arrange
             var numericTextBox = new TextBox
@@ -163,12 +163,12 @@ namespace Photobooth.Tests.Services
             };
 
             // Act & Assert
-            var act = () => _service.ShowKeyboard(numericTextBox, _testWindow);
-            act.Should().NotThrow();
+            var act = () => _service.ShowKeyboardAsync(numericTextBox, _testWindow);
+            await act.Should().NotThrowAsync();
         }
 
         [TestMethod]
-        public void ShowKeyboard_SortOrderTextBox_DoesNotThrow()
+        public async Task ShowKeyboard_SortOrderTextBox_DoesNotThrow()
         {
             // Arrange
             var sortOrderTextBox = new TextBox
@@ -177,8 +177,8 @@ namespace Photobooth.Tests.Services
             };
 
             // Act & Assert
-            var act = () => _service.ShowKeyboard(sortOrderTextBox, _testWindow);
-            act.Should().NotThrow();
+            var act = () => _service.ShowKeyboardAsync(sortOrderTextBox, _testWindow);
+            await act.Should().NotThrowAsync();
         }
 
         #endregion
@@ -186,7 +186,7 @@ namespace Photobooth.Tests.Services
         #region Login Screen Detection Tests
 
         [TestMethod]
-        public void ShowKeyboard_LoginControls_DoesNotThrow()
+        public async Task ShowKeyboard_LoginControls_DoesNotThrow()
         {
             // Arrange
             var loginTextBox = new TextBox { Name = "UsernameInput" };
@@ -201,8 +201,8 @@ namespace Photobooth.Tests.Services
             var loginWindow = new TestWindow { Content = loginPanel };
 
             // Act & Assert
-            var act = () => _service.ShowKeyboard(loginTextBox, loginWindow);
-            act.Should().NotThrow();
+            var act = () => _service.ShowKeyboardAsync(loginTextBox, loginWindow);
+            await act.Should().NotThrowAsync();
             
             // Cleanup
             loginWindow?.Close();
@@ -213,12 +213,12 @@ namespace Photobooth.Tests.Services
         #region Text Input Simulation Tests
 
         [TestMethod]
-        public void HandleKeyPressed_TextBox_UpdatesText()
+        public async Task HandleKeyPressed_TextBox_UpdatesText()
         {
             // Arrange
             _testTextBox.Text = "Hello";
             _testTextBox.CaretIndex = 5;
-            _service.ShowKeyboard(_testTextBox, _testWindow);
+            await _service.ShowKeyboardAsync(_testTextBox, _testWindow);
 
             // Act - Use reflection to test private method
             var method = typeof(VirtualKeyboardService).GetMethod("HandleKeyPressed", 
@@ -241,11 +241,11 @@ namespace Photobooth.Tests.Services
         }
 
         [TestMethod]
-        public void HandleKeyPressed_PasswordBox_UpdatesPassword()
+        public async Task HandleKeyPressed_PasswordBox_UpdatesPassword()
         {
             // Arrange
             _testPasswordBox.Password = "pass";
-            _service.ShowKeyboard(_testPasswordBox, _testWindow);
+            await _service.ShowKeyboardAsync(_testPasswordBox, _testWindow);
 
             // Act
             var method = typeof(VirtualKeyboardService).GetMethod("HandleKeyPressed", 
@@ -268,12 +268,12 @@ namespace Photobooth.Tests.Services
         }
 
         [TestMethod]
-        public void HandleBackspace_TextBox_RemovesCharacter()
+        public async Task HandleBackspace_TextBox_RemovesCharacter()
         {
             // Arrange
             _testTextBox.Text = "Hello";
             _testTextBox.CaretIndex = 5;
-            _service.ShowKeyboard(_testTextBox, _testWindow);
+            await _service.ShowKeyboardAsync(_testTextBox, _testWindow);
 
             // Act
             var method = typeof(VirtualKeyboardService).GetMethod("HandleBackspace", 
@@ -296,11 +296,11 @@ namespace Photobooth.Tests.Services
         }
 
         [TestMethod]
-        public void HandleBackspace_PasswordBox_RemovesCharacter()
+        public async Task HandleBackspace_PasswordBox_RemovesCharacter()
         {
             // Arrange
             _testPasswordBox.Password = "password";
-            _service.ShowKeyboard(_testPasswordBox, _testWindow);
+            await _service.ShowKeyboardAsync(_testPasswordBox, _testWindow);
 
             // Act
             var method = typeof(VirtualKeyboardService).GetMethod("HandleBackspace", 
@@ -323,12 +323,12 @@ namespace Photobooth.Tests.Services
         }
 
         [TestMethod]
-        public void HandleBackspace_EmptyText_DoesNotThrow()
+        public async Task HandleBackspace_EmptyText_DoesNotThrow()
         {
             // Arrange
             _testTextBox.Text = "";
             _testTextBox.CaretIndex = 0;
-            _service.ShowKeyboard(_testTextBox, _testWindow);
+            await _service.ShowKeyboardAsync(_testTextBox, _testWindow);
 
             // Act & Assert
             var method = typeof(VirtualKeyboardService).GetMethod("HandleBackspace", 
@@ -349,10 +349,10 @@ namespace Photobooth.Tests.Services
         #region Special Key Tests
 
         [TestMethod]
-        public void HandleSpecialKeyPressed_Space_DoesNotThrow()
+        public async Task HandleSpecialKeyPressed_Space_DoesNotThrow()
         {
             // Arrange
-            _service.ShowKeyboard(_testTextBox, _testWindow);
+            await _service.ShowKeyboardAsync(_testTextBox, _testWindow);
 
             // Act & Assert
             var method = typeof(VirtualKeyboardService).GetMethod("HandleSpecialKeyPressed", 
@@ -371,10 +371,10 @@ namespace Photobooth.Tests.Services
         }
 
         [TestMethod]
-        public void HandleSpecialKeyPressed_Tab_DoesNotThrow()
+        public async Task HandleSpecialKeyPressed_Tab_DoesNotThrow()
         {
             // Arrange
-            _service.ShowKeyboard(_testTextBox, _testWindow);
+            await _service.ShowKeyboardAsync(_testTextBox, _testWindow);
 
             // Act & Assert
             var method = typeof(VirtualKeyboardService).GetMethod("HandleSpecialKeyPressed", 
@@ -393,10 +393,10 @@ namespace Photobooth.Tests.Services
         }
 
         [TestMethod]
-        public void HandleSpecialKeyPressed_Enter_DoesNotThrow()
+        public async Task HandleSpecialKeyPressed_Enter_DoesNotThrow()
         {
             // Arrange
-            _service.ShowKeyboard(_testTextBox, _testWindow);
+            await _service.ShowKeyboardAsync(_testTextBox, _testWindow);
 
             // Act & Assert
             var method = typeof(VirtualKeyboardService).GetMethod("HandleSpecialKeyPressed", 
@@ -433,22 +433,22 @@ namespace Photobooth.Tests.Services
         }
 
         [TestMethod]
-        public void ShowKeyboard_MultipleRapidCalls_DoesNotThrow()
+        public async Task ShowKeyboard_MultipleRapidCalls_DoesNotThrow()
         {
             // Act & Assert
-            var act = () =>
+            var act = async () =>
             {
                 for (int i = 0; i < 5; i++)
                 {
-                    _service.ShowKeyboard(_testTextBox, _testWindow);
-                    _service.ShowKeyboard(_testPasswordBox, _testWindow);
+                    await _service.ShowKeyboardAsync(_testTextBox, _testWindow);
+                    await _service.ShowKeyboardAsync(_testPasswordBox, _testWindow);
                 }
             };
-            act.Should().NotThrow();
+            await act.Should().NotThrowAsync();
         }
 
         [TestMethod]
-        public void ShowKeyboard_WindowWithBorderContent_DoesNotThrow()
+        public async Task ShowKeyboard_WindowWithBorderContent_DoesNotThrow()
         {
             // Arrange
             var borderWindow = new TestWindow 
@@ -460,8 +460,8 @@ namespace Photobooth.Tests.Services
             };
 
             // Act & Assert
-            var act = () => _service.ShowKeyboard(_testTextBox, borderWindow);
-            act.Should().NotThrow();
+            var act = () => _service.ShowKeyboardAsync(_testTextBox, borderWindow);
+            await act.Should().NotThrowAsync();
 
             // Cleanup
             borderWindow?.Close();
@@ -472,10 +472,10 @@ namespace Photobooth.Tests.Services
         #region Focus Management Tests
 
         [TestMethod]
-        public void EnsureInputFocus_DoesNotThrow()
+        public async Task EnsureInputFocus_DoesNotThrow()
         {
             // Arrange
-            _service.ShowKeyboard(_testTextBox, _testWindow);
+            await _service.ShowKeyboardAsync(_testTextBox, _testWindow);
 
             // Act & Assert
             var method = typeof(VirtualKeyboardService).GetMethod("EnsureInputFocus", 

@@ -1,0 +1,428 @@
+<UserControl x:Class="Photobooth.PrintingScreen"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             mc:Ignorable="d" 
+             d:DesignHeight="1080" d:DesignWidth="1920">
+
+    <UserControl.Resources>
+        <!-- Main Background Gradient: Same as welcome screen -->
+        <LinearGradientBrush x:Key="MainBackgroundGradient" StartPoint="0,0" EndPoint="1,1">
+            <GradientStop Color="#581C87" Offset="0"/><!-- purple-900 -->
+            <GradientStop Color="#1E3A8A" Offset="0.5"/><!-- blue-900 -->
+            <GradientStop Color="#312E81" Offset="1"/><!-- indigo-900 -->
+        </LinearGradientBrush>
+
+        <!-- Title Gradient: Same as welcome screen -->
+        <LinearGradientBrush x:Key="TitleGradient" StartPoint="0,0" EndPoint="1,0">
+            <GradientStop Color="#FFFFFF" Offset="0"/><!-- white -->
+            <GradientStop Color="#DDD6FE" Offset="0.5"/><!-- purple-200 -->
+            <GradientStop Color="#BFDBFE" Offset="1"/><!-- blue-200 -->
+        </LinearGradientBrush>
+
+        <!-- Card Background: Semi-transparent white like welcome screen -->
+        <SolidColorBrush x:Key="CardBackground" Color="White" Opacity="0.1"/>
+        <SolidColorBrush x:Key="CardBorder" Color="White" Opacity="0.2"/>
+
+        <!-- Progress Bar Style -->
+        <Style x:Key="ModernProgressBar" TargetType="ProgressBar">
+            <Setter Property="Height" Value="12"/>
+            <Setter Property="Background">
+                <Setter.Value>
+                    <SolidColorBrush Color="White" Opacity="0.2"/>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Foreground" Value="#10B981"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ProgressBar">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                            <Grid>
+                                <Border Name="PART_Track" CornerRadius="6"/>
+                                <Border Name="PART_Indicator" 
+                                       Background="{TemplateBinding Foreground}" 
+                                       HorizontalAlignment="Left" 
+                                       CornerRadius="6"/>
+                            </Grid>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Floating Orb Styles -->
+        <Style x:Key="FloatingOrbStyle" TargetType="Ellipse">
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <BlurEffect Radius="15"/>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Card Style -->
+        <Style x:Key="InfoCardStyle" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource CardBackground}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource CardBorder}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="20"/>
+            <Setter Property="Padding" Value="32"/>
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <DropShadowEffect Color="#000000" BlurRadius="20" ShadowDepth="5" Opacity="0.3"/>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Button Style matching welcome screen -->
+        <Style x:Key="ModernButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="{StaticResource CardBackground}"/>
+            <Setter Property="Foreground" Value="#DDD6FE"/>
+            <Setter Property="FontSize" Value="18"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Padding" Value="24,12"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="{StaticResource CardBorder}"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="12"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" 
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background">
+                                    <Setter.Value>
+                                        <SolidColorBrush Color="White" Opacity="0.15"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Credits Display Style -->
+        <Style x:Key="CreditsStyle" TargetType="Border">
+            <Setter Property="Background">
+                <Setter.Value>
+                    <SolidColorBrush Color="White" Opacity="0.15"/>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="CornerRadius" Value="20"/>
+            <Setter Property="Padding" Value="16,8"/>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Background="{StaticResource MainBackgroundGradient}" ClipToBounds="True">
+        
+        <!-- Floating Orbs Layer (same as welcome screen) -->
+        <Canvas Name="FloatingOrbsCanvas">
+            <Ellipse Width="96" Height="96" 
+                     Fill="#A855F7" Opacity="0.2" 
+                     Style="{StaticResource FloatingOrbStyle}"
+                     Canvas.Left="128" Canvas.Top="128"/>
+            <Ellipse Width="80" Height="80" 
+                     Fill="#3B82F6" Opacity="0.25" 
+                     Style="{StaticResource FloatingOrbStyle}"
+                     Canvas.Left="1600" Canvas.Top="80"/>
+            <Ellipse Width="128" Height="128" 
+                     Fill="#EC4899" Opacity="0.15" 
+                     Style="{StaticResource FloatingOrbStyle}"
+                     Canvas.Left="480" Canvas.Top="792"/>
+            <Ellipse Width="80" Height="80" 
+                     Fill="#06B6D4" Opacity="0.2" 
+                     Style="{StaticResource FloatingOrbStyle}"
+                     Canvas.Right="128" Canvas.Bottom="128"/>
+        </Canvas>
+
+        <!-- Main Content -->
+        <Grid Margin="40,20,40,40">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/><!-- Credits Header -->
+                <RowDefinition Height="Auto"/><!-- Title Header -->
+                <RowDefinition Height="*"/><!-- Content -->
+            </Grid.RowDefinitions>
+
+            <!-- Credits Header Row -->
+            <Grid Grid.Row="0" Margin="0,20,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Credits Display -->
+                <Border Grid.Column="2" 
+                        Style="{StaticResource CreditsStyle}"
+                        VerticalAlignment="Center">
+                    <TextBlock x:Name="CreditsDisplay"
+                               Text="Credits: $0" 
+                               Foreground="White" 
+                               FontSize="16"/>
+                </Border>
+            </Grid>
+
+            <!-- Header Section -->
+            <StackPanel Grid.Row="1" HorizontalAlignment="Center" Margin="0,40,0,60">
+                <TextBlock x:Name="HeaderText" Text="Now Printing..." 
+                          FontSize="72" FontWeight="Bold" 
+                          Foreground="{StaticResource TitleGradient}" 
+                          HorizontalAlignment="Center">
+                    <TextBlock.Effect>
+                        <DropShadowEffect Color="White" Opacity="0.1" BlurRadius="20" ShadowDepth="0"/>
+                    </TextBlock.Effect>
+                </TextBlock>
+                <TextBlock x:Name="SubHeaderText" Text="Your photos are being prepared" 
+                          FontSize="28" Foreground="#DDD6FE" 
+                          HorizontalAlignment="Center" Margin="0,12,0,0"/>
+            </StackPanel>
+
+            <!-- Content Area -->
+            <Grid Grid.Row="2">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/><!-- Progress Card -->
+                    <RowDefinition Height="Auto"/><!-- Details Card -->
+                    <RowDefinition Height="*"/><!-- Spacer -->
+                    <RowDefinition Height="Auto"/><!-- Completion/Error Cards -->
+                </Grid.RowDefinitions>
+
+                <!-- Progress Card -->
+                <Border Grid.Row="0" Style="{StaticResource InfoCardStyle}" 
+                       MaxWidth="600" HorizontalAlignment="Center" Margin="0,0,0,40">
+                    <StackPanel HorizontalAlignment="Center">
+                                                 <!-- Printer Icon using Path geometry -->
+                         <Grid Height="120" Width="120" Margin="0,0,0,24">
+                             <Viewbox Width="120" Height="120">
+                                 <Canvas Width="512" Height="512">
+                                     <!-- Recreated from the SVG file -->
+                                     <Path Fill="#DDD6FE" Data="M480,144H32c-17.672,0-32,14.328-32,32v208c0,17.672,14.328,32,32,32h448c17.672,0,32-14.328,32-32V176C512,158.328,497.672,144,480,144z"/>
+                                     <Path Fill="#748B9E" Data="M32,144h440l0,0l0,0c0,8.84-7.16,16-16,16H48C39.16,160,32,152.84,32,144L32,144L32,144z"/>
+                                     <Ellipse Fill="#84BD5A" Canvas.Left="64" Canvas.Top="192" Width="16" Height="16"/>
+                                     <Ellipse Fill="#84BD5A" Canvas.Left="32" Canvas.Top="192" Width="16" Height="16"/>
+                                     <Path Fill="#123247" Data="M80,280h352c4.416,0,8,3.584,8,8v24c0,4.416-3.584,8-8,8H80c-4.416,0-8-3.584-8-8v-24C72,283.584,75.584,280,80,280z"/>
+                                     <Path Fill="#35495C" Data="M440,144H72l13.44-67.12c1.512-7.6,8.248-13.032,16-12.88h309.44c7.752-0.152,14.488,5.28,16,12.88L440,144z"/>
+                                     <Path Fill="#E2E7F0" Data="M408,32c0-8.84-7.16-16-16-16H120c-8.84,0-16,7.16-16,16v112h304V32z"/>
+                                     <Path Fill="#C9D5E3" Data="M408,48L408,48L408,48v96l0,0h-16l0,0V64C392,55.16,399.16,48,408,48z"/>
+                                     <Path Fill="#E2E7F0" Data="M104,480c0,8.84,7.16,16,16,16h272c8.84,0,16-7.16,16-16V320H104V480z"/>
+                                     <Path Fill="#9DACBA" Data="M144,360h224c4.416,0,8,3.584,8,8l0,0c0,4.416-3.584,8-8,8H144c-4.416,0-8-3.584-8-8l0,0C136,363.584,139.584,360,144,360z"/>
+                                     <Path Fill="#9DACBA" Data="M144,440h128c4.416,0,8,3.584,8,8l0,0c0,4.416-3.584,8-8,8H144c-4.416,0-8-3.584-8-8l0,0C136,443.584,139.584,440,144,440z"/>
+                                     <Path Fill="#9DACBA" Data="M144,400h224c4.416,0,8,3.584,8,8l0,0c0,4.416-3.584,8-8,8H144c-4.416,0-8-3.584-8-8l0,0C136,403.584,139.584,400,144,400z"/>
+                                 </Canvas>
+                             </Viewbox>
+                             <Grid.Effect>
+                                 <DropShadowEffect Color="#DDD6FE" BlurRadius="10" ShadowDepth="0" Opacity="0.3"/>
+                             </Grid.Effect>
+                         </Grid>
+
+                        <!-- Status Text -->
+                        <TextBlock x:Name="StatusText" Text="Preparing print job..." 
+                                  FontSize="24" FontWeight="Medium" 
+                                  Foreground="#DDD6FE" HorizontalAlignment="Center" 
+                                  Margin="0,0,0,24"/>
+
+                        <!-- Progress Bar -->
+                        <Grid Width="400" Margin="0,0,0,16">
+                            <ProgressBar x:Name="PrintProgress" 
+                                       Style="{StaticResource ModernProgressBar}" 
+                                       Value="0" Maximum="100"/>
+                        </Grid>
+
+                        <!-- Progress Percentage -->
+                        <TextBlock x:Name="ProgressText" Text="0%" 
+                                  FontSize="18" FontWeight="SemiBold" 
+                                  Foreground="#A5F3FC" 
+                                  HorizontalAlignment="Center"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Order Details Card -->
+                <Border Grid.Row="1" Style="{StaticResource InfoCardStyle}" 
+                       Margin="0,0,0,40">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Left Column - Order Details -->
+                        <StackPanel Grid.Column="0" Margin="0,0,40,0">
+                            <TextBlock Text="✨ Your Order Details" 
+                                      FontSize="24" FontWeight="SemiBold" 
+                                      Foreground="{StaticResource TitleGradient}" 
+                                      Margin="0,0,0,32"/>
+                            
+                            <!-- Template -->
+                            <Grid Margin="0,0,0,20">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="140"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Template" 
+                                          FontSize="16" Foreground="#A5B4FC" FontWeight="Medium"/>
+                                <TextBlock x:Name="TemplateText" Grid.Column="1" Text="Good Vibes" 
+                                          FontSize="16" Foreground="#DDD6FE" FontWeight="SemiBold"/>
+                            </Grid>
+
+                            <!-- Product Type -->
+                            <Grid Margin="0,0,0,20">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="140"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Product Type" 
+                                          FontSize="16" Foreground="#A5B4FC" FontWeight="Medium"/>
+                                <TextBlock x:Name="ProductTypeText" Grid.Column="1" Text="Photo Strips" 
+                                          FontSize="16" Foreground="#DDD6FE" FontWeight="SemiBold"/>
+                            </Grid>
+
+                            <!-- Photos -->
+                            <Grid Margin="0,0,0,20">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="140"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Photos" 
+                                          FontSize="16" Foreground="#A5B4FC" FontWeight="Medium"/>
+                                <TextBlock x:Name="PhotoCountText" Grid.Column="1" Text="4 Photos" 
+                                          FontSize="16" Foreground="#DDD6FE" FontWeight="SemiBold"/>
+                            </Grid>
+
+                            <!-- Copies -->
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="140"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Copies" 
+                                          FontSize="16" Foreground="#A5B4FC" FontWeight="Medium"/>
+                                <TextBlock x:Name="CopiesText" Grid.Column="1" Text="1 Set" 
+                                          FontSize="16" Foreground="#DDD6FE" FontWeight="SemiBold"/>
+                            </Grid>
+                        </StackPanel>
+
+                        <!-- Right Column - Printer Status -->
+                        <StackPanel Grid.Column="1" Margin="40,0,0,0">
+                            <TextBlock Text="🖨️ Printer Status" 
+                                      FontSize="24" FontWeight="SemiBold" 
+                                      Foreground="{StaticResource TitleGradient}" 
+                                      Margin="0,0,0,32"/>
+                            
+                            <!-- Printer Name -->
+                            <Grid Margin="0,0,0,20">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="20"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Printer" 
+                                          FontSize="16" Foreground="#A5B4FC" FontWeight="Medium"/>
+                                <StackPanel Grid.Column="2" Orientation="Horizontal">
+                                    <Ellipse Width="8" Height="8" Fill="#10B981" Margin="0,6,12,0"/>
+                                    <TextBlock x:Name="PrinterNameText" Text="DNP DS620A" 
+                                              FontSize="16" Foreground="#DDD6FE" FontWeight="SemiBold"/>
+                                </StackPanel>
+                            </Grid>
+
+                            <!-- Prints Remaining -->
+                            <Grid Margin="0,0,0,20">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="20"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Prints Remaining" 
+                                          FontSize="16" Foreground="#A5B4FC" FontWeight="Medium"/>
+                                <TextBlock x:Name="PrintsRemainingText" Grid.Column="2" Text="642" 
+                                          FontSize="16" Foreground="#10B981" FontWeight="SemiBold"/>
+                            </Grid>
+
+                            <!-- Queue Position -->
+                            <Grid Margin="0,0,0,20">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="20"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Queue Position" 
+                                          FontSize="16" Foreground="#A5B4FC" FontWeight="Medium"/>
+                                <TextBlock x:Name="QueuePositionText" Grid.Column="2" Text="1 of 1" 
+                                          FontSize="16" Foreground="#DDD6FE" FontWeight="SemiBold"/>
+                            </Grid>
+
+                            <!-- Estimated Time -->
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="20"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Est. Time" 
+                                          FontSize="16" Foreground="#A5B4FC" FontWeight="Medium"/>
+                                <TextBlock x:Name="EstimatedTimeText" Grid.Column="2" Text="45 seconds" 
+                                          FontSize="16" Foreground="#DDD6FE" FontWeight="SemiBold"/>
+                            </Grid>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- Completion Card -->
+                <Border x:Name="CompletionCard" Grid.Row="3" Style="{StaticResource InfoCardStyle}" 
+                       Visibility="Collapsed" MaxWidth="600" HorizontalAlignment="Center">
+                    <StackPanel HorizontalAlignment="Center">
+                        <TextBlock Text="✅" FontSize="80" HorizontalAlignment="Center" Margin="0,0,0,20"/>
+                        <TextBlock Text="Printing Complete!" 
+                                  FontSize="32" FontWeight="Bold" 
+                                  Foreground="#10B981" HorizontalAlignment="Center" 
+                                  Margin="0,0,0,12"/>
+                        <TextBlock Text="Please collect your photos below" 
+                                  FontSize="20" Foreground="#DDD6FE" 
+                                  HorizontalAlignment="Center" Margin="0,0,0,24"/>
+                        
+                        <TextBlock x:Name="CountdownText" Text="Returning to welcome screen in 10 seconds..." 
+                                  FontSize="16" Foreground="#A5B4FC" 
+                                  HorizontalAlignment="Center"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Error Card -->
+                <Border x:Name="ErrorCard" Grid.Row="3" Style="{StaticResource InfoCardStyle}" 
+                       Visibility="Collapsed" MaxWidth="600" HorizontalAlignment="Center">
+                    <StackPanel HorizontalAlignment="Center">
+                        <TextBlock Text="⚠️" FontSize="80" HorizontalAlignment="Center" Margin="0,0,0,20"/>
+                        <TextBlock Text="Printing Error" 
+                                  FontSize="32" FontWeight="Bold" 
+                                  Foreground="#EF4444" HorizontalAlignment="Center" 
+                                  Margin="0,0,0,12"/>
+                        <TextBlock x:Name="ErrorMessageText" Text="Please contact support for assistance" 
+                                  FontSize="18" Foreground="#DDD6FE" 
+                                  HorizontalAlignment="Center" TextWrapping="Wrap" 
+                                  Margin="0,0,0,32"/>
+                        
+                        <Button x:Name="RetryButton" Content="🔄 Retry Print" 
+                               Style="{StaticResource ModernButtonStyle}"
+                               Click="RetryButton_Click"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Grid>
+
+        <!-- Bottom Gradient Overlay -->
+        <Border VerticalAlignment="Bottom" Height="128">
+            <Border.Background>
+                <LinearGradientBrush StartPoint="0,1" EndPoint="0,0">
+                    <GradientStop Color="#33000000" Offset="0"/>
+                    <GradientStop Color="Transparent" Offset="1"/>
+                </LinearGradientBrush>
+            </Border.Background>
+        </Border>
+    </Grid>
+</UserControl> 

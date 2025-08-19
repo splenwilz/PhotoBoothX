@@ -53,6 +53,18 @@ namespace Photobooth.Models
         Photo4x6
     }
 
+    /// <summary>
+    /// Shape types for template photo areas, replacing magic rotation values
+    /// </summary>
+    public enum ShapeType
+    {
+        Rectangle,
+        RoundedRectangle,
+        Circle,
+        Heart,
+        Petal
+    }
+
     public class ProductCategory
     {
         public int Id { get; set; }
@@ -75,11 +87,66 @@ namespace Photobooth.Models
         public int PhotoCount { get; set; } = 1;
         public int MaxCopies { get; set; } = 10;
         public ProductType ProductType { get; set; } = ProductType.PhotoStrips;
+        
+        // Legacy extra copy pricing configuration (deprecated - use product-specific pricing below)
+        public bool UseCustomExtraCopyPricing { get; set; } = false; // If false, extra copies cost same as base price
+        public decimal? ExtraCopy1Price { get; set; } // Price for 1 extra copy (nullable, uses base price if null)
+        public decimal? ExtraCopy2Price { get; set; } // Price for 2 extra copies (nullable, uses base price if null)
+        public decimal? ExtraCopy4BasePrice { get; set; } // Base price for 4+ extra copies (nullable, uses base price if null)
+        public decimal? ExtraCopyAdditionalPrice { get; set; } // Price per additional copy beyond 4 (nullable, uses base price if null)
+        
+        // Simplified product-specific extra copy pricing configuration
+        // Photo Strips extra copy pricing
+        public decimal? StripsExtraCopyPrice { get; set; } // Price per extra strip copy
+        public decimal? StripsMultipleCopyDiscount { get; set; } // Discount percentage for 2+ copies (0-100)
+        
+        // 4x6 Photos extra copy pricing
+        public decimal? Photo4x6ExtraCopyPrice { get; set; } // Price per extra 4x6 copy
+        public decimal? Photo4x6MultipleCopyDiscount { get; set; } // Discount percentage for 2+ copies (0-100)
+        
+        // Smartphone Print extra copy pricing
+        public decimal? SmartphoneExtraCopyPrice { get; set; } // Price per extra smartphone print copy
+        public decimal? SmartphoneMultipleCopyDiscount { get; set; } // Discount percentage for 2+ copies (0-100)
+        
         public DateTime CreatedAt { get; set; } = DateTime.Now;
         public DateTime UpdatedAt { get; set; } = DateTime.Now;
 
         // Navigation properties
         public ProductCategory? Category { get; set; }
+    }
+
+    /// <summary>
+    /// Request object for updating product properties
+    /// Encapsulates all optional parameters for the UpdateProductAsync method
+    /// </summary>
+    public class ProductUpdateRequest
+    {
+        public bool? IsActive { get; set; }
+        public decimal? Price { get; set; }
+        public bool? UseCustomExtraCopyPricing { get; set; }
+        public decimal? ExtraCopy1Price { get; set; }
+        public decimal? ExtraCopy2Price { get; set; }
+        public decimal? ExtraCopy4BasePrice { get; set; }
+        public decimal? ExtraCopyAdditionalPrice { get; set; }
+        public decimal? StripsExtraCopyPrice { get; set; }
+        public decimal? StripsMultipleCopyDiscount { get; set; }
+        public decimal? Photo4x6ExtraCopyPrice { get; set; }
+        public decimal? Photo4x6MultipleCopyDiscount { get; set; }
+        public decimal? SmartphoneExtraCopyPrice { get; set; }
+        public decimal? SmartphoneMultipleCopyDiscount { get; set; }
+
+        /// <summary>
+        /// Validates that at least one property has a value
+        /// </summary>
+        public bool HasAnyValue()
+        {
+            return IsActive.HasValue || Price.HasValue || UseCustomExtraCopyPricing.HasValue ||
+                   ExtraCopy1Price.HasValue || ExtraCopy2Price.HasValue || ExtraCopy4BasePrice.HasValue ||
+                   ExtraCopyAdditionalPrice.HasValue || StripsExtraCopyPrice.HasValue ||
+                   StripsMultipleCopyDiscount.HasValue || Photo4x6ExtraCopyPrice.HasValue ||
+                   Photo4x6MultipleCopyDiscount.HasValue || SmartphoneExtraCopyPrice.HasValue ||
+                   SmartphoneMultipleCopyDiscount.HasValue;
+        }
     }
 
     // =============================================
@@ -205,9 +272,28 @@ namespace Photobooth.Models
         public int Width { get; set; }
         public int Height { get; set; }
         public double Rotation { get; set; } = 0;
+        public int BorderRadius { get; set; } = 0; // Border radius in pixels for rounded corners
+        public ShapeType ShapeType { get; set; } = ShapeType.Rectangle; // Explicit shape type instead of using rotation magic numbers
 
         // Navigation properties
         public TemplateLayout? Layout { get; set; }
+        
+        /// <summary>
+        /// Legacy property for backward compatibility - derives ShapeType from rotation values
+        /// </summary>
+        public ShapeType GetShapeTypeFromRotation()
+        {
+            if (Math.Abs(Rotation - 360) < 0.1)
+                return ShapeType.Circle;
+            else if (Math.Abs(Rotation - 720) < 0.1)
+                return ShapeType.Heart;
+            else if (Math.Abs(Rotation - 1080) < 0.1)
+                return ShapeType.Petal;
+            else if (BorderRadius > 0)
+                return ShapeType.RoundedRectangle;
+            else
+                return ShapeType.Rectangle;
+        }
     }
 
     public class PhotoArea
@@ -218,6 +304,8 @@ namespace Photobooth.Models
         public int Width { get; set; }
         public int Height { get; set; }
         public double Rotation { get; set; } = 0;
+        public int BorderRadius { get; set; } = 0; // Border radius in pixels for rounded corners
+        public ShapeType ShapeType { get; set; } = ShapeType.Rectangle; // Explicit shape type
     }
 
     public class TemplateDimensions
@@ -268,7 +356,9 @@ namespace Photobooth.Models
                 Y = pa.Y,
                 Width = pa.Width,
                 Height = pa.Height,
-                Rotation = pa.Rotation
+                Rotation = pa.Rotation,
+                BorderRadius = pa.BorderRadius,
+                ShapeType = pa.ShapeType
             }).ToList() ?? new List<PhotoArea>();
         }
         
@@ -490,6 +580,16 @@ namespace Photobooth.Models
         public DateTime? LastMaintenanceAt { get; set; }
     }
 
+    public class CameraSettings
+    {
+        public int Id { get; set; }
+        public string SettingName { get; set; } = string.Empty;
+        public int SettingValue { get; set; }
+        public string? Description { get; set; }
+        public DateTime CreatedAt { get; set; } = DateTime.Now;
+        public DateTime UpdatedAt { get; set; } = DateTime.Now;
+    }
+
     public class PrintSupply
     {
         public int Id { get; set; }
@@ -600,6 +700,35 @@ namespace Photobooth.Models
         public bool ShowLogoOnPrints { get; set; } = true;
         public DateTime UpdatedAt { get; set; } = DateTime.Now;
         public string? UpdatedBy { get; set; }
+    }
+
+    /// <summary>
+    /// Represents a credit transaction for tracking credit history
+    /// </summary>
+    public class CreditTransaction
+    {
+        public int Id { get; set; }
+        public decimal Amount { get; set; }
+        public CreditTransactionType TransactionType { get; set; }
+        public string Description { get; set; } = string.Empty;
+        public decimal BalanceAfter { get; set; }
+        public DateTime CreatedAt { get; set; } = DateTime.Now;
+        public string? CreatedBy { get; set; }
+        public int? RelatedTransactionId { get; set; }
+        
+        // Backward compatibility properties
+        public CreditTransactionType Type => TransactionType;
+        public DateTime Timestamp => CreatedAt;
+    }
+
+    /// <summary>
+    /// Types of credit transactions
+    /// </summary>
+    public enum CreditTransactionType
+    {
+        Add,
+        Deduct,
+        Reset
     }
 
     // =============================================
