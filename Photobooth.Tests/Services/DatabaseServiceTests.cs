@@ -52,6 +52,11 @@ namespace Photobooth.Tests.Services
             {
                 if (!string.IsNullOrEmpty(_tempDbPath) && System.IO.File.Exists(_tempDbPath))
                 {
+                    // Force garbage collection to ensure all connections are closed
+                    _databaseService = null!;
+                    GC.Collect();
+                    GC.WaitForPendingFinalizers();
+                    
                     System.IO.File.Delete(_tempDbPath);
                 }
             }

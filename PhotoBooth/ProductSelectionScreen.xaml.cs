@@ -501,7 +501,7 @@ namespace Photobooth
                     }
                     else
                     {
-                        displayText = $"Credits: ${currentCredits:F0}";
+                        displayText = $"Credits: ${currentCredits:F2}";
                     }
                     CreditsDisplay.Text = displayText;
                 }

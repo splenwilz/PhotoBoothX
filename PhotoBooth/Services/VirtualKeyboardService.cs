@@ -1078,8 +1078,9 @@ namespace Photobooth.Services
                     _bindingReenabled = true;
                     ReenableBinding(_activeInput);
                     
-                    // Invoke callback with the text box tag or name for context
-                    OnPriceInputComplete?.Invoke(textBoxTag ?? textBoxName);
+                    // Invoke callback with tag (if present) else name for context
+                    var contextId = !string.IsNullOrWhiteSpace(textBoxTag) ? textBoxTag : textBoxName;
+                    OnPriceInputComplete?.Invoke(contextId);
                     
                     HideKeyboard();
                     return;

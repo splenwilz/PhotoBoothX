@@ -64,6 +64,15 @@ namespace Photobooth.Behaviors
                     // Re-attach event handlers when control is loaded (after being unloaded)
                     AttachEventHandlers(control);
                     
+                    // Subscribe to window deactivation to hide keyboard when app loses focus
+                    var window = Window.GetWindow(control);
+                    if (window != null)
+                    {
+                        // De-dupe subscription in case of multiple loads
+                        window.Deactivated -= OnWindowDeactivated;
+                        window.Deactivated += OnWindowDeactivated;
+                    }
+                    
                     // Check if control already has focus after re-attaching handlers
                     if (control.IsFocused || control.IsKeyboardFocused)
                     {
@@ -91,6 +100,13 @@ namespace Photobooth.Behaviors
                 Console.WriteLine($"=== VirtualKeyboardBehavior.Control_Unloaded: {control.Name} ===");
                 // Detach event handlers when control is unloaded
                 DetachEventHandlers(control);
+                
+                // Unsubscribe from window events to avoid leaks
+                var window = Window.GetWindow(control);
+                if (window != null)
+                {
+                    window.Deactivated -= OnWindowDeactivated;
+                }
             }
         }
 
@@ -139,6 +155,18 @@ namespace Photobooth.Behaviors
         {
             // Note: We don't hide the keyboard on LostFocus because the user might be 
             // switching between input controls and we want to keep the keyboard visible
+        }
+
+        private static void OnWindowDeactivated(object? sender, EventArgs e)
+        {
+            try
+            {
+                VirtualKeyboardService.Instance.HideKeyboard();
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Error hiding virtual keyboard on window deactivation", ex);
+            }
         }
 
         #endregion
