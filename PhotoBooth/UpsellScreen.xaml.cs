@@ -326,7 +326,7 @@ namespace Photobooth
                 if (_crossSellProduct == null)
                 {
                     // No cross-sell available, proceed to completion
-                    CompleteUpselling();
+                    await CompleteUpsellingAsync();
                     return;
                 }
 
@@ -345,14 +345,14 @@ namespace Photobooth
             catch (Exception ex)
             {
                 LoggingService.Application.Error("Cross-sell stage start failed", ex);
-                CompleteUpselling(); // Fallback to completion
+                await CompleteUpsellingAsync(); // Fallback to completion
             }
         }
 
         /// <summary>
         /// Complete the upselling process
         /// </summary>
-        private async void CompleteUpselling()
+        private async Task CompleteUpsellingAsync()
         {
             try
             {
@@ -530,7 +530,7 @@ namespace Photobooth
                     ("PhotoIndex", _selectedPhotoIndex + 1),
                     ("TotalPhotos", _capturedPhotos.Count));
 
-                CompleteUpselling();
+                await CompleteUpsellingAsync();
             }
             catch (Exception ex)
             {
@@ -565,7 +565,7 @@ namespace Photobooth
                         return; // Validation failed, don't proceed
                     }
                     
-                    CompleteUpselling();
+                    await CompleteUpsellingAsync();
                 }
             }
             catch (Exception ex)
@@ -989,7 +989,7 @@ namespace Photobooth
                     // Timeout on cross-sell, complete upselling
                     _crossSellAccepted = false;
                     _crossSellPrice = 0; // Reset cross-sell price on timeout
-                    CompleteUpselling();
+                    await CompleteUpsellingAsync();
                 }
             }
             catch (Exception ex)

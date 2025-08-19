@@ -54,26 +54,33 @@ namespace Photobooth.Behaviors
             }
         }
 
-        private static void Control_Loaded(object sender, RoutedEventArgs e)
+        private static async void Control_Loaded(object sender, RoutedEventArgs e)
         {
-            if (sender is Control control)
+            try
             {
-                Console.WriteLine($"=== VirtualKeyboardBehavior.Control_Loaded: {control.Name} ===");
-                // Re-attach event handlers when control is loaded (after being unloaded)
-                AttachEventHandlers(control);
-                
-                // Check if control already has focus after re-attaching handlers
-                if (control.IsFocused || control.IsKeyboardFocused)
+                if (sender is Control control)
                 {
-                    Console.WriteLine($"Control {control.Name} already has focus, manually triggering keyboard logic");
-                    // Manually trigger the virtual keyboard logic since GotFocus won't fire
-                    var parentWindow = Window.GetWindow(control);
-                    if (parentWindow != null)
+                    Console.WriteLine($"=== VirtualKeyboardBehavior.Control_Loaded: {control.Name} ===");
+                    // Re-attach event handlers when control is loaded (after being unloaded)
+                    AttachEventHandlers(control);
+                    
+                    // Check if control already has focus after re-attaching handlers
+                    if (control.IsFocused || control.IsKeyboardFocused)
                     {
-                        Console.WriteLine($"Manually calling VirtualKeyboardService.ShowKeyboardAsync for {control.Name}");
-                        _ = VirtualKeyboardService.Instance.ShowKeyboardAsync(control, parentWindow);
+                        Console.WriteLine($"Control {control.Name} already has focus, manually triggering keyboard logic");
+                        // Manually trigger the virtual keyboard logic since GotFocus won't fire
+                        var parentWindow = Window.GetWindow(control);
+                        if (parentWindow != null)
+                        {
+                            Console.WriteLine($"Manually calling VirtualKeyboardService.ShowKeyboardAsync for {control.Name}");
+                            await VirtualKeyboardService.Instance.ShowKeyboardAsync(control, parentWindow);
+                        }
                     }
                 }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Error in VirtualKeyboardBehavior Control_Loaded", ex);
             }
         }
 
@@ -106,18 +113,25 @@ namespace Photobooth.Behaviors
             Console.WriteLine($"Detached handlers for {control.Name}");
         }
 
-        private static void Control_GotFocus(object sender, RoutedEventArgs e)
+        private static async void Control_GotFocus(object sender, RoutedEventArgs e)
         {
-            if (sender is Control control)
+            try
             {
-                
-                // Find the parent window
-                var parentWindow = Window.GetWindow(control);
-                if (parentWindow != null)
+                if (sender is Control control)
                 {
-                    // Show virtual keyboard for this control
-                    _ = VirtualKeyboardService.Instance.ShowKeyboardAsync(control, parentWindow);
+                    
+                    // Find the parent window
+                    var parentWindow = Window.GetWindow(control);
+                    if (parentWindow != null)
+                    {
+                        // Show virtual keyboard for this control
+                        await VirtualKeyboardService.Instance.ShowKeyboardAsync(control, parentWindow);
+                    }
                 }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Error in VirtualKeyboardBehavior Control_GotFocus", ex);
             }
         }
 

@@ -3756,8 +3756,8 @@ Security Best Practices:
                         SettingName = GetStringValue(reader, "SettingName"),
                         SettingValue = GetIntValue(reader, "SettingValue"),
                         Description = IsDBNullValue(reader, "Description") ? null : GetStringValue(reader, "Description"),
-                        CreatedAt = reader.GetDateTime("CreatedAt"),
-                        UpdatedAt = reader.GetDateTime("UpdatedAt")
+                        CreatedAt = DateTime.Parse(GetStringValue(reader, "CreatedAt")),
+                        UpdatedAt = DateTime.Parse(GetStringValue(reader, "UpdatedAt"))
                     });
                 }
 
@@ -3791,8 +3791,8 @@ Security Best Practices:
                         SettingName = GetStringValue(reader, "SettingName"),
                         SettingValue = GetIntValue(reader, "SettingValue"),
                         Description = IsDBNullValue(reader, "Description") ? null : GetStringValue(reader, "Description"),
-                        CreatedAt = reader.GetDateTime("CreatedAt"),
-                        UpdatedAt = reader.GetDateTime("UpdatedAt")
+                        CreatedAt = DateTime.Parse(GetStringValue(reader, "CreatedAt")),
+                        UpdatedAt = DateTime.Parse(GetStringValue(reader, "UpdatedAt"))
                     };
 
                     Console.WriteLine($"DatabaseService: Found camera setting '{settingName}' = {setting.SettingValue}");

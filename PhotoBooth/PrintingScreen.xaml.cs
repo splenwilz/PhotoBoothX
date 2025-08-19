@@ -516,12 +516,12 @@ namespace Photobooth
                     Console.WriteLine($"Order Description: {orderDescription}");
                     Console.WriteLine($"Deducting ${_totalOrderCost} from credits...");
                     
-                    var creditsBefore = _adminDashboardScreen?.GetCurrentCredits() ?? 0;
+                    var creditsBefore = _adminDashboardScreen.GetCurrentCredits();
                     Console.WriteLine($"--- CREDIT DEDUCTION BEFORE --- Credits: ${creditsBefore}");
                     
-                    creditDeductionSuccess = await _adminDashboardScreen!.DeductCreditsAsync(_totalOrderCost, orderDescription, transactionId);
+                    creditDeductionSuccess = await _adminDashboardScreen.DeductCreditsAsync(_totalOrderCost, orderDescription, transactionId);
                     
-                    var creditsAfter = _adminDashboardScreen?.GetCurrentCredits() ?? 0;
+                    var creditsAfter = _adminDashboardScreen.GetCurrentCredits();
                     Console.WriteLine($"--- CREDIT DEDUCTION AFTER --- Credits: ${creditsAfter}, Change: ${creditsAfter - creditsBefore}");
                     Console.WriteLine($"Credit Deduction Result: {(creditDeductionSuccess ? "SUCCESS" : "FAILED")}");
                     
@@ -548,7 +548,12 @@ namespace Photobooth
                     if (_adminDashboardScreen == null)
                         Console.WriteLine("Reason: Admin Dashboard is NULL");
                     if (_totalOrderCost <= 0)
-                        Console.WriteLine($"Reason: Total Order Cost is ${_totalOrderCost}");
+                    {
+                        Console.WriteLine($"Reason: Zero-cost order (${_totalOrderCost}) - auto-completing as free");
+                        LoggingService.Application.Information("Zero-cost order - skipping credit deduction",
+                            ("TotalOrderCost", _totalOrderCost));
+                        creditDeductionSuccess = true;
+                    }
                 }
 
                 // 3. Update transaction status based on credit deduction result
@@ -618,12 +623,12 @@ namespace Photobooth
                     Quantity = _totalCopies,
                     BasePrice = GetBasePrice(),
                     TotalPrice = _totalOrderCost,
-                    PaymentMethod = (_mainWindow?.IsFreePlayMode == true) ? PaymentMethod.Free : PaymentMethod.Credit,
+                    PaymentMethod = (_mainWindow?.IsFreePlayMode == true || _totalOrderCost <= 0) ? PaymentMethod.Free : PaymentMethod.Credit,
                     PaymentStatus = creditDeductionSuccess || (_mainWindow?.IsFreePlayMode == true) 
                         ? PaymentStatus.Completed 
                         : PaymentStatus.Pending,
                     CreatedAt = DateTime.Now,
-                    CompletedAt = creditDeductionSuccess || (_mainWindow?.IsFreePlayMode == true) ? DateTime.Now : null,
+                    CompletedAt = (creditDeductionSuccess || (_mainWindow?.IsFreePlayMode == true)) ? DateTime.Now : null,
                     Notes = BuildOrderDescription()
                 };
 

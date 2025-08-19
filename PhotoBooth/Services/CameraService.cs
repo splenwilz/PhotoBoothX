@@ -646,9 +646,21 @@ namespace Photobooth.Services
                     // Dispose previous frame
                     _lastFrame?.Dispose();
                     
-                    // Store new frame with adjustments applied
+                    // Store new frame with adjustments applied, normalized to 24bpp to match WriteableBitmap expectations
                     var originalFrame = new Bitmap(eventArgs.Frame);
-                    _lastFrame = ApplyImageAdjustments(originalFrame);
+                    var adjusted = ApplyImageAdjustments(originalFrame);
+                    if (adjusted.PixelFormat != PixelFormat.Format24bppRgb)
+                    {
+                        var converted = adjusted.Clone(
+                            new Rectangle(0, 0, adjusted.Width, adjusted.Height),
+                            PixelFormat.Format24bppRgb);
+                        adjusted.Dispose();
+                        _lastFrame = converted;
+                    }
+                    else
+                    {
+                        _lastFrame = adjusted;
+                    }
                     originalFrame.Dispose();
                 }
 

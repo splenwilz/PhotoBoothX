@@ -128,6 +128,7 @@ namespace Photobooth
             try
             {
                 selectedProduct = product ?? throw new ArgumentNullException(nameof(product));
+                await RefreshProductPricesAsync();
                 await LoadTemplatesAsync();
             }
             catch (Exception ex)

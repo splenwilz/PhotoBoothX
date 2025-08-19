@@ -2102,7 +2102,15 @@ namespace Photobooth.Views
                 {
                     Dispatcher.BeginInvoke(async () =>
                     {
-                        await RefreshTemplateDisplayAsync(templateId);
+                        try
+                        {
+                            await RefreshTemplateDisplayAsync(templateId);
+                        }
+                        catch (Exception ex)
+                        {
+                            LoggingService.Application.Error("Error refreshing template display", ex, ("TemplateId", templateId));
+                            // Don't rethrow - this is a UI refresh, not critical functionality
+                        }
                     });
                 };
 

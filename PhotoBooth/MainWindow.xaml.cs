@@ -282,6 +282,13 @@ namespace Photobooth
                     adminDashboardScreen = new AdminDashboardScreen(_databaseService, this);
                     LoggingService.Application.Debug("Admin Dashboard created for credit management");
                     
+                    // Defensive check after construction
+                    if (adminDashboardScreen == null)
+                    {
+                        LoggingService.Application.Error("AdminDashboardScreen constructor returned null");
+                        throw new InvalidOperationException("Failed to create AdminDashboardScreen instance");
+                    }
+                    
                     // Subscribe to admin dashboard events
                     adminDashboardScreen.ExitAdminRequested += AdminDashboardScreen_ExitAdminRequested;
                     LoggingService.Application.Debug("Admin Dashboard event handlers attached");
@@ -575,7 +582,7 @@ namespace Photobooth
         /// <summary>
         /// Navigate to template customization screen with specific template
         /// </summary>
-        public async void NavigateToTemplateCustomizationWithTemplate(TemplateInfo? template)
+        public async Task NavigateToTemplateCustomizationWithTemplate(TemplateInfo? template)
         {
             try
             {
@@ -1170,10 +1177,18 @@ namespace Photobooth
                     await InitializeAdminDashboardForCreditsAsync();
                 }
 
+                // Guard against null adminDashboardScreen after initialization attempt
+                if (adminDashboardScreen == null)
+                {
+                    var errorMsg = "Failed to initialize AdminDashboard after initialization attempt";
+                    LoggingService.Application.Error(errorMsg);
+                    throw new InvalidOperationException(errorMsg);
+                }
+
                 // Set access level and configure UI accordingly
                 currentAdminAccess = accessLevel;
                 LoggingService.Application.Debug("Setting admin access level");
-                await adminDashboardScreen!.SetAccessLevel(accessLevel, userId);
+                await adminDashboardScreen.SetAccessLevel(accessLevel, userId);
                 LoggingService.Application.Debug("Access level set successfully");
                 
                 LoggingService.Application.Debug("Refreshing sales data");
@@ -1360,7 +1375,7 @@ namespace Photobooth
                 if (e.Template != null)
                 {
                     // Navigate directly to template customization - credits will be deducted when printing completes
-                    NavigateToTemplateCustomizationWithTemplate(e.Template);
+                    await NavigateToTemplateCustomizationWithTemplate(e.Template);
                 }
                 else
                 {
