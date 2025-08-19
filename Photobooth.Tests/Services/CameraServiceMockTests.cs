@@ -124,10 +124,10 @@ namespace Photobooth.Tests.Services
         #region Camera Lifecycle Tests
 
         [TestMethod]
-        public void StartCamera_ValidIndex_ReturnsTrue()
+        public async Task StartCamera_ValidIndex_ReturnsTrue()
         {
             // Act
-            var result = _mockCameraService.StartCamera(0);
+            var result = await _mockCameraService.StartCameraAsync(0);
 
             // Assert
             result.Should().BeTrue();
@@ -135,10 +135,10 @@ namespace Photobooth.Tests.Services
         }
 
         [TestMethod]
-        public void StartCamera_InvalidIndex_ReturnsFalse()
+        public async Task StartCamera_InvalidIndex_ReturnsFalse()
         {
             // Act
-            var result = _mockCameraService.StartCamera(10);
+            var result = await _mockCameraService.StartCameraAsync(10);
 
             // Assert
             result.Should().BeFalse();
@@ -146,10 +146,10 @@ namespace Photobooth.Tests.Services
         }
 
         [TestMethod]
-        public void StartCamera_NegativeIndex_ReturnsFalse()
+        public async Task StartCamera_NegativeIndex_ReturnsFalse()
         {
             // Act
-            var result = _mockCameraService.StartCamera(-1);
+            var result = await _mockCameraService.StartCameraAsync(-1);
 
             // Assert
             result.Should().BeFalse();
@@ -157,10 +157,10 @@ namespace Photobooth.Tests.Services
         }
 
         [TestMethod]
-        public void StopCamera_AfterStart_StopsSuccessfully()
+        public async Task StopCamera_AfterStart_StopsSuccessfully()
         {
             // Arrange
-            _mockCameraService.StartCamera(0);
+            await _mockCameraService.StartCameraAsync(0);
             _mockCameraService.IsCapturing.Should().BeTrue();
 
             // Act
@@ -186,7 +186,7 @@ namespace Photobooth.Tests.Services
         public async Task CapturePhotoAsync_WhenCameraRunning_ReturnsFilePath()
         {
             // Arrange
-            _mockCameraService.StartCamera(0);
+            await _mockCameraService.StartCameraAsync(0);
 
             // Act
             var result = await _mockCameraService.CapturePhotoAsync("test_photo");
@@ -215,7 +215,7 @@ namespace Photobooth.Tests.Services
         public async Task CapturePhotoAsync_WithoutExtension_AddsJpgExtension()
         {
             // Arrange
-            _mockCameraService.StartCamera(0);
+            await _mockCameraService.StartCameraAsync(0);
 
             // Act
             var result = await _mockCameraService.CapturePhotoAsync("test_no_ext");
@@ -233,7 +233,7 @@ namespace Photobooth.Tests.Services
         public async Task CapturePhotoAsync_NullFileName_GeneratesFileName()
         {
             // Arrange
-            _mockCameraService.StartCamera(0);
+            await _mockCameraService.StartCameraAsync(0);
 
             // Act
             var result = await _mockCameraService.CapturePhotoAsync(null);
@@ -251,7 +251,7 @@ namespace Photobooth.Tests.Services
         public async Task CapturePhotoAsync_EmptyFileName_GeneratesFileName()
         {
             // Arrange
-            _mockCameraService.StartCamera(0);
+            await _mockCameraService.StartCameraAsync(0);
 
             // Act
             var result = await _mockCameraService.CapturePhotoAsync("");
@@ -295,7 +295,7 @@ namespace Photobooth.Tests.Services
         public async Task CompleteWorkflow_MockCamera_WorksCorrectly()
         {
             // 1. Start camera
-            var startResult = _mockCameraService.StartCamera(0);
+            var startResult = await _mockCameraService.StartCameraAsync(0);
             startResult.Should().BeTrue();
             _mockCameraService.IsCapturing.Should().BeTrue();
 

@@ -63,7 +63,9 @@ namespace Photobooth.Controls
             {
                 InitializeComponent();
                 _databaseService = new DatabaseService();
-                LoadCategories();
+                
+                // Load categories when the control is loaded
+                Loaded += OnLoadedAsync;
             }
             catch (Exception ex)
             {
@@ -72,7 +74,23 @@ namespace Photobooth.Controls
             }
         }
 
-        private async void LoadCategories()
+        /// <summary>
+        /// Handle Loaded event with proper async/await pattern
+        /// </summary>
+        private async void OnLoadedAsync(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                await LoadCategoriesAsync();
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to load categories on control load", ex);
+                NotificationService.Instance.ShowError("Loading Error", "Error loading categories. Please try again.");
+            }
+        }
+
+        private async Task LoadCategoriesAsync()
         {
             try
             {
@@ -694,7 +712,7 @@ namespace Photobooth.Controls
             if (result.Success)
             {
                 CategoriesChanged = true;
-                LoadCategories();
+                await LoadCategoriesAsync();
                 NotificationService.Instance.ShowSuccess("Dates Updated", $"Season dates for {category.Name} updated successfully!");
                 CloseEditDropdown();
             }
@@ -994,7 +1012,7 @@ namespace Photobooth.Controls
                     if (result.Success)
                     {
                         CategoriesChanged = true;
-                        LoadCategories();
+                        await LoadCategoriesAsync();
                         LoggingService.Application.Information("Category {Action}: {CategoryName} with {TemplateCount} templates", 
                             ("Action", action + "d"), ("CategoryName", category.Name), ("TemplateCount", templateCount));
                         

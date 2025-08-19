@@ -224,8 +224,8 @@ Copy-Item "C:\Program Files\PhotoBoothX\Templates" "C:\Templates-Backup-$(Get-Da
 ### Default Credentials
 | Account | Username | Password | Access Level |
 |---------|----------|----------|--------------|
-| Master Admin | `admin` | *See Desktop credentials file* | Full access |
-| User Admin | `user` | *See Desktop credentials file* | View-only + volume |
+| Master Admin | `admin` | *See the desktop credentials file* | Full access |
+| User Admin | `user` | *See the desktop credentials file* | View-only + volume |
 
 **Credentials Location**: `Desktop\PhotoBoothX-LOGIN-CREDENTIALS.txt` (easy access for setup)
 

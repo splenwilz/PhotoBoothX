@@ -192,7 +192,7 @@ namespace Photobooth.Tests.Services
         #region StartCamera Tests
 
         [TestMethod]
-        public void StartCamera_WithNoCameras_ReturnsFalse()
+        public async Task StartCamera_WithNoCameras_ReturnsFalse()
         {
             // Arrange
             var cameras = _cameraService?.GetAvailableCameras();
@@ -201,7 +201,7 @@ namespace Photobooth.Tests.Services
             if (cameras?.Count == 0)
             {
                 // Act
-                var result = _cameraService?.StartCamera(0);
+                var result = await _cameraService!.StartCameraAsync(0);
 
                 // Assert
                 result.Should().BeFalse();
@@ -214,14 +214,14 @@ namespace Photobooth.Tests.Services
         }
 
         [TestMethod]
-        public void StartCamera_WithInvalidIndex_ReturnsFalse()
+        public async Task StartCamera_WithInvalidIndex_ReturnsFalse()
         {
             // Arrange
             var cameras = _cameraService?.GetAvailableCameras();
             var invalidIndex = (cameras?.Count ?? 0) + 10; // Well beyond available cameras
 
             // Act
-            var result = _cameraService?.StartCamera(invalidIndex);
+            var result = await _cameraService!.StartCameraAsync(invalidIndex);
 
             // Assert
             result.Should().BeFalse();
@@ -229,7 +229,7 @@ namespace Photobooth.Tests.Services
         }
 
         [TestMethod]
-        public void StartCamera_WithValidIndex_ReturnsTrue()
+        public async Task StartCamera_WithValidIndex_ReturnsTrue()
         {
             // Arrange
             var cameras = _cameraService?.GetAvailableCameras();
@@ -237,7 +237,7 @@ namespace Photobooth.Tests.Services
             if (cameras?.Count > 0)
             {
                 // Act
-                var result = _cameraService?.StartCamera(0);
+                var result = await _cameraService!.StartCameraAsync(0);
 
                 // Assert
                 result.Should().BeTrue();
@@ -253,7 +253,7 @@ namespace Photobooth.Tests.Services
         }
 
         [TestMethod]
-        public void StartCamera_CalledMultipleTimes_HandlesGracefully()
+        public async Task StartCamera_CalledMultipleTimes_HandlesGracefully()
         {
             // Arrange
             var cameras = _cameraService?.GetAvailableCameras();
@@ -261,8 +261,8 @@ namespace Photobooth.Tests.Services
             if (cameras?.Count > 0)
             {
                 // Act
-                var result1 = _cameraService?.StartCamera(0);
-                var result2 = _cameraService?.StartCamera(0);
+                var result1 = await _cameraService!.StartCameraAsync(0);
+                var result2 = await _cameraService!.StartCameraAsync(0);
 
                 // Assert
                 result1.Should().BeTrue();
@@ -291,14 +291,14 @@ namespace Photobooth.Tests.Services
         }
 
         [TestMethod]
-        public void StopCamera_WhenRunning_StopsSuccessfully()
+        public async Task StopCamera_WhenRunning_StopsSuccessfully()
         {
             // Arrange
             var cameras = _cameraService?.GetAvailableCameras();
             
             if (cameras?.Count > 0)
             {
-                _cameraService?.StartCamera(0);
+                await _cameraService!.StartCameraAsync(0);
                 _cameraService?.IsCapturing.Should().BeTrue();
 
                 // Act
@@ -346,7 +346,7 @@ namespace Photobooth.Tests.Services
             
             if (cameras?.Count > 0 && _cameraService != null)
             {
-                _cameraService.StartCamera(0);
+                await _cameraService.StartCameraAsync(0);
                 
                 // Wait a moment for camera to initialize and capture frames
                 await Task.Delay(2000);
@@ -383,7 +383,7 @@ namespace Photobooth.Tests.Services
             
             if (cameras?.Count > 0 && _cameraService != null)
             {
-                _cameraService.StartCamera(0);
+                await _cameraService.StartCameraAsync(0);
                 
                 // Wait a moment for camera to initialize and capture frames
                 await Task.Delay(2000);
@@ -418,7 +418,7 @@ namespace Photobooth.Tests.Services
             
             if (cameras?.Count > 0 && _cameraService != null)
             {
-                _cameraService.StartCamera(0);
+                await _cameraService.StartCameraAsync(0);
                 
                 // Wait a moment for camera to initialize and capture frames
                 await Task.Delay(2000);
@@ -455,7 +455,7 @@ namespace Photobooth.Tests.Services
             
             if (cameras?.Count > 0 && _cameraService != null)
             {
-                _cameraService.StartCamera(0);
+                await _cameraService.StartCameraAsync(0);
                 
                 // Wait for camera to initialize
                 await Task.Delay(2000);
@@ -573,7 +573,7 @@ namespace Photobooth.Tests.Services
         }
 
         [TestMethod]
-        public void IsCapturing_WhenCameraRunning_ReturnsTrue()
+        public async Task IsCapturing_WhenCameraRunning_ReturnsTrue()
         {
             // Arrange
             var cameras = _cameraService?.GetAvailableCameras();
@@ -581,7 +581,7 @@ namespace Photobooth.Tests.Services
             if (cameras?.Count > 0)
             {
                 // Act
-                _cameraService?.StartCamera(0);
+                await _cameraService!.StartCameraAsync(0);
 
                 // Assert
                 _cameraService?.IsCapturing.Should().BeTrue();
@@ -596,14 +596,14 @@ namespace Photobooth.Tests.Services
         }
 
         [TestMethod]
-        public void IsCapturing_AfterStopping_ReturnsFalse()
+        public async Task IsCapturing_AfterStopping_ReturnsFalse()
         {
             // Arrange
             var cameras = _cameraService?.GetAvailableCameras();
             
             if (cameras?.Count > 0)
             {
-                _cameraService?.StartCamera(0);
+                await _cameraService!.StartCameraAsync(0);
                 _cameraService?.IsCapturing.Should().BeTrue();
 
                 // Act
@@ -681,10 +681,10 @@ namespace Photobooth.Tests.Services
         #region Error Handling Tests
 
         [TestMethod]
-        public void StartCamera_WithNegativeIndex_ReturnsFalse()
+        public async Task StartCamera_WithNegativeIndex_ReturnsFalse()
         {
             // Act
-            var result = _cameraService?.StartCamera(-1);
+            var result = await _cameraService!.StartCameraAsync(-1);
 
             // Assert
             result.Should().BeFalse();
@@ -697,7 +697,7 @@ namespace Photobooth.Tests.Services
 
         [TestMethod]
         [Timeout(10000)] // 10 second timeout
-        public void StartCamera_CompletesWithinReasonableTime()
+        public async Task StartCamera_CompletesWithinReasonableTime()
         {
             // Arrange
             var cameras = _cameraService?.GetAvailableCameras();
@@ -707,7 +707,7 @@ namespace Photobooth.Tests.Services
                 var startTime = DateTime.Now;
 
                 // Act
-                var result = _cameraService?.StartCamera(0);
+                var result = await _cameraService!.StartCameraAsync(0);
 
                 // Assert
                 var elapsed = DateTime.Now - startTime;
@@ -725,14 +725,14 @@ namespace Photobooth.Tests.Services
 
         [TestMethod]
         [Timeout(5000)] // 5 second timeout
-        public void StopCamera_CompletesWithinReasonableTime()
+        public async Task StopCamera_CompletesWithinReasonableTime()
         {
             // Arrange
             var cameras = _cameraService?.GetAvailableCameras();
             
             if (cameras?.Count > 0)
             {
-                _cameraService?.StartCamera(0);
+                await _cameraService!.StartCameraAsync(0);
                 var startTime = DateTime.Now;
 
                 // Act
@@ -761,7 +761,7 @@ namespace Photobooth.Tests.Services
             
             if (cameras?.Count > 0)
             {
-                _cameraService?.StartCamera(0);
+                await _cameraService!.StartCameraAsync(0);
                 
                 // Normal state
                 _cameraService?.IsPhotoCaptureActive.Should().BeFalse();
@@ -799,14 +799,14 @@ namespace Photobooth.Tests.Services
         }
 
         [TestMethod]
-        public void Dispose_WhenCameraRunning_StopsCameraAndDisposesResources()
+        public async Task Dispose_WhenCameraRunning_StopsCameraAndDisposesResources()
         {
             // Arrange
             var cameras = _cameraService?.GetAvailableCameras();
             
             if (cameras?.Count > 0)
             {
-                _cameraService?.StartCamera(0);
+                await _cameraService!.StartCameraAsync(0);
                 _cameraService?.IsCapturing.Should().BeTrue();
 
                 // Act
@@ -864,7 +864,7 @@ namespace Photobooth.Tests.Services
                 // Act & Assert - Complete workflow
                 
                 // 1. Start camera
-                var startResult = _cameraService.StartCamera(0);
+                var startResult = await _cameraService.StartCameraAsync(0);
                 startResult.Should().BeTrue();
                 _cameraService.IsCapturing.Should().BeTrue();
                 
@@ -913,7 +913,7 @@ namespace Photobooth.Tests.Services
                 var capturedPhotos = new List<string>();
 
                 // Act
-                _cameraService.StartCamera(0);
+                await _cameraService.StartCameraAsync(0);
                 await Task.Delay(2000); // Wait for camera to stabilize
 
                 // Capture multiple photos
@@ -1002,7 +1002,7 @@ namespace Photobooth.Tests.Services
             
             if (cameras?.Count > 0 && _cameraService != null)
             {
-                _cameraService.StartCamera(0);
+                await _cameraService.StartCameraAsync(0);
                 await Task.Delay(2000); // Wait for camera to stabilize
 
                 // Act - Make concurrent capture calls
@@ -1061,7 +1061,7 @@ namespace Photobooth.Tests.Services
             
             if (cameras?.Count > 0 && _cameraService != null)
             {
-                _cameraService.StartCamera(0);
+                await _cameraService.StartCameraAsync(0);
                 await Task.Delay(2000);
 
                 // Act
@@ -1091,7 +1091,7 @@ namespace Photobooth.Tests.Services
             
             if (cameras?.Count > 0 && _cameraService != null)
             {
-                _cameraService.StartCamera(0);
+                await _cameraService.StartCameraAsync(0);
                 await Task.Delay(2000);
 
                 // Act
@@ -1124,7 +1124,7 @@ namespace Photobooth.Tests.Services
                 for (int i = 0; i < 3; i++)
                 {
                     // Start
-                    var startResult = _cameraService?.StartCamera(0);
+                    var startResult = await _cameraService!.StartCameraAsync(0);
                     startResult.Should().BeTrue();
                     _cameraService?.IsCapturing.Should().BeTrue();
                     
@@ -1143,7 +1143,7 @@ namespace Photobooth.Tests.Services
         }
 
         [TestMethod]
-        public void CameraService_StateConsistency_MaintainedThroughOperations()
+        public async Task CameraService_StateConsistency_MaintainedThroughOperations()
         {
             // This test verifies that the camera service maintains consistent state through various operations
             var cameras = _cameraService?.GetAvailableCameras();
@@ -1156,7 +1156,7 @@ namespace Photobooth.Tests.Services
                 _cameraService?.GetPreviewBitmap().Should().BeNull();
                 
                 // Start camera
-                _cameraService?.StartCamera(0);
+                await _cameraService!.StartCameraAsync(0);
                 _cameraService?.IsCapturing.Should().BeTrue();
                 _cameraService?.IsPhotoCaptureActive.Should().BeFalse(); // Should still be false
                 
@@ -1190,7 +1190,7 @@ namespace Photobooth.Tests.Services
             if (cameras?.Count > 0)
             {
                 // Act
-                _cameraService?.StartCamera(0);
+                await _cameraService!.StartCameraAsync(0);
                 
                 // Wait for frames to be processed
                 await Task.Delay(2000);

@@ -98,10 +98,10 @@ namespace Photobooth.Tests.Mocks
             return new List<CameraDevice>(_mockCameras);
         }
 
-        public bool StartCamera(int cameraIndex = 0)
+        public async Task<bool> StartCameraAsync(int cameraIndex = 0)
         {
-            // Synchronous simulation - no need for Task.Delay in non-async method
-            System.Threading.Thread.Sleep(10); // Simulate startup time
+            // Async simulation with proper delay
+            await Task.Delay(10); // Simulate startup time
 
             if (cameraIndex < 0 || cameraIndex >= _mockCameras.Count)
             {

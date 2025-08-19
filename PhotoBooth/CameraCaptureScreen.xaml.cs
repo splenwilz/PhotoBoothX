@@ -93,7 +93,7 @@ namespace Photobooth
         /// <summary>
         /// Initialize camera session with template
         /// </summary>
-        public bool InitializeSession(Template template)
+        public async Task<bool> InitializeSessionAsync(Template template)
         {
             try
             {
@@ -120,7 +120,7 @@ namespace Photobooth
                 UpdateStatusText($"Photo 1 of {template.PhotoCount} - Get ready!");
                 
                 // Start camera with optimized settings
-                var cameraStarted = _cameraService.StartCamera();
+                var cameraStarted = await _cameraService.StartCameraAsync();
                 if (!cameraStarted)
                 {
                     LoggingService.Application.Error("Failed to start camera during session initialization", null);
@@ -486,12 +486,12 @@ namespace Photobooth
                 {
                     await Task.Delay(500); // Small delay to show loading message
                     
-                    Dispatcher.Invoke(() =>
+                    await Dispatcher.InvokeAsync(async () =>
                     {
                         if (_currentTemplate != null)
                         {
                             // Re-initialize the camera session
-                            var success = InitializeSession(_currentTemplate);
+                            var success = await InitializeSessionAsync(_currentTemplate);
                             if (!success)
                             {
                                 UpdateStatusText("Camera retry failed. Please check your camera and try again.");

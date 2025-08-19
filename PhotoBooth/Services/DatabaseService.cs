@@ -143,13 +143,17 @@ namespace Photobooth.Services
                 using var connection = await CreateConnectionAsync();
 
                 // Check if database is already initialized
+#if DEBUG
                 Console.WriteLine("=== CHECKING IF DATABASE EXISTS ===");
+#endif
                 var checkQuery = "SELECT name FROM sqlite_master WHERE type='table' AND name='AdminUsers';";
                 using var checkCommand = new SqliteCommand(checkQuery, connection);
                 var tableExists = await checkCommand.ExecuteScalarAsync();
                 
+#if DEBUG
                 Console.WriteLine($"Table 'AdminUsers' exists: {tableExists != null}");
                 Console.WriteLine($"Database path: {_databasePath}");
+#endif
 
                 if (tableExists != null)
                 {
@@ -163,29 +167,43 @@ namespace Photobooth.Services
                 }
 
                 // Database needs initialization - read and execute schema
+#if DEBUG
                 Console.WriteLine("=== DATABASE IS NEW - INITIALIZING SCHEMA ===");
+#endif
                 var schemaPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Database_Schema.sql");
 
+#if DEBUG
                 Console.WriteLine($"Schema path: {schemaPath}");
+#endif
                 if (!File.Exists(schemaPath))
                 {
+#if DEBUG
                     Console.WriteLine("=== SCHEMA FILE NOT FOUND ===");
+#endif
                     var errorMsg = $"Database schema file not found at: {schemaPath}";
                     return DatabaseResult.ErrorResult(errorMsg);
                 }
+#if DEBUG
                 Console.WriteLine("=== SCHEMA FILE FOUND, READING CONTENT ===");
+#endif
 
                 var schemaScript = await File.ReadAllTextAsync(schemaPath);
+#if DEBUG
                 Console.WriteLine($"Schema script length: {schemaScript.Length} characters");
+#endif
 
                 // Split and execute commands
                 var commands = schemaScript.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
+#if DEBUG
                 Console.WriteLine($"Found {commands.Length} SQL commands to execute");
+#endif
 
                 using var transaction = connection.BeginTransaction();
                 try
                 {
+#if DEBUG
                     Console.WriteLine("=== STARTING TRANSACTION ===");
+#endif
                     int commandIndex = 0;
                     foreach (var commandText in commands)
                     {
@@ -245,11 +263,15 @@ namespace Photobooth.Services
                     LoggingService.Application.Information("Transaction committed successfully");
 
                     // Create default admin users (only for new database)
+#if DEBUG
                     Console.WriteLine("=== STARTING ADMIN USER CREATION ===");
+#endif
                     LoggingService.Application.Information("Creating default admin users...");
                     await CreateDefaultAdminUserDirect(connection);
                     LoggingService.Application.Information("Default admin users created");
+#if DEBUG
                     Console.WriteLine("=== ADMIN USER CREATION COMPLETED ===");
+#endif
 
                     // Create default system settings (only for new database)
                     LoggingService.Application.Information("Creating default settings...");
@@ -257,14 +279,18 @@ namespace Photobooth.Services
                     LoggingService.Application.Information("Default settings created");
 
                     LoggingService.Application.Information("Database initialization completed successfully!");
+#if DEBUG
                     Console.WriteLine("=== DATABASE INITIALIZATION COMPLETED SUCCESSFULLY ===");
+#endif
                 }
                 catch (Exception ex)
                 {
+#if DEBUG
                     Console.WriteLine("=== DATABASE INITIALIZATION ERROR ===");
                     Console.WriteLine($"Error type: {ex.GetType().Name}");
                     Console.WriteLine($"Error message: {ex.Message}");
                     Console.WriteLine($"Stack trace: {ex.StackTrace}");
+#endif
                     LoggingService.Application.Error("Database initialization error", ex,
                         ("ErrorMessage", ex.Message),
                         ("StackTrace", ex.StackTrace ?? "No stack trace available"));
@@ -281,10 +307,12 @@ namespace Photobooth.Services
             }
             catch (Exception ex)
             {
+#if DEBUG
                 Console.WriteLine("=== OUTER CATCH: DATABASE INITIALIZATION FAILED ===");
                 Console.WriteLine($"Outer error type: {ex.GetType().Name}");
                 Console.WriteLine($"Outer error message: {ex.Message}");
                 Console.WriteLine($"Outer stack trace: {ex.StackTrace}");
+#endif
                 var errorMsg = $"Database initialization failed: {ex.Message}";
                 LoggingService.Application.Error("Database initialization failed", ex,
                     ("ErrorMessage", ex.Message));

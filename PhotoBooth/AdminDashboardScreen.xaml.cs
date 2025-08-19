@@ -4479,7 +4479,7 @@ namespace Photobooth
         }
 
         // Camera Testing Event Handlers
-        private void TestCameraButton_Click(object sender, RoutedEventArgs e)
+        private async void TestCameraButton_Click(object sender, RoutedEventArgs e)
         {
             try
             {
@@ -4493,7 +4493,7 @@ namespace Photobooth
                 {
                     LogToDiagnostics($"Found {cameras.Count} camera(s): {string.Join(", ", cameras.Select(c => c.Name))}");
                     
-                    bool started = cameraService.StartCamera();
+                    bool started = await cameraService.StartCameraAsync();
                     if (started)
                     {
                         UpdateHardwareStatus("camera", true, "Camera started successfully");

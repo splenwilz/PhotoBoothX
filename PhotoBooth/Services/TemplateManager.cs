@@ -292,8 +292,8 @@ namespace Photobooth.Services
         {
             var result = new TemplateUploadResult();
             
-            Console.WriteLine("=== TEMPLATE SYNCHRONIZATION STARTED ===");
-            Console.WriteLine($"Templates directory: {_templatesDirectory}");
+            LoggingService.Application.Information("Template synchronization started",
+                ("TemplatesDirectory", _templatesDirectory));
             
             try
             {
@@ -318,11 +318,9 @@ namespace Photobooth.Services
                 var templateFolders = FindTemplateFolders(_templatesDirectory);
                 var folderNames = templateFolders.Select(Path.GetFileName).ToHashSet(StringComparer.OrdinalIgnoreCase);
                 
-                Console.WriteLine($"Found {templateFolders.Count} template folders on disk:");
-                foreach (var folder in templateFolders)
-                {
-                    Console.WriteLine($"  - {Path.GetFileName(folder)} (Full path: {folder})");
-                }
+                LoggingService.Application.Information("Template folders discovered on disk",
+                    ("FolderCount", templateFolders.Count),
+                    ("Folders", templateFolders.Select(Path.GetFileName).ToArray()));
 
 
                 foreach (var folder in templateFolders)
@@ -543,7 +541,8 @@ namespace Photobooth.Services
         {
             var templateFolders = new List<string>();
             
-            Console.WriteLine($"=== FINDING TEMPLATE FOLDERS IN: {rootPath} ===");
+            LoggingService.Application.Debug("Searching for template folders",
+                ("RootPath", rootPath));
             
             try
             {
@@ -987,13 +986,17 @@ namespace Photobooth.Services
                 }
                 else
                 {
-                    Console.WriteLine($"✗ Failed to create template: {createResult.ErrorMessage}");
+                    LoggingService.Application.Error("Failed to create template in database", null,
+                        ("ErrorMessage", createResult.ErrorMessage ?? "Unknown error"),
+                        ("TemplateName", template.Name));
                     throw new Exception($"Failed to create template: {createResult.ErrorMessage}");
                 }
             }
             else
             {
-                Console.WriteLine($"✓ Template saved to database successfully with ID: {createResult.Data?.Id}");
+                LoggingService.Application.Information("Template saved to database successfully",
+                    ("TemplateId", createResult.Data?.Id.ToString() ?? "Unknown"),
+                    ("TemplateName", template.Name));
             }
         }
 

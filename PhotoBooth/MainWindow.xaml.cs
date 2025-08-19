@@ -438,7 +438,7 @@ namespace Photobooth
                 }
 
                 // Set the product type for category filtering
-                categorySelectionScreen.SetProductType(product);
+                await categorySelectionScreen.SetProductTypeAsync(product);
                 currentProduct = product;
 
                 CurrentScreenContainer.Content = categorySelectionScreen;
@@ -482,7 +482,7 @@ namespace Photobooth
                 }
 
                 // Set the product type for template filtering
-                templateSelectionScreen.SetProductType(product);
+                await templateSelectionScreen.SetProductTypeAsync(product);
                 currentProduct = product;
                 currentCategory = category;
 
@@ -542,7 +542,7 @@ namespace Photobooth
                 }
 
                 // Set the product type for template filtering
-                templateSelectionScreen.SetProductType(product);
+                await templateSelectionScreen.SetProductTypeAsync(product);
 
                 // Refresh product prices from database to ensure we have the latest values
                 await templateSelectionScreen.RefreshProductPricesAsync();
@@ -761,7 +761,7 @@ namespace Photobooth
 
                 // Initialize camera session
                 LoggingService.Application.Debug("Starting camera initialization");
-                var initialized = cameraCaptureScreen.InitializeSession(template);
+                var initialized = await cameraCaptureScreen.InitializeSessionAsync(template);
                 LoggingService.Application.Debug("Camera initialization completed",
                     ("Success", initialized));
                 

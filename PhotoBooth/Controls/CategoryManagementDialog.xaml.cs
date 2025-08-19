@@ -30,24 +30,9 @@ namespace Photobooth.Controls
                 _databaseService = new DatabaseService();
 
                 // Find the ScrollViewer for smooth scrolling to edit form
-                Loaded += (s, e) => {
-                    try
-                    {
-
-                        _dialogScrollViewer = FindChild<ScrollViewer>(this);
-
-
-                        PopulateDayComboBoxes();
-
-                    }
-                    catch
-                    {
-
-
-                    }
-                };
-
-                LoadCategories();
+                Loaded += OnLoadedAsync;
+                
+                // LoadCategories moved to Loaded event for proper async handling
 
 
             }
@@ -425,7 +410,24 @@ namespace Photobooth.Controls
             }
         }
 
-        private async void LoadCategories()
+        /// <summary>
+        /// Handle Loaded event with proper async/await pattern
+        /// </summary>
+        private async void OnLoadedAsync(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                _dialogScrollViewer = FindChild<ScrollViewer>(this);
+                PopulateDayComboBoxes();
+                await LoadCategoriesAsync();
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to load dialog content", ex);
+            }
+        }
+
+        private async Task LoadCategoriesAsync()
         {
             try
             {
@@ -672,7 +674,7 @@ namespace Photobooth.Controls
 
                 CategoriesChanged = true;
                 ClearForm();
-                LoadCategories();
+                await LoadCategoriesAsync();
 
                 LoggingService.Application.Information(_isEditMode ? "Category updated successfully: {CategoryName}" : "Category created successfully: {CategoryName}", 
                     ("CategoryName", CategoryNameTextBox.Text.Trim()));
@@ -783,7 +785,7 @@ namespace Photobooth.Controls
                     {
 
                         CategoriesChanged = true;
-                        LoadCategories();
+                        await LoadCategoriesAsync();
                         LoggingService.Application.Information("Category {Action}: {CategoryName}", 
                             ("Action", action + "d"), ("CategoryName", category.Name));
                         
@@ -824,7 +826,7 @@ namespace Photobooth.Controls
                     if (result.Success)
                     {
                         CategoriesChanged = true;
-                        LoadCategories();
+                        await LoadCategoriesAsync();
                         LoggingService.Application.Information("Category deleted successfully: {CategoryName}", ("CategoryName", category.Name));
                         NotificationService.Instance.ShowSuccess("Category Deleted", 
                             $"Category '{category.Name}' has been deleted successfully!");

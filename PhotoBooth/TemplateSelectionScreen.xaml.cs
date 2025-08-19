@@ -102,7 +102,7 @@ namespace Photobooth
         /// <summary>
         /// Handles the Loaded event
         /// </summary>
-        private void OnLoaded(object sender, RoutedEventArgs e)
+        private async void OnLoaded(object sender, RoutedEventArgs e)
         {
             try
             {
@@ -111,12 +111,11 @@ namespace Photobooth
                 
                 _ = RefreshCurrentCredits(); // This now includes UpdateCreditsDisplay()
                 
-                LoadTemplates();
+                await LoadTemplatesAsync();
             }
             catch (Exception ex)
             {
                 LoggingService.Application.Error("Template screen initialization failed", ex);
-                System.Diagnostics.Debug.WriteLine($"Template screen initialization failed: {ex.Message}");
                 ShowErrorMessage("Failed to load templates. Please restart the application.");
             }
         }
@@ -124,16 +123,16 @@ namespace Photobooth
         /// <summary>
         /// Sets up the screen for a specific product type
         /// </summary>
-        public void SetProductType(ProductInfo product)
+        public async Task SetProductTypeAsync(ProductInfo product)
         {
             try
             {
                 selectedProduct = product ?? throw new ArgumentNullException(nameof(product));
-                LoadTemplates();
+                await LoadTemplatesAsync();
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Failed to set product type: {ex.Message}");
+                LoggingService.Application.Error("Failed to set product type", ex, ("ProductType", product?.Type ?? "Unknown"));
             }
         }
 
@@ -231,10 +230,10 @@ namespace Photobooth
                         Interval = TimeSpan.FromMilliseconds(1000) // 1 second delay
                     };
 
-                    refreshDelayTimer.Tick += (s, args) =>
+                    refreshDelayTimer.Tick += async (s, args) =>
                     {
                         refreshDelayTimer.Stop();
-                        RefreshTemplates();
+                        await RefreshTemplatesAsync();
                     };
 
                     refreshDelayTimer.Start();
@@ -253,23 +252,23 @@ namespace Photobooth
         /// <summary>
         /// Refreshes the template list - public method for manual refresh
         /// </summary>
-        public void RefreshTemplates()
+        public async Task RefreshTemplatesAsync()
         {
             try
             {
-                System.Diagnostics.Debug.WriteLine("Refreshing templates...");
-                LoadTemplates();
+                LoggingService.Application.Information("Refreshing templates...");
+                await LoadTemplatesAsync();
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Failed to refresh templates: {ex.Message}");
+                LoggingService.Application.Error("Failed to refresh templates", ex);
             }
         }
 
         /// <summary>
         /// Loads templates from database without categorization
         /// </summary>
-        private async void LoadTemplates()
+        private async Task LoadTemplatesAsync()
         {
             try
             {

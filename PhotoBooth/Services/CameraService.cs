@@ -165,7 +165,7 @@ namespace Photobooth.Services
         /// <summary>
         /// Start camera capture with enhanced error handling and retry logic
         /// </summary>
-        public bool StartCamera(int cameraIndex = 0)
+        public async Task<bool> StartCameraAsync(int cameraIndex = 0)
         {
             const int maxRetries = 3;
             const int retryDelayMs = 1000;
@@ -185,7 +185,7 @@ namespace Photobooth.Services
                     if (attempt > 1)
                     {
                         LoggingService.Hardware.Debug("Camera", $"Waiting {retryDelayMs}ms before retry attempt {attempt}");
-                        System.Threading.Thread.Sleep(retryDelayMs);
+                        await Task.Delay(retryDelayMs);
                     }
 
                 var cameras = GetAvailableCameras();
@@ -263,12 +263,12 @@ namespace Photobooth.Services
                 _videoSource.NewFrame += OnNewFrame;
                 _videoSource.VideoSourceError += OnVideoSourceError;
 
-                // Start capture
+                // Load saved camera settings from database
+                await LoadCameraSettingsFromDatabaseAsync();
+                
+                // Start capture with user settings applied
                 _videoSource.Start();
                 _isCapturing = true;
-                
-                // Load saved camera settings from database
-                _ = LoadCameraSettingsFromDatabaseAsync();
 
                 // Reset counters
                 _frameCounter = 0;

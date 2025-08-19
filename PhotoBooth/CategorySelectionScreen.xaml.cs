@@ -55,11 +55,27 @@ namespace Photobooth
             
             InitializeComponent();
             
-            // Load categories when the control is loaded
-            Loaded += async (s, e) => await LoadCategoriesAsync();
+            // Load categories when the control is loaded - proper async handling
+            Loaded += OnLoadedAsync;
             
             // Initialize credits display
             RefreshCreditsFromDatabase();
+        }
+
+        /// <summary>
+        /// Handle Loaded event with proper async/await pattern
+        /// </summary>
+        private async void OnLoadedAsync(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                await LoadCategoriesAsync();
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to load categories on control load", ex);
+                ShowEmptyState();
+            }
         }
 
         /// <summary>
@@ -76,7 +92,7 @@ namespace Photobooth
         /// <summary>
         /// Set the product type for this category selection
         /// </summary>
-        public void SetProductType(ProductInfo product)
+        public async Task SetProductTypeAsync(ProductInfo product)
         {
             _currentProduct = product;
             
@@ -104,7 +120,7 @@ namespace Photobooth
              }
             
             // Reload categories for the specific product type
-            LoadCategoriesWithErrorHandling();
+            await LoadCategoriesWithErrorHandlingAsync();
         }
 
         #endregion
@@ -573,7 +589,7 @@ namespace Photobooth
         /// <summary>
         /// Safely load categories with proper error handling
         /// </summary>
-        private async void LoadCategoriesWithErrorHandling()
+        private async Task LoadCategoriesWithErrorHandlingAsync()
         {
             try
             {
