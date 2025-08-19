@@ -82,7 +82,7 @@ namespace Photobooth
         // Extra copy pricing (configurable via admin dashboard)
         private bool _useCustomExtraCopyPricing = false;
         private decimal _extraCopyPrice1 = 3.00m;
-        private decimal _extraCopyPrice2 = 5.00m;
+        private decimal _extraCopyPrice2 = 6.00m;
         private decimal _extraCopyPriceAdditional = 1.50m;
 
         #endregion

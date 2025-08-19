@@ -316,7 +316,10 @@ namespace Photobooth.Services
 
                 // Step 2: Get all template folders from file system (AUTHORITATIVE SOURCE)
                 var templateFolders = FindTemplateFolders(_templatesDirectory);
-                var folderNames = templateFolders.Select(Path.GetFileName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                // Normalize to absolute, case-insensitive
+                var folderPathsAbs = templateFolders
+                    .Select(p => ResolveToAbsolute(p))
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
                 
                 LoggingService.Application.Information("Template folders discovered on disk",
                     ("FolderCount", templateFolders.Count),
@@ -339,20 +342,13 @@ namespace Photobooth.Services
                 
                 foreach (var template in existingTemplates)
                 {
-                    var folderName = Path.GetFileName(template.FolderPath);
+                    var dbFolderAbs = ResolveToAbsolute(template.FolderPath);
                     var shouldKeep = false;
                     
-                    // Check if this template's folder exists on disk (case-insensitive)
-                    if (!string.IsNullOrEmpty(folderName))
+                    if (!string.IsNullOrEmpty(dbFolderAbs))
                     {
-                        // Look for exact folder match (case-insensitive)
-                        shouldKeep = folderNames.Contains(folderName);
-                        
-                        // Also verify the full path exists
-                        if (shouldKeep && !string.IsNullOrEmpty(template.FolderPath))
-                        {
-                            shouldKeep = Directory.Exists(template.FolderPath);
-                        }
+                        var dbFolderFull = Path.GetFullPath(dbFolderAbs);
+                        shouldKeep = folderPathsAbs.Contains(dbFolderFull) && Directory.Exists(dbFolderAbs);
                     }
                     
                     if (!shouldKeep)
@@ -435,25 +431,25 @@ namespace Photobooth.Services
                             // Existing template - verify paths and update if needed
 
                             var needsUpdate = false;
-                            var expectedFolderPath = templateFolder;
+                            var expectedFolderAbs = Path.GetFullPath(templateFolder);
+                            var dbFolderAbs = ResolveToAbsolute(existingTemplate.FolderPath);
                             
-                            // Check if path needs updating (different case or location)
-                            if (!string.Equals(existingTemplate.FolderPath, expectedFolderPath, StringComparison.Ordinal))
+                            if (!PathEquals(dbFolderAbs, expectedFolderAbs))
                             {
-
                                 needsUpdate = true;
                             }
                             
-                            // Check if template and config files exist
-                            var expectedTemplatePath = Path.Combine(templateFolder, "template.png");
-                            var expectedConfigPath = Path.Combine(templateFolder, "config.json");
+                            // Check if template and config files exist and match
+                            var expectedTemplateAbs = Path.Combine(expectedFolderAbs, "template.png");
+                            var expectedConfigAbs = Path.Combine(expectedFolderAbs, "config.json");
+                            var dbTemplateAbs = ResolveToAbsolute(existingTemplate.TemplatePath);
+                            var dbConfigAbs = ResolveToAbsolute(existingTemplate.ConfigPath);
                             
-                            if (!File.Exists(existingTemplate.TemplatePath) || 
-                                !File.Exists(existingTemplate.ConfigPath) ||
-                                !string.Equals(existingTemplate.TemplatePath, expectedTemplatePath, StringComparison.Ordinal) ||
-                                !string.Equals(existingTemplate.ConfigPath, expectedConfigPath, StringComparison.Ordinal))
+                            if (!File.Exists(dbTemplateAbs) || 
+                                !File.Exists(dbConfigAbs) ||
+                                !PathEquals(dbTemplateAbs, expectedTemplateAbs) ||
+                                !PathEquals(dbConfigAbs, expectedConfigAbs))
                             {
-
                                 needsUpdate = true;
                             }
                             
@@ -1044,9 +1040,10 @@ namespace Photobooth.Services
                 {
                     try
                     {
-                        if (!string.IsNullOrEmpty(template.TemplatePath) && File.Exists(template.TemplatePath))
+                        var absTemplatePath = ResolveToAbsolute(template.TemplatePath);
+                        if (!string.IsNullOrEmpty(absTemplatePath) && File.Exists(absTemplatePath))
                         {
-                            var fileInfo = new FileInfo(template.TemplatePath);
+                            var fileInfo = new FileInfo(absTemplatePath);
                             var newSize = fileInfo.Length;
                             
                             if (template.FileSize != newSize)
@@ -1110,11 +1107,12 @@ namespace Photobooth.Services
                 }
                 
                 // Delete folder from file system
-                if (!string.IsNullOrEmpty(template.FolderPath) && Directory.Exists(template.FolderPath))
+                var folderAbs = ResolveToAbsolute(template.FolderPath);
+                if (!string.IsNullOrEmpty(folderAbs) && Directory.Exists(folderAbs))
                 {
                     try
                     {
-                        Directory.Delete(template.FolderPath, true);
+                        Directory.Delete(folderAbs, true);
                     }
                     catch (Exception ex)
                     {
@@ -1358,6 +1356,26 @@ namespace Photobooth.Services
             }
             
             return result;
+        }
+
+        /// <summary>
+        /// Resolve a path to absolute, handling both relative and absolute paths
+        /// </summary>
+        private static string ResolveToAbsolute(string? path)
+        {
+            if (string.IsNullOrWhiteSpace(path)) return "";
+            return Path.IsPathRooted(path) 
+                ? Path.GetFullPath(path)
+                : Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, path));
+        }
+
+        /// <summary>
+        /// Compare two paths for equality, normalizing both to absolute paths
+        /// </summary>
+        private static bool PathEquals(string? a, string? b)
+        {
+            if (string.IsNullOrWhiteSpace(a) || string.IsNullOrWhiteSpace(b)) return false;
+            return string.Equals(Path.GetFullPath(ResolveToAbsolute(a)), Path.GetFullPath(ResolveToAbsolute(b)), StringComparison.OrdinalIgnoreCase);
         }
     }
 } 

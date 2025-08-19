@@ -89,9 +89,9 @@ namespace Photobooth.Tests.Screens
             var testCases = new[]
             {
                 new { ExtraCopies = 1, ExtraPrice = 3.00m, CrossSellPrice = 3.00m, Expected = 6.00m },
-                new { ExtraCopies = 2, ExtraPrice = 5.00m, CrossSellPrice = 5.00m, Expected = 10.00m },
+                new { ExtraCopies = 2, ExtraPrice = 6.00m, CrossSellPrice = 6.00m, Expected = 12.00m },
                 new { ExtraCopies = 4, ExtraPrice = 8.00m, CrossSellPrice = 3.00m, Expected = 11.00m },
-                new { ExtraCopies = 6, ExtraPrice = 11.00m, CrossSellPrice = 5.00m, Expected = 16.00m }
+                new { ExtraCopies = 6, ExtraPrice = 11.00m, CrossSellPrice = 6.00m, Expected = 17.00m }
             };
 
             foreach (var testCase in testCases)
@@ -336,7 +336,7 @@ namespace Photobooth.Tests.Screens
                 {
                     Type = "strips",
                     Name = "Photo Strips",
-                    Price = 5.00m
+                    Price = 6.00m
                 },
                 "4x6" => new ProductInfo
                 {

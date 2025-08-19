@@ -1069,9 +1069,10 @@ namespace Photobooth.Services
             {
                 var textBoxName = textBox.Name?.ToLower() ?? "";
                 var textBoxTag = textBox.Tag?.ToString() ?? "";
+                var textBoxTagLower = textBoxTag.ToLowerInvariant();
                 
                 // Check for both old tag-based and new name-based price fields
-                if (textBoxTag == "PhotoStrips" || textBoxTag == "Photo4x6" || textBoxTag == "SmartphonePrint" ||
+                if (textBoxTagLower == "photostrips" || textBoxTagLower == "photo4x6" || textBoxTagLower == "smartphoneprint" ||
                     textBoxName.Contains("extracopypriceinput") || textBoxName.Contains("multiplecopydiscountinput"))
                 {
                     // This is a product price field - update binding first, then invoke callback and close keyboard

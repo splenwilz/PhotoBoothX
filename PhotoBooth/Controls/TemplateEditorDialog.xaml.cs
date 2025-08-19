@@ -545,7 +545,7 @@ namespace Photobooth.Controls
                     categoryId: updatedTemplate.CategoryId,
                     description: updatedTemplate.Description,
                     sortOrder: updatedTemplate.SortOrder,
-                    photoCount: updatedTemplate.PhotoCount,
+                    photoCount: photoCount,
                     templateType: updatedTemplate.TemplateType
                 );
 

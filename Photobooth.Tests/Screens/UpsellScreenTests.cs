@@ -69,7 +69,7 @@ namespace Photobooth.Tests.Screens
                 Type = "strips",
                 Name = "Photo Strips",
                 Description = "Classic 4-photo strip",
-                Price = 5.00m
+                Price = 6.00m
             };
 
             // Initialize test DB off the UI thread, then construct UI on UI thread
@@ -127,7 +127,7 @@ namespace Photobooth.Tests.Screens
             {
                 Type = "strips",
                 Name = "Photo Strips",
-                Price = 5.00m
+                Price = 6.00m
             };
 
             // Act & Assert
@@ -202,7 +202,7 @@ namespace Photobooth.Tests.Screens
                 var actualPrice = _upsellScreen.CalculateExtraCopyPrice(2);
 
                 // Assert
-                actualPrice.Should().Be(5.00m);
+                actualPrice.Should().Be(6.00m);
             });
         }
 
@@ -351,7 +351,7 @@ namespace Photobooth.Tests.Screens
                 
                 // Default field values from UpsellScreen:
                 // _extraCopyPrice1 = 3.00m;
-                // _extraCopyPrice2 = 5.00m; 
+                // _extraCopyPrice2 = 6.00m; 
                 // _extraCopyPriceAdditional = 1.50m;
                 
                 _upsellScreen.SetExtraCopyPricingForTesting(
@@ -417,7 +417,7 @@ namespace Photobooth.Tests.Screens
                 {
                     Type = "strips",
                     Name = "Photo Strips",
-                    Price = 5.00m
+                    Price = 6.00m
                 };
                 
                 // Initialize UpsellScreen with strips product
@@ -454,7 +454,7 @@ namespace Photobooth.Tests.Screens
                 {
                     Type = "strips",
                     Name = "Photo Strips",
-                    Price = 5.00m
+                    Price = 6.00m
                 };
                 
                 _upsellScreen.SetExtraCopyPricingForTesting(useCustomPricing: false, basePrice: stripsProduct.Price);
@@ -559,7 +559,7 @@ namespace Photobooth.Tests.Screens
                 ComposedImagePath = _mockComposedImagePath,
                 CapturedPhotosPaths = _mockCapturedPhotos,
                 ExtraCopies = 2,
-                ExtraCopiesPrice = 5.00m,
+                ExtraCopiesPrice = 6.00m,
                 CrossSellAccepted = true,
                 CrossSellProduct = new ProductInfo { Type = "4x6", Price = 3.00m },
                 CrossSellPrice = 3.00m,
@@ -572,7 +572,7 @@ namespace Photobooth.Tests.Screens
             mockResult.ComposedImagePath.Should().Be(_mockComposedImagePath);
             mockResult.CapturedPhotosPaths.Should().BeEquivalentTo(_mockCapturedPhotos);
             mockResult.ExtraCopies.Should().Be(2);
-            mockResult.ExtraCopiesPrice.Should().Be(5.00m);
+            mockResult.ExtraCopiesPrice.Should().Be(6.00m);
             mockResult.CrossSellAccepted.Should().BeTrue();
             mockResult.CrossSellPrice.Should().Be(3.00m);
             mockResult.TotalAdditionalCost.Should().Be(8.00m);
