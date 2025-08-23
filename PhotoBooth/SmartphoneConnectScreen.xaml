@@ -1,0 +1,322 @@
+<UserControl x:Class="Photobooth.SmartphoneConnectScreen"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d"
+             d:DesignHeight="1080" d:DesignWidth="1920"
+             Background="#1a1a1a">
+
+    <UserControl.Resources>
+        <!-- Connection Screen Styles -->
+        <Style x:Key="ConnectionHeaderStyle" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="FontSize" Value="48"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="TextAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="0,20"/>
+        </Style>
+
+        <Style x:Key="ConnectionSubHeaderStyle" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontSize" Value="24"/>
+            <Setter Property="Foreground" Value="#CCCCCC"/>
+            <Setter Property="TextAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="0,10"/>
+        </Style>
+
+        <Style x:Key="InstructionTextStyle" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontSize" Value="20"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="LineHeight" Value="28"/>
+            <Setter Property="Margin" Value="0,8"/>
+        </Style>
+
+        <Style x:Key="StepNumberStyle" TargetType="Ellipse">
+            <Setter Property="Width" Value="40"/>
+            <Setter Property="Height" Value="40"/>
+            <Setter Property="Fill" Value="#FF6B46C1"/>
+            <Setter Property="Margin" Value="0,0,15,0"/>
+        </Style>
+
+        <Style x:Key="StepNumberTextStyle" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="FontSize" Value="20"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <Style x:Key="QRCodeBorderStyle" TargetType="Border">
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="CornerRadius" Value="20"/>
+            <Setter Property="Padding" Value="20"/>
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <DropShadowEffect Color="Black" Opacity="0.3" BlurRadius="20" ShadowDepth="10"/>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="StatusIndicatorStyle" TargetType="Border">
+
+            <Setter Property="Padding" Value="20,10"/>
+            <Setter Property="Margin" Value="0,10"/>
+        </Style>
+
+        <Style x:Key="BackButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#FF4A5568"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="FontSize" Value="18"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Padding" Value="30,15"/>
+
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                CornerRadius="25"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#FF2D3748"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="Background" Value="#FF1A202C"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid>
+        <!-- Background Gradient -->
+        <Grid.Background>
+            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                <GradientStop Color="#1a1a1a" Offset="0"/>
+                <GradientStop Color="#2d2d30" Offset="1"/>
+            </LinearGradientBrush>
+        </Grid.Background>
+
+        <!-- Main Content Grid -->
+        <Grid Margin="50">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/> <!-- Header -->
+                <RowDefinition Height="*"/>    <!-- Content -->
+                <RowDefinition Height="Auto"/> <!-- Status & Back -->
+            </Grid.RowDefinitions>
+
+            <!-- Header Section -->
+            <StackPanel Grid.Row="0" HorizontalAlignment="Center">
+                <TextBlock Text="📱 Connect Your Smartphone" Style="{StaticResource ConnectionHeaderStyle}"/>
+                <TextBlock Text="Upload your photo wirelessly" Style="{StaticResource ConnectionSubHeaderStyle}"/>
+            </StackPanel>
+
+            <!-- Content Section -->
+            <Grid Grid.Row="1" Margin="0,40">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>      <!-- Instructions -->
+                    <ColumnDefinition Width="auto"/>   <!-- QR Code -->
+                    <ColumnDefinition Width="*"/>      <!-- Status -->
+                </Grid.ColumnDefinitions>
+
+                <!-- Instructions Panel -->
+                <Border Grid.Column="0" Background="#FF2A2A2A" CornerRadius="20" Padding="40" Margin="0,0,20,0">
+                    <StackPanel>
+                        <TextBlock Text="📋 Instructions" 
+                                 FontSize="28" FontWeight="Bold" 
+                                 Foreground="#FF6B46C1" 
+                                 Margin="0,0,0,30"/>
+
+                        <!-- Step 1 -->
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,20">
+                            <Grid Margin="0,0,15,0">
+                                <Ellipse Style="{StaticResource StepNumberStyle}"/>
+                                <TextBlock Text="1" Style="{StaticResource StepNumberTextStyle}"/>
+                            </Grid>
+                            <StackPanel>
+                                <TextBlock Text="Scan QR Code" FontWeight="Bold" Style="{StaticResource InstructionTextStyle}"/>
+                                <TextBlock Text="Open your phone's camera app and point it at the QR code" 
+                                         Style="{StaticResource InstructionTextStyle}" Foreground="#CCCCCC"/>
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- Step 2 -->
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,20">
+                            <Grid Margin="0,0,15,0">
+                                <Ellipse Style="{StaticResource StepNumberStyle}"/>
+                                <TextBlock Text="2" Style="{StaticResource StepNumberTextStyle}"/>
+                            </Grid>
+                            <StackPanel>
+                                <TextBlock Text="Connect to WiFi" FontWeight="Bold" Style="{StaticResource InstructionTextStyle}"/>
+                                <TextBlock Text="Tap the notification to connect to the PhotoBooth network" 
+                                         Style="{StaticResource InstructionTextStyle}" Foreground="#CCCCCC"/>
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- Step 3 -->
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,20">
+                            <Grid Margin="0,0,15,0">
+                                <Ellipse Style="{StaticResource StepNumberStyle}"/>
+                                <TextBlock Text="3" Style="{StaticResource StepNumberTextStyle}"/>
+                            </Grid>
+                            <StackPanel>
+                                <TextBlock Text="Upload Photo" FontWeight="Bold" Style="{StaticResource InstructionTextStyle}"/>
+                                <TextBlock Text="Your browser will open automatically. Select and upload your photo" 
+                                         Style="{StaticResource InstructionTextStyle}" Foreground="#CCCCCC"/>
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- Manual Connection Info -->
+                        <Border Background="#FF1A1A1A" CornerRadius="10" Padding="20" Margin="0,30,0,0">
+                            <StackPanel>
+                                <TextBlock Text="📶 Manual Connection" 
+                                         FontWeight="Bold" FontSize="16" 
+                                         Foreground="#FF6B46C1" Margin="0,0,0,10"/>
+                                <TextBlock Name="ManualSSIDText" Text="Network: PhotoBooth-1234" 
+                                         Style="{StaticResource InstructionTextStyle}" FontSize="16"/>
+                                <TextBlock Name="ManualPasswordText" Text="Password: Print123" 
+                                         Style="{StaticResource InstructionTextStyle}" FontSize="16"/>
+                                <TextBlock Name="ManualUrlText" Text="Upload URL: http://192.168.137.1:8080" 
+                                         Style="{StaticResource InstructionTextStyle}" FontSize="16"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Border>
+
+                <!-- QR Code Panel -->
+                <StackPanel Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock Text="📷 Scan to Connect" 
+                             FontSize="24" FontWeight="Bold" 
+                             Foreground="White" 
+                             HorizontalAlignment="Center"
+                             Margin="0,0,0,20"/>
+                    
+                    <Border Style="{StaticResource QRCodeBorderStyle}">
+                        <Image Name="QRCodeImage" 
+                               Width="350" Height="350"
+                               Stretch="Uniform"/>
+                    </Border>
+                    
+                    <TextBlock Text="Point your camera here" 
+                             FontSize="16" 
+                             Foreground="#CCCCCC" 
+                             HorizontalAlignment="Center"
+                             Margin="0,20,0,0"/>
+                </StackPanel>
+
+                <!-- Status Panel -->
+                <Border Grid.Column="2" Background="#FF2A2A2A" CornerRadius="20" Padding="40" Margin="20,0,0,0">
+                    <StackPanel>
+                        <TextBlock Text="📊 Connection Status" 
+                                 FontSize="28" FontWeight="Bold" 
+                                 Foreground="#FF6B46C1" 
+                                 Margin="0,0,0,30"/>
+
+                        <!-- WiFi Status -->
+                        <Border Name="WiFiStatusBorder" Style="{StaticResource StatusIndicatorStyle}">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Name="WiFiStatusIcon" Text="⏳" FontSize="24" Margin="0,0,10,0"/>
+                                <StackPanel>
+                                    <TextBlock Name="WiFiStatusText" Text="Starting WiFi Hotspot..." 
+                                             FontWeight="Bold" FontSize="18" Foreground="White"/>
+                                    <TextBlock Name="WiFiStatusDetails" Text="Please wait..." 
+                                             FontSize="14" Foreground="#CCCCCC"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Upload Server Status -->
+                        <Border Name="ServerStatusBorder" Style="{StaticResource StatusIndicatorStyle}">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Name="ServerStatusIcon" Text="⏳" FontSize="24" Margin="0,0,10,0"/>
+                                <StackPanel>
+                                    <TextBlock Name="ServerStatusText" Text="Starting Upload Server..." 
+                                             FontWeight="Bold" FontSize="18" Foreground="White"/>
+                                    <TextBlock Name="ServerStatusDetails" Text="Please wait..." 
+                                             FontSize="14" Foreground="#CCCCCC"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Connection Status -->
+                        <Border Name="ConnectionStatusBorder" Style="{StaticResource StatusIndicatorStyle}">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Name="ConnectionStatusIcon" Text="📱" FontSize="24" Margin="0,0,10,0"/>
+                                <StackPanel>
+                                    <TextBlock Name="ConnectionStatusText" Text="Waiting for phone..." 
+                                             FontWeight="Bold" FontSize="18" Foreground="White"/>
+                                    <TextBlock Name="ConnectionStatusDetails" Text="0 devices connected" 
+                                             FontSize="14" Foreground="#CCCCCC"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Upload Status -->
+                        <Border Name="UploadStatusBorder" Style="{StaticResource StatusIndicatorStyle}">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Name="UploadStatusIcon" Text="⬆️" FontSize="24" Margin="0,0,10,0"/>
+                                <StackPanel>
+                                    <TextBlock Name="UploadStatusText" Text="Ready for upload" 
+                                             FontWeight="Bold" FontSize="18" Foreground="White"/>
+                                    <TextBlock Name="UploadStatusDetails" Text="0 photos uploaded" 
+                                             FontSize="14" Foreground="#CCCCCC"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Timeout Progress -->
+                        <StackPanel Margin="0,30,0,0">
+                            <TextBlock Text="⏱️ Session Timeout" 
+                                     FontSize="16" FontWeight="Bold" 
+                                     Foreground="White" Margin="0,0,0,10"/>
+                            <ProgressBar Name="TimeoutProgressBar" 
+                                       Height="8" 
+                                       Background="#FF1A1A1A"
+                                       Foreground="#FF6B46C1"
+                                       Value="0" Maximum="100"/>
+                            <TextBlock Name="TimeoutText" Text="5:00 remaining" 
+                                     FontSize="14" Foreground="#CCCCCC" 
+                                     HorizontalAlignment="Center" Margin="0,5,0,0"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <!-- Bottom Section -->
+            <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,20,0,0">
+                <Button Name="BackButton" 
+                        Content="⬅️ Back to Products" 
+                        Style="{StaticResource BackButtonStyle}"
+                        Click="BackButton_Click"
+                        Margin="0,0,20,0"/>
+                
+                <Button Name="SkipButton" 
+                        Content="Skip &amp; Use Camera Instead" 
+                        Style="{StaticResource BackButtonStyle}"
+                        Click="SkipButton_Click"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- Loading Overlay -->
+        <Grid Name="LoadingOverlay" Visibility="Collapsed" Background="#AA000000">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                <ProgressBar IsIndeterminate="True" Width="200" Height="4" 
+                           Foreground="#FF6B46C1" Background="#FF333333"/>
+                <TextBlock Name="LoadingText" Text="Setting up smartphone connection..." 
+                         FontSize="18" Foreground="White" 
+                         HorizontalAlignment="Center" Margin="0,20,0,0"/>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</UserControl>

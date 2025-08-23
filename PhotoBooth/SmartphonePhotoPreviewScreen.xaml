@@ -1,0 +1,293 @@
+<UserControl x:Class="Photobooth.SmartphonePhotoPreviewScreen"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d"
+             d:DesignHeight="1080" d:DesignWidth="1920"
+             Background="#1a1a1a">
+
+    <UserControl.Resources>
+        <!-- Photo Preview Screen Styles -->
+        <Style x:Key="PreviewHeaderStyle" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="FontSize" Value="48"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="TextAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="0,20"/>
+        </Style>
+
+        <Style x:Key="PreviewSubHeaderStyle" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontSize" Value="24"/>
+            <Setter Property="Foreground" Value="#CCCCCC"/>
+            <Setter Property="TextAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="0,10"/>
+        </Style>
+
+        <Style x:Key="PhotoBorderStyle" TargetType="Border">
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="CornerRadius" Value="15"/>
+            <Setter Property="Padding" Value="10"/>
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <DropShadowEffect Color="Black" Opacity="0.3" BlurRadius="20" ShadowDepth="10"/>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ActionButtonStyle" TargetType="Button">
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontSize" Value="24"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Padding" Value="40,20"/>
+            <Setter Property="Margin" Value="15,0"/>
+
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="MinWidth" Value="200"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                CornerRadius="30"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="RenderTransform">
+                                    <Setter.Value>
+                                        <ScaleTransform ScaleX="1.05" ScaleY="1.05"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="RenderTransform">
+                                    <Setter.Value>
+                                        <ScaleTransform ScaleX="0.95" ScaleY="0.95"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="AcceptButtonStyle" TargetType="Button" BasedOn="{StaticResource ActionButtonStyle}">
+            <Setter Property="Background" Value="#FF10B981"/>
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+
+        <Style x:Key="RetakeButtonStyle" TargetType="Button" BasedOn="{StaticResource ActionButtonStyle}">
+            <Setter Property="Background" Value="#FFF59E0B"/>
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+
+        <Style x:Key="BackButtonStyle" TargetType="Button" BasedOn="{StaticResource ActionButtonStyle}">
+            <Setter Property="Background" Value="#FF6B7280"/>
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+
+        <Style x:Key="InfoCardStyle" TargetType="Border">
+            <Setter Property="Background" Value="#FF2A2A2A"/>
+            <Setter Property="CornerRadius" Value="15"/>
+            <Setter Property="Padding" Value="25"/>
+            <Setter Property="Margin" Value="0,10"/>
+        </Style>
+
+        <Style x:Key="InfoTitleStyle" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="FontSize" Value="18"/>
+            <Setter Property="Foreground" Value="#FF6B46C1"/>
+            <Setter Property="Margin" Value="0,0,0,10"/>
+        </Style>
+
+        <Style x:Key="InfoTextStyle" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="LineHeight" Value="22"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid>
+        <!-- Background Gradient -->
+        <Grid.Background>
+            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                <GradientStop Color="#1a1a1a" Offset="0"/>
+                <GradientStop Color="#2d2d30" Offset="1"/>
+            </LinearGradientBrush>
+        </Grid.Background>
+
+        <!-- Main Content Grid -->
+        <Grid Margin="50">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/> <!-- Header -->
+                <RowDefinition Height="*"/>    <!-- Content -->
+                <RowDefinition Height="Auto"/> <!-- Actions -->
+            </Grid.RowDefinitions>
+
+            <!-- Header Section -->
+            <StackPanel Grid.Row="0" HorizontalAlignment="Center">
+                <TextBlock Text="📱 Your Photo is Ready!" Style="{StaticResource PreviewHeaderStyle}"/>
+                <TextBlock Text="Review your photo before printing" Style="{StaticResource PreviewSubHeaderStyle}"/>
+            </StackPanel>
+
+            <!-- Content Section -->
+            <Grid Grid.Row="1" Margin="0,40">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>      <!-- Photo Preview -->
+                    <ColumnDefinition Width="auto"/>   <!-- Photo Info -->
+                </Grid.ColumnDefinitions>
+
+                <!-- Photo Preview Panel -->
+                <StackPanel Grid.Column="0" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <!-- Photo Container -->
+                    <Border Style="{StaticResource PhotoBorderStyle}" MaxWidth="600" MaxHeight="600">
+                        <Image Name="PhotoPreviewImage" 
+                               Stretch="Uniform"
+                               StretchDirection="DownOnly"/>
+                    </Border>
+
+                    <!-- Photo Details -->
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,20,0,0">
+                        <TextBlock Name="PhotoDimensionsText" 
+                                 Text="1920 × 1080" 
+                                 FontSize="16" Foreground="#CCCCCC" Margin="0,0,20,0"/>
+                        <TextBlock Name="PhotoFileSizeText" 
+                                 Text="2.4 MB" 
+                                 FontSize="16" Foreground="#CCCCCC" Margin="0,0,20,0"/>
+                        <TextBlock Name="PhotoFormatText" 
+                                 Text="JPEG" 
+                                 FontSize="16" Foreground="#CCCCCC"/>
+                    </StackPanel>
+
+                    <!-- Print Preview -->
+                    <Border Background="#FF2A2A2A" CornerRadius="10" Padding="20" Margin="0,30,0,0" MaxWidth="500">
+                        <StackPanel>
+                            <TextBlock Text="📄 Print Preview" Style="{StaticResource InfoTitleStyle}" HorizontalAlignment="Center"/>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                <TextBlock Text="Size: 4×6 inches" Style="{StaticResource InfoTextStyle}" Margin="0,0,20,0"/>
+                                <TextBlock Text="Quality: High" Style="{StaticResource InfoTextStyle}" Margin="0,0,20,0"/>
+                                <TextBlock Name="PrintPriceText" Text="$3.00" Style="{StaticResource InfoTextStyle}" FontWeight="Bold"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <!-- Photo Information Panel -->
+                <StackPanel Grid.Column="1" Width="350" Margin="40,0,0,0">
+                    <!-- Upload Information -->
+                    <Border Style="{StaticResource InfoCardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="📊 Upload Information" Style="{StaticResource InfoTitleStyle}"/>
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                    <TextBlock Text="Uploaded:" FontWeight="Bold" Style="{StaticResource InfoTextStyle}" Width="100"/>
+                                    <TextBlock Name="UploadTimeText" Text="Just now" Style="{StaticResource InfoTextStyle}"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                    <TextBlock Text="From:" FontWeight="Bold" Style="{StaticResource InfoTextStyle}" Width="100"/>
+                                    <TextBlock Name="SourceDeviceText" Text="iPhone" Style="{StaticResource InfoTextStyle}"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                    <TextBlock Text="Quality:" FontWeight="Bold" Style="{StaticResource InfoTextStyle}" Width="100"/>
+                                    <TextBlock Name="PhotoQualityText" Text="Excellent" Style="{StaticResource InfoTextStyle}"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Print Options -->
+                    <Border Style="{StaticResource InfoCardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="🖨️ Print Options" Style="{StaticResource InfoTitleStyle}"/>
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                    <TextBlock Text="Format:" FontWeight="Bold" Style="{StaticResource InfoTextStyle}" Width="100"/>
+                                    <TextBlock Text="4×6 Photo" Style="{StaticResource InfoTextStyle}"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                    <TextBlock Text="Paper:" FontWeight="Bold" Style="{StaticResource InfoTextStyle}" Width="100"/>
+                                    <TextBlock Text="Glossy" Style="{StaticResource InfoTextStyle}"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                    <TextBlock Text="Quantity:" FontWeight="Bold" Style="{StaticResource InfoTextStyle}" Width="100"/>
+                                    <TextBlock Text="1 copy" Style="{StaticResource InfoTextStyle}"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Quality Assessment -->
+                    <Border Style="{StaticResource InfoCardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="✅ Quality Check" Style="{StaticResource InfoTitleStyle}"/>
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                    <TextBlock Text="✓" Foreground="#FF10B981" FontWeight="Bold" Margin="0,0,10,0"/>
+                                    <TextBlock Text="High resolution" Style="{StaticResource InfoTextStyle}"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                    <TextBlock Text="✓" Foreground="#FF10B981" FontWeight="Bold" Margin="0,0,10,0"/>
+                                    <TextBlock Text="Good lighting" Style="{StaticResource InfoTextStyle}"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                    <TextBlock Text="✓" Foreground="#FF10B981" FontWeight="Bold" Margin="0,0,10,0"/>
+                                    <TextBlock Text="Sharp focus" Style="{StaticResource InfoTextStyle}"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                    <TextBlock Text="✓" Foreground="#FF10B981" FontWeight="Bold" Margin="0,0,10,0"/>
+                                    <TextBlock Text="Print ready" Style="{StaticResource InfoTextStyle}"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Additional Options -->
+                    <Border Style="{StaticResource InfoCardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="🎯 What's Next?" Style="{StaticResource InfoTitleStyle}"/>
+                            <TextBlock Text="• Accept to proceed to printing" Style="{StaticResource InfoTextStyle}" Margin="0,0,0,5"/>
+                            <TextBlock Text="• Upload a different photo if needed" Style="{StaticResource InfoTextStyle}" Margin="0,0,0,5"/>
+                            <TextBlock Text="• Extra copies available after printing" Style="{StaticResource InfoTextStyle}" Margin="0,0,0,5"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Grid>
+
+            <!-- Action Buttons -->
+            <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,30,0,0">
+                <Button Name="BackButton" 
+                        Content="⬅️ Back" 
+                        Style="{StaticResource BackButtonStyle}"
+                        Click="BackButton_Click"/>
+                
+                <Button Name="RetakeButton" 
+                        Content="📷 Upload Different Photo" 
+                        Style="{StaticResource RetakeButtonStyle}"
+                        Click="RetakeButton_Click"/>
+                
+                <Button Name="AcceptButton" 
+                        Content="✅ Accept &amp; Print" 
+                        Style="{StaticResource AcceptButtonStyle}"
+                        Click="AcceptButton_Click"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- Processing Overlay -->
+        <Grid Name="ProcessingOverlay" Visibility="Collapsed" Background="#AA000000">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                <ProgressBar IsIndeterminate="True" Width="200" Height="4" 
+                           Foreground="#FF6B46C1" Background="#FF333333"/>
+                <TextBlock Name="ProcessingText" Text="Processing your photo..." 
+                         FontSize="18" Foreground="White" 
+                         HorizontalAlignment="Center" Margin="0,20,0,0"/>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</UserControl>

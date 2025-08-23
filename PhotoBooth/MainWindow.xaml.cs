@@ -34,6 +34,10 @@ namespace Photobooth
         private AdminDashboardScreen? adminDashboardScreen;
         private ForcedPasswordChangeScreen? forcedPasswordChangeScreen;
 
+        // Smartphone print screens
+        private SmartphoneConnectScreen? smartphoneConnectScreen;
+        private SmartphonePhotoPreviewScreen? smartphonePhotoPreviewScreen;
+
         // Current state tracking
         private ProductInfo? currentProduct;
         private TemplateCategory? currentCategory;
@@ -312,6 +316,98 @@ namespace Photobooth
             catch (Exception ex)
             {
                 LoggingService.Application.Error("Failed to initialize admin dashboard for credit management", ex);
+            }
+        }
+
+        #endregion
+
+        #region Smartphone Print Methods
+
+        /// <summary>
+        /// Navigate to smartphone connection screen
+        /// </summary>
+        public async Task NavigateToSmartphoneConnect(ProductInfo productInfo)
+        {
+            try
+            {
+                LoggingService.Application.Information("Navigating to smartphone connection screen",
+                    ("ProductType", productInfo.Type),
+                    ("ProductPrice", productInfo.Price));
+
+                // Store current product
+                currentProduct = productInfo;
+
+                // Create smartphone connect screen
+                if (smartphoneConnectScreen != null)
+                {
+                    // Clean up previous screen
+                    smartphoneConnectScreen.PhotoUploaded -= SmartphoneConnectScreen_PhotoUploaded;
+                    smartphoneConnectScreen.BackRequested -= SmartphoneConnectScreen_BackRequested;
+                    smartphoneConnectScreen.SkipRequested -= SmartphoneConnectScreen_SkipRequested;
+                    smartphoneConnectScreen.ConnectionTimedOut -= SmartphoneConnectScreen_ConnectionTimedOut;
+                    await smartphoneConnectScreen.StopConnectionAsync();
+                    smartphoneConnectScreen.Dispose();
+                }
+
+                smartphoneConnectScreen = new SmartphoneConnectScreen(productInfo);
+                
+                // Subscribe to events
+                smartphoneConnectScreen.PhotoUploaded += SmartphoneConnectScreen_PhotoUploaded;
+                smartphoneConnectScreen.BackRequested += SmartphoneConnectScreen_BackRequested;
+                smartphoneConnectScreen.SkipRequested += SmartphoneConnectScreen_SkipRequested;
+                smartphoneConnectScreen.ConnectionTimedOut += SmartphoneConnectScreen_ConnectionTimedOut;
+
+                CurrentScreenContainer.Content = smartphoneConnectScreen;
+
+                LoggingService.Application.Information("Smartphone connection screen loaded successfully");
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Smartphone connection navigation failed", ex);
+                NotificationService.Instance.ShowError("Connection Error", $"Failed to start smartphone connection: {ex.Message}");
+                
+                // Fallback to product selection
+                await NavigateToProductSelection();
+            }
+        }
+
+        /// <summary>
+        /// Navigate to smartphone photo preview screen
+        /// </summary>
+        public async Task NavigateToSmartphonePhotoPreview(string photoPath, ProductInfo productInfo, PhotoUploadedEventArgs uploadInfo)
+        {
+            try
+            {
+                LoggingService.Application.Information("Navigating to smartphone photo preview screen",
+                    ("PhotoPath", photoPath),
+                    ("ProductType", productInfo.Type));
+
+                // Clean up connection screen
+                if (smartphoneConnectScreen != null)
+                {
+                    await smartphoneConnectScreen.StopConnectionAsync();
+                }
+
+                // Create photo preview screen
+                smartphonePhotoPreviewScreen?.Dispose();
+                smartphonePhotoPreviewScreen = new SmartphonePhotoPreviewScreen(photoPath, productInfo, uploadInfo);
+                
+                // Subscribe to events
+                smartphonePhotoPreviewScreen.PhotoAccepted += SmartphonePhotoPreviewScreen_PhotoAccepted;
+                smartphonePhotoPreviewScreen.RetakeRequested += SmartphonePhotoPreviewScreen_RetakeRequested;
+                smartphonePhotoPreviewScreen.BackRequested += SmartphonePhotoPreviewScreen_BackRequested;
+
+                CurrentScreenContainer.Content = smartphonePhotoPreviewScreen;
+
+                LoggingService.Application.Information("Smartphone photo preview screen loaded successfully");
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Smartphone photo preview navigation failed", ex);
+                NotificationService.Instance.ShowError("Preview Error", $"Failed to show photo preview: {ex.Message}");
+                
+                // Fallback to product selection
+                await NavigateToProductSelection();
             }
         }
 
@@ -1297,11 +1393,23 @@ namespace Photobooth
         {
             try
             {
-                // Skip category selection and go directly to template selection with categorized view
-                await NavigateToTemplateSelectionWithCategories(e.ProductInfo);
+                // Check if this is smartphone print
+                if (e.ProductInfo.Type?.ToLowerInvariant() == "phone" || 
+                    e.ProductInfo.Type?.ToLowerInvariant() == "smartphone" ||
+                    e.ProductInfo.Type?.ToLowerInvariant() == "smartphoneprint")
+                {
+                    LoggingService.Application.Information("Smartphone print selected - starting connection flow");
+                    await NavigateToSmartphoneConnect(e.ProductInfo);
+                }
+                else
+                {
+                    // Regular product selection - go to template selection
+                    await NavigateToTemplateSelectionWithCategories(e.ProductInfo);
+                }
             }
             catch (Exception ex)
             {
+                LoggingService.Application.Error("Product selection navigation failed", ex);
                 System.Diagnostics.Debug.WriteLine($"Product selection navigation failed: {ex.Message}");
             }
         }
@@ -2150,7 +2258,228 @@ namespace Photobooth
             }
         }
 
+        #region Smartphone Print Event Handlers
 
+        /// <summary>
+        /// Handles photo uploaded from smartphone
+        /// </summary>
+        private async void SmartphoneConnectScreen_PhotoUploaded(object? sender, PhotoUploadedEventArgs e)
+        {
+            try
+            {
+                LoggingService.Application.Information("Photo uploaded from smartphone",
+                    ("FileName", e.OriginalFileName),
+                    ("FileSize", e.FileSize),
+                    ("ClientIP", e.ClientIPAddress));
+
+                // Navigate to photo preview
+                if (currentProduct != null)
+                {
+                    await NavigateToSmartphonePhotoPreview(e.FilePath, currentProduct, e);
+                }
+                else
+                {
+                    LoggingService.Application.Error("No current product set for smartphone photo");
+                    await NavigateToProductSelection();
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to handle smartphone photo upload", ex);
+                await NavigateToProductSelection();
+            }
+        }
+
+        /// <summary>
+        /// Handles back request from smartphone connect screen
+        /// </summary>
+        private async void SmartphoneConnectScreen_BackRequested(object? sender, EventArgs e)
+        {
+            try
+            {
+                LoggingService.Application.Information("User requested back from smartphone connect");
+                
+                // Clean up connection
+                if (smartphoneConnectScreen != null)
+                {
+                    await smartphoneConnectScreen.StopConnectionAsync();
+                }
+                
+                await NavigateToProductSelection();
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to handle smartphone connect back request", ex);
+                NavigateToWelcome();
+            }
+        }
+
+        /// <summary>
+        /// Handles skip request from smartphone connect screen
+        /// </summary>
+        private async void SmartphoneConnectScreen_SkipRequested(object? sender, EventArgs e)
+        {
+            try
+            {
+                LoggingService.Application.Information("User requested to skip smartphone and use camera");
+                
+                // Clean up connection
+                if (smartphoneConnectScreen != null)
+                {
+                    await smartphoneConnectScreen.StopConnectionAsync();
+                }
+                
+                // Navigate to regular camera flow with 4x6 product
+                if (currentProduct != null)
+                {
+                    // Convert smartphone product to 4x6 for camera flow
+                    var cameraProduct = new ProductInfo
+                    {
+                        Name = "4x6 Photo",
+                        Type = "4x6",
+                        Price = currentProduct.Price
+                    };
+                    
+                    await NavigateToTemplateSelectionWithCategories(cameraProduct);
+                }
+                else
+                {
+                    await NavigateToProductSelection();
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to handle smartphone skip request", ex);
+                NavigateToWelcome();
+            }
+        }
+
+        /// <summary>
+        /// Handles connection timeout from smartphone connect screen
+        /// </summary>
+        private async void SmartphoneConnectScreen_ConnectionTimedOut(object? sender, EventArgs e)
+        {
+            try
+            {
+                LoggingService.Application.Warning("Smartphone connection timed out");
+                
+                // Clean up connection
+                if (smartphoneConnectScreen != null)
+                {
+                    await smartphoneConnectScreen.StopConnectionAsync();
+                }
+                
+                // Show timeout message and return to product selection
+                NotificationService.Instance.ShowWarning("Connection Timeout", 
+                    "No smartphone was connected within the time limit. Please try again.");
+                
+                await NavigateToProductSelection();
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to handle smartphone connection timeout", ex);
+                NavigateToWelcome();
+            }
+        }
+
+        /// <summary>
+        /// Handles photo accepted from smartphone preview screen
+        /// </summary>
+        private async void SmartphonePhotoPreviewScreen_PhotoAccepted(object? sender, PhotoAcceptedEventArgs e)
+        {
+            try
+            {
+                LoggingService.Application.Information("User accepted smartphone photo",
+                    ("PhotoPath", e.PhotoPath),
+                    ("ProductPrice", e.ProductInfo.Price));
+
+                // For smartphone prints, we skip upsell and go directly to printing
+                // The photo is already captured and ready to print
+                await NavigateToSmartphonePrinting(e.PhotoPath, e.ProductInfo);
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to handle smartphone photo acceptance", ex);
+                await NavigateToProductSelection();
+            }
+        }
+
+        /// <summary>
+        /// Handles retake request from smartphone preview screen
+        /// </summary>
+        private async void SmartphonePhotoPreviewScreen_RetakeRequested(object? sender, EventArgs e)
+        {
+            try
+            {
+                LoggingService.Application.Information("User requested to upload different photo");
+                
+                // Go back to smartphone connect screen
+                if (currentProduct != null)
+                {
+                    await NavigateToSmartphoneConnect(currentProduct);
+                }
+                else
+                {
+                    await NavigateToProductSelection();
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to handle smartphone retake request", ex);
+                await NavigateToProductSelection();
+            }
+        }
+
+        /// <summary>
+        /// Handles back request from smartphone preview screen
+        /// </summary>
+        private async void SmartphonePhotoPreviewScreen_BackRequested(object? sender, EventArgs e)
+        {
+            try
+            {
+                LoggingService.Application.Information("User requested back from smartphone preview");
+                await NavigateToProductSelection();
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to handle smartphone preview back request", ex);
+                NavigateToWelcome();
+            }
+        }
+
+        /// <summary>
+        /// Navigate directly to printing for smartphone photos (skip template selection and camera)
+        /// </summary>
+        private async Task NavigateToSmartphonePrinting(string photoPath, ProductInfo productInfo)
+        {
+            try
+            {
+                LoggingService.Application.Information("Starting smartphone printing process",
+                    ("PhotoPath", photoPath),
+                    ("ProductType", productInfo.Type),
+                    ("ProductPrice", productInfo.Price));
+
+                // Create a template-like object for the smartphone photo
+                var smartphoneTemplate = new Template
+                {
+                    Name = "Smartphone Photo",
+                    Id = -1, // Special ID for smartphone photos
+                    Price = 0 // No additional template cost
+                    // PhotoCount will be 1 by default from Layout?.PhotoCount ?? 1
+                };
+
+                // Navigate to printing screen with the smartphone photo
+                await NavigateToPrintingScreen(smartphoneTemplate, productInfo, photoPath, 0, null);
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Smartphone printing navigation failed", ex);
+                NotificationService.Instance.ShowError("Printing Error", "Failed to start printing. Please try again.");
+                await NavigateToProductSelection();
+            }
+        }
+
+        #endregion
 
         #endregion
 
