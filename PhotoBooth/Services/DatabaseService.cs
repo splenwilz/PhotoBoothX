@@ -822,6 +822,9 @@ namespace Photobooth.Services
 
                 await command.ExecuteNonQueryAsync();
                 
+                // Clean up installer credentials after password change
+                await CleanupInstallerCredentialsAsync();
+                
                 // Use file-based logging instead of database logging
                 LoggingService.Application.Information("User password updated - setup credentials converted",
                     ("UserId", userId),
@@ -3476,6 +3479,89 @@ namespace Photobooth.Services
             return new string(result);
         }
 
+        private (string MasterPassword, string UserPassword, string CredentialsFilePath)? TryGetInstallerCredentials()
+        {
+            try
+            {
+                using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\PhotoBoothX\PhotoBoothX\Setup");
+                if (key != null)
+                {
+                    var masterPassword = key.GetValue("MasterPassword") as string;
+                    var userPassword = key.GetValue("UserPassword") as string;
+                    var credentialsFilePath = key.GetValue("CredentialsFilePath") as string;
+                    
+                    if (!string.IsNullOrEmpty(masterPassword) && !string.IsNullOrEmpty(userPassword))
+                    {
+                        LoggingService.Application.Information("Found installer-generated credentials in registry");
+                        return (masterPassword, userPassword, credentialsFilePath ?? "");
+                    }
+                }
+                
+                LoggingService.Application.Information("No installer-generated credentials found in registry");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Warning("Failed to read installer credentials from registry", 
+                    ("Error", ex.Message));
+                return null;
+            }
+        }
+
+        private async Task CleanupInstallerCredentialsAsync()
+        {
+            try
+            {
+                // Get credentials info before cleanup
+                var installerCredentials = TryGetInstallerCredentials();
+                
+                // Delete credentials file if it exists
+                if (installerCredentials.HasValue && !string.IsNullOrEmpty(installerCredentials.Value.CredentialsFilePath))
+                {
+                    var credentialsFile = installerCredentials.Value.CredentialsFilePath;
+                    if (File.Exists(credentialsFile))
+                    {
+                        File.Delete(credentialsFile);
+                        LoggingService.Application.Information("Installer credentials file deleted after password change",
+                            ("FilePath", credentialsFile));
+                    }
+                }
+                
+                // Also check for default location in application directory
+                var appDirectory = AppDomain.CurrentDomain.BaseDirectory;
+                var defaultCredentialsFile = Path.Combine(appDirectory, "setup-credentials.txt");
+                if (File.Exists(defaultCredentialsFile))
+                {
+                    File.Delete(defaultCredentialsFile);
+                    LoggingService.Application.Information("Default installer credentials file deleted after password change",
+                        ("FilePath", defaultCredentialsFile));
+                }
+                
+                // Clean up registry entries
+                try
+                {
+                    using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\PhotoBoothX\PhotoBoothX", true);
+                    if (key != null)
+                    {
+                        key.DeleteSubKey("Setup", false); // false = don't throw if key doesn't exist
+                        LoggingService.Application.Information("Installer credentials registry entries cleaned up");
+                    }
+                }
+                catch (Exception regEx)
+                {
+                    LoggingService.Application.Warning("Failed to clean up installer credentials registry entries", 
+                        ("Error", regEx.Message));
+                }
+                
+                await Task.CompletedTask; // Make method async-compatible
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Warning("Failed to cleanup installer credentials", 
+                    ("Error", ex.Message));
+            }
+        }
+
         private async Task CreateDefaultAdminUserDirect(SqliteConnection connection)
         {
             try
@@ -3537,38 +3623,68 @@ namespace Photobooth.Services
                 userCommand.Parameters.AddWithValue("@createdAt", userAdmin.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss"));
                 await userCommand.ExecuteNonQueryAsync();
 
-                // Write secure credentials to a protected file for first-time setup
-                Console.WriteLine("=== CALLING WriteInitialCredentialsSecurely ===");
-                Console.WriteLine($"Master password length: {masterPassword.Length}");
-                Console.WriteLine($"User password length: {userPassword.Length}");
-                
-                // Check if credential file creation is enabled (default: DEBUG only)
-                var createCredentialFiles = false;
-#if DEBUG
-                createCredentialFiles = true; // Allow in DEBUG builds
-#endif
-                
-                // Allow override via environment variable for special deployment scenarios
-                if (Environment.GetEnvironmentVariable("PHOTOBOOTH_ENABLE_CREDENTIAL_FILES") == "true")
+                // Check if installer-generated credentials exist in registry
+                var installerCredentials = TryGetInstallerCredentials();
+                if (installerCredentials.HasValue)
                 {
-                    createCredentialFiles = true;
-                    LoggingService.Application.Warning("Credential file creation enabled via environment variable - use with caution");
-                }
-                
-                if (createCredentialFiles)
-                {
-                    await WriteInitialCredentialsSecurely(masterPassword, userPassword);
-                    Console.WriteLine("=== WriteInitialCredentialsSecurely COMPLETED ===");
+                    Console.WriteLine("=== USING INSTALLER-GENERATED CREDENTIALS ===");
+                    // Use the passwords generated by the installer
+                    masterPassword = installerCredentials.Value.MasterPassword;
+                    userPassword = installerCredentials.Value.UserPassword;
+                    
+                    // Update the admin users with installer-generated passwords
+                    masterAdmin.PasswordHash = HashPassword(masterPassword);
+                    userAdmin.PasswordHash = HashPassword(userPassword);
+                    
+                    // Re-insert with correct passwords
+                    using var updateMasterCommand = new SqliteCommand("UPDATE AdminUsers SET PasswordHash = @passwordHash WHERE Username = 'admin'", connection);
+                    updateMasterCommand.Parameters.AddWithValue("@passwordHash", masterAdmin.PasswordHash);
+                    await updateMasterCommand.ExecuteNonQueryAsync();
+                    
+                    using var updateUserCommand = new SqliteCommand("UPDATE AdminUsers SET PasswordHash = @passwordHash WHERE Username = 'user'", connection);
+                    updateUserCommand.Parameters.AddWithValue("@passwordHash", userAdmin.PasswordHash);
+                    await updateUserCommand.ExecuteNonQueryAsync();
+                    
+                    LoggingService.Application.Information("Using installer-generated credentials",
+                        ("CredentialsSource", "Installer Registry"),
+                        ("MasterUsername", "admin"),
+                        ("UserUsername", "user"));
+                    Console.WriteLine("=== Installer credentials applied successfully ===");
                 }
                 else
                 {
-                    // Production mode: Log credentials only to secure application logs
-                    LoggingService.Application.Warning("Initial admin credentials generated - check secure logs for recovery",
-                        ("MasterUsername", "admin"),
-                        ("UserUsername", "user"),
-                        ("Note", "Contact support if admin access is lost"),
-                        ("SecurityNote", "Credential files disabled in production build"));
-                    Console.WriteLine("=== Production mode: Credentials not written to files ===");
+                    Console.WriteLine("=== CALLING WriteInitialCredentialsSecurely (Fallback) ===");
+                    Console.WriteLine($"Master password length: {masterPassword.Length}");
+                    Console.WriteLine($"User password length: {userPassword.Length}");
+                    
+                    // Check if credential file creation is enabled (default: DEBUG only)
+                    var createCredentialFiles = false;
+#if DEBUG
+                    createCredentialFiles = true; // Allow in DEBUG builds
+#endif
+                    
+                    // Allow override via environment variable for special deployment scenarios
+                    if (Environment.GetEnvironmentVariable("PHOTOBOOTH_ENABLE_CREDENTIAL_FILES") == "true")
+                    {
+                        createCredentialFiles = true;
+                        LoggingService.Application.Warning("Credential file creation enabled via environment variable - use with caution");
+                    }
+                    
+                    if (createCredentialFiles)
+                    {
+                        await WriteInitialCredentialsSecurely(masterPassword, userPassword);
+                        Console.WriteLine("=== WriteInitialCredentialsSecurely COMPLETED ===");
+                    }
+                    else
+                    {
+                        // Production mode: Log credentials only to secure application logs
+                        LoggingService.Application.Warning("Initial admin credentials generated - check secure logs for recovery",
+                            ("MasterUsername", "admin"),
+                            ("UserUsername", "user"),
+                            ("Note", "Contact support if admin access is lost"),
+                            ("SecurityNote", "Credential files disabled in production build"));
+                        Console.WriteLine("=== Production mode: Credentials not written to files ===");
+                    }
                 }
 
 

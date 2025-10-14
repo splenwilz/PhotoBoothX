@@ -110,9 +110,10 @@ dotnet publish PhotoBooth/PhotoBooth.csproj --configuration Release --output "Ph
 
 4. **First Launch**
    - Application launches automatically after installation
-   - Default admin credentials:
-     - **Setup Required**: Secure random passwords generated during installation
-- **Credentials Folder**: Check `Desktop\PhotoBoothX-Setup-Credentials` (auto-deletes after setup)
+   - **Initial admin credentials**:
+     - **Location**: `C:\Program Files\PhotoBoothX\setup-credentials.txt` (in app folder)
+     - **Security**: Secure random 16-character passwords generated during installation
+     - **Auto-cleanup**: File automatically deletes after first password change
    - **⚠️ IMPORTANT**: Change default passwords immediately!
 
 ### Kiosk Mode Setup
@@ -154,6 +155,12 @@ The installer automatically configures:
   Win+R → shell:startup
   Create shortcut to: C:\Program Files\PhotoBoothX\PhotoBooth.exe
   ```
+
+#### Can't find login credentials
+- **Primary Location**: `C:\Program Files\PhotoBoothX\setup-credentials.txt`
+- **If file missing**: Check Windows Event Viewer for installer errors
+- **Fallback**: Use default credentials (admin/admin123, user/user123) if installer failed
+- **Security**: Credentials file auto-deletes after first password change
 
 ### Log Locations
 - **Application Logs**: `%APPDATA%\PhotoboothX\logs\`
@@ -224,10 +231,10 @@ Copy-Item "C:\Program Files\PhotoBoothX\Templates" "C:\Templates-Backup-$(Get-Da
 ### Default Credentials
 | Account | Username | Password | Access Level |
 |---------|----------|----------|--------------|
-| Master Admin | `admin` | *See the desktop credentials file* | Full access |
-| User Admin | `user` | *See the desktop credentials file* | View-only + volume |
+| Master Admin | `admin` | *See the installer credentials file* | Full access |
+| User Admin | `user` | *See the installer credentials file* | View-only + volume |
 
-**Credentials Location**: `Desktop\PhotoBoothX-LOGIN-CREDENTIALS.txt` (easy access for setup)
+**Credentials Location**: `C:\Program Files\PhotoBoothX\setup-credentials.txt` (in application folder)
 
 ### Build Commands
 | Command | Purpose |
