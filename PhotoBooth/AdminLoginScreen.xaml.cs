@@ -26,6 +26,11 @@ namespace Photobooth
         /// </summary>
         public event EventHandler? LoginCancelled;
 
+        /// <summary>
+        /// Fired when user clicks "Forgot Password?"
+        /// </summary>
+        public event EventHandler? ForgotPasswordRequested;
+
         #endregion
 
         #region Private Fields
@@ -88,6 +93,15 @@ namespace Photobooth
         private void PasswordToggleButton_Click(object sender, RoutedEventArgs e)
         {
             TogglePasswordVisibility();
+        }
+
+        /// <summary>
+        /// Handle forgot password link click
+        /// </summary>
+        private void ForgotPasswordLink_Click(object sender, RoutedEventArgs e)
+        {
+            LoggingService.Application.Information("Forgot password requested from login screen");
+            ForgotPasswordRequested?.Invoke(this, EventArgs.Empty);
         }
 
         #endregion

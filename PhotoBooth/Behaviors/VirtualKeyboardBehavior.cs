@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using Photobooth.Services;
 using System;
+using System.Reflection;
 
 namespace Photobooth.Behaviors
 {
@@ -135,13 +136,35 @@ namespace Photobooth.Behaviors
             {
                 if (sender is Control control)
                 {
+                    Console.WriteLine($"=== VirtualKeyboardBehavior.Control_GotFocus: {control.Name} ===");
+                    
+                    // IMMEDIATELY update the active input in the virtual keyboard service
+                    // This ensures the virtual keyboard knows which control is active before any key presses
+                    var virtualKeyboardService = VirtualKeyboardService.Instance;
+                    if (virtualKeyboardService != null)
+                    {
+                        // Use reflection to directly set the _activeInput field
+                        var field = typeof(VirtualKeyboardService).GetField("_activeInput", 
+                            BindingFlags.NonPublic | BindingFlags.Instance);
+                        if (field != null)
+                        {
+                            field.SetValue(virtualKeyboardService, control);
+                            Console.WriteLine($"=== VirtualKeyboardBehavior: Directly set _activeInput to {control.Name} ===");
+                        }
+                    }
                     
                     // Find the parent window
                     var parentWindow = Window.GetWindow(control);
                     if (parentWindow != null)
                     {
+                        Console.WriteLine($"Calling VirtualKeyboardService.ShowKeyboardAsync for {control.Name}");
                         // Show virtual keyboard for this control
                         await VirtualKeyboardService.Instance.ShowKeyboardAsync(control, parentWindow);
+                        Console.WriteLine($"VirtualKeyboardService.ShowKeyboardAsync completed for {control.Name}");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"No parent window found for {control.Name}");
                     }
                 }
             }

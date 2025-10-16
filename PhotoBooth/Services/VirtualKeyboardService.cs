@@ -1060,6 +1060,28 @@ namespace Photobooth.Services
         }
 
         /// <summary>
+        /// Find a visual child by name
+        /// </summary>
+        private static T? FindVisualChild<T>(DependencyObject parent, string name) where T : DependencyObject
+        {
+            for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+            {
+                var child = VisualTreeHelper.GetChild(parent, i);
+                if (child is T t && (child as FrameworkElement)?.Name == name)
+                {
+                    return t;
+                }
+                
+                var childOfChild = FindVisualChild<T>(child, name);
+                if (childOfChild != null)
+                {
+                    return childOfChild;
+                }
+            }
+            return null;
+        }
+
+        /// <summary>
         /// Handle enter key
         /// </summary>
         private void HandleEnter()
@@ -1084,6 +1106,85 @@ namespace Photobooth.Services
                     OnPriceInputComplete?.Invoke(contextId);
                     
                     HideKeyboard();
+                    return;
+                }
+                
+                // Check if this is a PIN box (PIN1, PIN2, PIN3, PIN4, etc.)
+                if (textBoxName.StartsWith("pin") || textBoxName.StartsWith("confirm"))
+                {
+                    Console.WriteLine($"=== VirtualKeyboardService: Detected PIN box {textBoxName}, looking for action button ===");
+                    
+                    // Find the action button in the PIN screen (ContinueButton or VerifyButton)
+                    var parentWindow = Window.GetWindow(_activeInput);
+                    if (parentWindow != null)
+                    {
+                        // Try to find ContinueButton first (PIN Setup screen)
+                        var continueButton = FindVisualChild<Button>(parentWindow, "ContinueButton");
+                        if (continueButton != null && continueButton.IsEnabled)
+                        {
+                            Console.WriteLine($"=== VirtualKeyboardService: Found Continue button, clicking it ===");
+                            continueButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                            
+                            // Hide keyboard after successful PIN submission
+                            HideKeyboard();
+                            return;
+                        }
+                        
+                        // Try to find VerifyButton (PIN Recovery screen)
+                        var verifyButton = FindVisualChild<Button>(parentWindow, "VerifyButton");
+                        if (verifyButton != null && verifyButton.IsEnabled)
+                        {
+                            Console.WriteLine($"=== VirtualKeyboardService: Found Verify button, clicking it ===");
+                            verifyButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                            
+                            // Hide keyboard after PIN verification attempt
+                            HideKeyboard();
+                            return;
+                        }
+                        
+                        Console.WriteLine($"=== VirtualKeyboardService: No action button found or enabled ===");
+                    }
+                    
+                    // Fallback: try to raise keyboard events
+                    var pinEnterKey = new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(_activeInput), 0, Key.Enter)
+                    {
+                        RoutedEvent = UIElement.PreviewKeyDownEvent
+                    };
+                    
+                    _activeInput?.RaiseEvent(pinEnterKey);
+                    return;
+                }
+                
+                // Check if this is a password input field (NewPasswordInput, NewPasswordTextInput, ConfirmPasswordInput, etc.)
+                if (textBoxName.Contains("password") || textBoxName.Contains("Password"))
+                {
+                    Console.WriteLine($"=== VirtualKeyboardService: Detected password field {textBoxName}, looking for ResetPasswordButton ===");
+                    
+                    // Find the ResetPasswordButton in the Password Reset screen
+                    var parentWindow = Window.GetWindow(_activeInput);
+                    if (parentWindow != null)
+                    {
+                        var resetPasswordButton = FindVisualChild<Button>(parentWindow, "ResetPasswordButton");
+                        if (resetPasswordButton != null && resetPasswordButton.IsEnabled)
+                        {
+                            Console.WriteLine($"=== VirtualKeyboardService: Found ResetPasswordButton, clicking it ===");
+                            resetPasswordButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                            
+                            // Hide keyboard after password reset attempt
+                            HideKeyboard();
+                            return;
+                        }
+                        
+                        Console.WriteLine($"=== VirtualKeyboardService: ResetPasswordButton not found or not enabled ===");
+                    }
+                    
+                    // Fallback: try to raise keyboard events
+                    var passwordEnterKey = new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(_activeInput), 0, Key.Enter)
+                    {
+                        RoutedEvent = UIElement.PreviewKeyDownEvent
+                    };
+                    
+                    _activeInput?.RaiseEvent(passwordEnterKey);
                     return;
                 }
             }
