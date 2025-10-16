@@ -3480,11 +3480,11 @@ namespace Photobooth.Services
         {
             try
             {
-                // Generate secure random passwords
-                var masterPassword = GenerateSecurePassword(16);
-                var userPassword = GenerateSecurePassword(16);
+                // Use fixed default passwords - users will be forced to change on first login
+                var masterPassword = "admin123";
+                var userPassword = "user123";
 
-                // Create default master admin with secure password
+                // Create default master admin with fixed password
                 var masterAdmin = new AdminUser
                 {
                     UserId = Guid.NewGuid().ToString(),
@@ -3494,10 +3494,10 @@ namespace Photobooth.Services
                     AccessLevel = Models.AdminAccessLevel.Master,
                     IsActive = true,
                     CreatedAt = DateTime.Now,
-                    CreatedBy = null
+                    CreatedBy = null  // Null CreatedBy indicates this is a setup account that needs password change
                 };
 
-                // Create default user admin with secure password
+                // Create default user admin with fixed password
                 var userAdmin = new AdminUser
                 {
                     UserId = Guid.NewGuid().ToString(),
@@ -3507,7 +3507,7 @@ namespace Photobooth.Services
                     AccessLevel = Models.AdminAccessLevel.User,
                     IsActive = true,
                     CreatedAt = DateTime.Now,
-                    CreatedBy = null
+                    CreatedBy = null  // Null CreatedBy indicates this is a setup account that needs password change
                 };
 
                 // Insert directly using the existing connection (UserId is now primary key)
@@ -3537,39 +3537,16 @@ namespace Photobooth.Services
                 userCommand.Parameters.AddWithValue("@createdAt", userAdmin.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss"));
                 await userCommand.ExecuteNonQueryAsync();
 
-                // Write secure credentials to a protected file for first-time setup
-                Console.WriteLine("=== CALLING WriteInitialCredentialsSecurely ===");
-                Console.WriteLine($"Master password length: {masterPassword.Length}");
-                Console.WriteLine($"User password length: {userPassword.Length}");
+                // Log that default credentials are being used
+                LoggingService.Application.Information("Default admin accounts created with fixed passwords",
+                    ("MasterUsername", "admin"),
+                    ("MasterPassword", "admin123"),
+                    ("UserUsername", "user"),
+                    ("UserPassword", "user123"),
+                    ("SecurityNote", "Users will be forced to change passwords on first login"));
                 
-                // Check if credential file creation is enabled (default: DEBUG only)
-                var createCredentialFiles = false;
-#if DEBUG
-                createCredentialFiles = true; // Allow in DEBUG builds
-#endif
-                
-                // Allow override via environment variable for special deployment scenarios
-                if (Environment.GetEnvironmentVariable("PHOTOBOOTH_ENABLE_CREDENTIAL_FILES") == "true")
-                {
-                    createCredentialFiles = true;
-                    LoggingService.Application.Warning("Credential file creation enabled via environment variable - use with caution");
-                }
-                
-                if (createCredentialFiles)
-                {
-                    await WriteInitialCredentialsSecurely(masterPassword, userPassword);
-                    Console.WriteLine("=== WriteInitialCredentialsSecurely COMPLETED ===");
-                }
-                else
-                {
-                    // Production mode: Log credentials only to secure application logs
-                    LoggingService.Application.Warning("Initial admin credentials generated - check secure logs for recovery",
-                        ("MasterUsername", "admin"),
-                        ("UserUsername", "user"),
-                        ("Note", "Contact support if admin access is lost"),
-                        ("SecurityNote", "Credential files disabled in production build"));
-                    Console.WriteLine("=== Production mode: Credentials not written to files ===");
-                }
+                Console.WriteLine("=== Default credentials set: admin/admin123, user/user123 ===");
+                Console.WriteLine("=== Users will be forced to change passwords on first login ===");
 
 
             }

@@ -149,12 +149,13 @@ PhotoBoothX uses a comprehensive dual-logging approach for maximum reliability:
 ## 🔒 Security & Maintenance
 
 ### Password Security
-1. **Initial Setup**: PhotoBoothX generates secure random passwords during installation
-2. **Credentials Folder**: Find initial passwords in `Desktop\PhotoBoothX-Setup-Credentials`
-3. **Auto-Cleanup**: Folder automatically deletes after first successful admin login
-4. **Strong Passwords**: Use 12+ characters with mixed case, numbers, and symbols
-5. **Regular Rotation**: Change passwords monthly for maximum security
-6. **Account Management**: Disable unused accounts, review permissions regularly
+1. **Default Credentials**: 
+   - Master Admin: `admin` / `admin123`
+   - User Admin: `user` / `user123`
+2. **Forced Password Change**: You will be required to change passwords on first login
+3. **Strong Passwords**: Use 12+ characters with mixed case, numbers, and symbols
+4. **Regular Rotation**: Change passwords monthly for maximum security
+5. **Account Management**: Disable unused accounts, review permissions regularly
 
 ### Data Backup
 1. **Automatic**: Daily database backup to `%APPDATA%\PhotoBoothX\Backups\`
