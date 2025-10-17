@@ -118,17 +118,13 @@ namespace Photobooth
         {
             var password = GetCurrentNewPassword();
 
-            // Check length (at least 8 characters)
-            _isLength8Valid = password.Length >= 8;
-
-            // Check for uppercase letter
-            _isUppercaseValid = Regex.IsMatch(password, @"[A-Z]");
-
-            // Check for lowercase letter
-            _isLowercaseValid = Regex.IsMatch(password, @"[a-z]");
-
-            // Check for number
-            _isNumberValid = Regex.IsMatch(password, @"[0-9]");
+            // Use centralized password policy for consistent validation
+            var validation = PasswordPolicyService.ValidatePassword(password);
+            
+            _isLength8Valid = validation.MeetsLengthRequirement;
+            _isUppercaseValid = validation.HasUppercase;
+            _isLowercaseValid = validation.HasLowercase;
+            _isNumberValid = validation.HasNumber;
 
             // Revalidate password match
             ValidatePasswordMatch();

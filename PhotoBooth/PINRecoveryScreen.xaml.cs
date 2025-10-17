@@ -435,12 +435,17 @@ namespace Photobooth
                 // If a user is still selected, show the PIN entry section again
                 if (_selectedUser != null)
                 {
+                    // CRITICAL: Clear failed attempts to allow user to try again
+                    // Rationale: Match the "1-minute lockout" promise - attempts reset after timeout
+                    _pinService.ClearFailedAttempts(_selectedUser.Username);
+                    
                     PINEntrySection.Visibility = Visibility.Visible;
                     ClearPINBoxes();
                     PIN1.Focus();
                 }
                 
-                LoggingService.Application.Information("PIN recovery lockout timer expired - UI re-enabled");
+                LoggingService.Application.Information("PIN recovery lockout timer expired - UI re-enabled and attempts cleared",
+                    ("Username", _selectedUser?.Username ?? "Unknown"));
                 
                 // Stop and dispose timer
                 _lockoutTimer?.Stop();

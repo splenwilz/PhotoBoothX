@@ -164,18 +164,19 @@ namespace Photobooth
         #region Password Validation
 
         /// <summary>
-        /// Validate new password meets requirements
-        /// Rationale: Minimum 8 characters for basic security
+        /// Validate new password meets requirements using centralized password policy
+        /// Rationale: Consistent password requirements across all password entry points
         /// </summary>
         private void ValidatePassword()
         {
             var password = NewPasswordInput.Password;
             
-            // Check length (at least 8 characters)
-            // Rationale: Industry standard minimum for password security
-            _isPasswordValid = password.Length >= 8;
+            // Use centralized password policy for consistent validation
+            var validation = PasswordPolicyService.ValidatePassword(password);
+            _isPasswordValid = validation.IsValid;
 
-            if (_isPasswordValid)
+            // Update length indicator
+            if (validation.MeetsLengthRequirement)
             {
                 LengthIndicator.Text = "✓";
                 LengthIndicator.Foreground = new SolidColorBrush(Color.FromRgb(16, 185, 129)); // Green
@@ -184,6 +185,42 @@ namespace Photobooth
             {
                 LengthIndicator.Text = "✗";
                 LengthIndicator.Foreground = new SolidColorBrush(Color.FromRgb(239, 68, 68)); // Red
+            }
+            
+            // Update uppercase indicator
+            if (validation.HasUppercase)
+            {
+                UppercaseIndicator.Text = "✓";
+                UppercaseIndicator.Foreground = new SolidColorBrush(Color.FromRgb(16, 185, 129)); // Green
+            }
+            else
+            {
+                UppercaseIndicator.Text = "✗";
+                UppercaseIndicator.Foreground = new SolidColorBrush(Color.FromRgb(239, 68, 68)); // Red
+            }
+            
+            // Update lowercase indicator
+            if (validation.HasLowercase)
+            {
+                LowercaseIndicator.Text = "✓";
+                LowercaseIndicator.Foreground = new SolidColorBrush(Color.FromRgb(16, 185, 129)); // Green
+            }
+            else
+            {
+                LowercaseIndicator.Text = "✗";
+                LowercaseIndicator.Foreground = new SolidColorBrush(Color.FromRgb(239, 68, 68)); // Red
+            }
+            
+            // Update number indicator
+            if (validation.HasNumber)
+            {
+                NumberIndicator.Text = "✓";
+                NumberIndicator.Foreground = new SolidColorBrush(Color.FromRgb(16, 185, 129)); // Green
+            }
+            else
+            {
+                NumberIndicator.Text = "✗";
+                NumberIndicator.Foreground = new SolidColorBrush(Color.FromRgb(239, 68, 68)); // Red
             }
 
             // Re-validate match when password changes

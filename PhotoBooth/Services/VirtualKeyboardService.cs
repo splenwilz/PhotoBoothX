@@ -636,6 +636,36 @@ namespace Photobooth.Services
         }
 
         /// <summary>
+        /// Switch active input control and restore binding for previous control
+        /// This should be called before ShowKeyboardAsync to ensure proper cleanup
+        /// </summary>
+        /// <param name="newControl">The new control to set as active</param>
+        public void SwitchActiveInput(Control newControl)
+        {
+            try
+            {
+                Console.WriteLine($"=== VirtualKeyboardService.SwitchActiveInput: {_activeInput?.Name ?? "null"} -> {newControl?.Name ?? "null"} ===");
+                
+                // If there's a previous input and it's different from the new one, restore its binding
+                if (_activeInput != null && _activeInput != newControl)
+                {
+                    Console.WriteLine($"Restoring binding for previous input: {_activeInput.Name}");
+                    ReenableBinding(_activeInput);
+                }
+                
+                // Set the new active input
+                _activeInput = newControl;
+                Console.WriteLine($"Active input switched to: {newControl?.Name ?? "null"}");
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to switch active input", ex,
+                    ("PreviousInput", _activeInput?.Name ?? "null"),
+                    ("NewInput", newControl?.Name ?? "null"));
+            }
+        }
+        
+        /// <summary>
         /// Reset the keyboard service state completely
         /// Call this when navigating between different screens/windows
         /// </summary>
@@ -861,14 +891,14 @@ namespace Photobooth.Services
         {
 #if DEBUG
             Console.WriteLine($"=== VirtualKeyboardService.HandleKeyPressed CALLED ===");
-            Console.WriteLine($"Key pressed: {(_activeInput is PasswordBox ? "<hidden>" : $"'{key}'")}");
+            Console.WriteLine($"Key pressed: {(IsSensitiveControl(_activeInput) ? "<hidden>" : $"'{key}'")}");
             Console.WriteLine($"Active input: {_activeInput?.GetType().Name ?? "null"} '{_activeInput?.Name ?? "null"}'");
 #endif
             
             if (_activeInput != null)
                         {
 #if DEBUG
-                Console.WriteLine($"Active input current text: '{(_activeInput is PasswordBox ? "<hidden>" : GetInputText(_activeInput))}'");
+                Console.WriteLine($"Active input current text: '{GetTextForLogging(_activeInput)}'");
                 Console.WriteLine("Sending key to active input...");
 #endif
                     
@@ -876,7 +906,7 @@ namespace Photobooth.Services
                 SendKeyToInput(key);
                 
 #if DEBUG
-                Console.WriteLine($"Active input text after key: '{(_activeInput is PasswordBox ? "<hidden>" : GetInputText(_activeInput))}'");
+                Console.WriteLine($"Active input text after key: '{GetTextForLogging(_activeInput)}'");
 #endif
                         }
             else
@@ -904,7 +934,7 @@ namespace Photobooth.Services
             if (_activeInput != null)
             {
 #if DEBUG
-                Console.WriteLine($"Active input current text: '{GetInputText(_activeInput)}'");
+                Console.WriteLine($"Active input current text: '{GetTextForLogging(_activeInput)}'");
 #endif
             }
 
@@ -951,7 +981,7 @@ namespace Photobooth.Services
             if (_activeInput != null)
             {
 #if DEBUG
-                Console.WriteLine($"Active input text after special key: '{GetInputText(_activeInput)}'");
+                Console.WriteLine($"Active input text after special key: '{GetTextForLogging(_activeInput)}'");
 #endif
             }
 #if DEBUG
@@ -978,7 +1008,7 @@ namespace Photobooth.Services
             }
 
 #if DEBUG
-            Console.WriteLine($"Active input current text before backspace: '{GetInputText(_activeInput)}'");
+            Console.WriteLine($"Active input current text before backspace: '{GetTextForLogging(_activeInput)}'");
 #endif
 
             try
@@ -1138,12 +1168,21 @@ namespace Photobooth.Services
                 }
                 
                 // Fallback: try to raise keyboard events
-                var passwordEnterKey = new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(_activeInput), 0, Key.Enter)
+                var passwordSrc = PresentationSource.FromVisual(_activeInput);
+                if (passwordSrc != null)
                 {
-                    RoutedEvent = UIElement.PreviewKeyDownEvent
-                };
-                
-                _activeInput?.RaiseEvent(passwordEnterKey);
+                    var passwordEnterKey = new KeyEventArgs(Keyboard.PrimaryDevice, passwordSrc, 0, Key.Enter)
+                    {
+                        RoutedEvent = UIElement.PreviewKeyDownEvent
+                    };
+                    
+                    _activeInput?.RaiseEvent(passwordEnterKey);
+                }
+                else
+                {
+                    // Fallback: move focus to next control
+                    _activeInput?.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
+                }
                 return;
             }
             
@@ -1207,23 +1246,36 @@ namespace Photobooth.Services
                     }
                     
                     // Fallback: try to raise keyboard events
-                    var pinEnterKey = new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(_activeInput), 0, Key.Enter)
+                    var pinSrc = PresentationSource.FromVisual(_activeInput);
+                    if (pinSrc != null)
                     {
-                        RoutedEvent = UIElement.PreviewKeyDownEvent
-                    };
-                    
-                    _activeInput?.RaiseEvent(pinEnterKey);
+                        var pinEnterKey = new KeyEventArgs(Keyboard.PrimaryDevice, pinSrc, 0, Key.Enter)
+                        {
+                            RoutedEvent = UIElement.PreviewKeyDownEvent
+                        };
+                        
+                        _activeInput?.RaiseEvent(pinEnterKey);
+                    }
+                    else
+                    {
+                        // Fallback: move focus to next control
+                        _activeInput?.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
+                    }
                     return;
                 }
             }
 
             // Default Enter behavior for other inputs
-            var enterKey = new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(_activeInput), 0, Key.Enter)
+            var src = PresentationSource.FromVisual(_activeInput);
+            if (src != null)
             {
-                RoutedEvent = UIElement.KeyDownEvent
-            };
-            
-            _activeInput?.RaiseEvent(enterKey);
+                var enterKey = new KeyEventArgs(Keyboard.PrimaryDevice, src, 0, Key.Enter)
+                {
+                    RoutedEvent = UIElement.KeyDownEvent
+                };
+                
+                _activeInput?.RaiseEvent(enterKey);
+            }
             
             // Also try to move focus to next control or close keyboard
             _activeInput?.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
@@ -1410,6 +1462,38 @@ namespace Photobooth.Services
                 }
                 _textBoxBindingExpressions.Remove(textBox);
             }
+        }
+        
+        /// <summary>
+        /// Check if a control contains sensitive data (passwords or PINs) that should not be logged
+        /// </summary>
+        private bool IsSensitiveControl(Control? control)
+        {
+            if (control == null) return false;
+            
+            // PasswordBox is always sensitive
+            if (control is PasswordBox) return true;
+            
+            // TextBox with PIN-related names is sensitive
+            var controlName = control.Name?.ToLower() ?? "";
+            return controlName.Contains("pin") || 
+                   controlName.Contains("password") ||
+                   controlName.Contains("confirm");
+        }
+        
+        /// <summary>
+        /// Get text from control for logging, masking sensitive data
+        /// </summary>
+        private string GetTextForLogging(Control? control)
+        {
+            if (control == null) return "null";
+            
+            if (IsSensitiveControl(control))
+            {
+                return "<hidden>";
+            }
+            
+            return GetInputText(control);
         }
     }
 
