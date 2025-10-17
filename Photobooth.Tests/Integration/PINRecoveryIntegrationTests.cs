@@ -58,6 +58,13 @@ namespace Photobooth.Tests.Integration
         {
             try
             {
+                // Explicitly clear database reference to close any open connections
+                _databaseService = null!;
+                
+                // Force garbage collection to ensure connections are closed
+                System.GC.Collect();
+                System.GC.WaitForPendingFinalizers();
+                
                 // Only delete the specific temp file we created for this test
                 if (!string.IsNullOrWhiteSpace(_tempPath) && System.IO.File.Exists(_tempPath))
                 {
