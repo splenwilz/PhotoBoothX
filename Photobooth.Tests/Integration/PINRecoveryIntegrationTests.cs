@@ -3,6 +3,7 @@ using FluentAssertions;
 using Photobooth.Services;
 using Photobooth.Models;
 using System;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace Photobooth.Tests.Integration
@@ -19,13 +20,14 @@ namespace Photobooth.Tests.Integration
         private AdminUser _testUser = null!;
         private string _testPassword = null!;
         private string _testPIN = null!;
+        private string _tempPath = null!;
 
         [TestInitialize]
         public async Task Setup()
         {
             // Use temporary file database for testing
-            var tempPath = System.IO.Path.GetTempFileName();
-            _databaseService = new DatabaseService(tempPath);
+            _tempPath = System.IO.Path.GetTempFileName();
+            _databaseService = new DatabaseService(_tempPath);
             await _databaseService.InitializeAsync();
 
             _pinService = new PINRecoveryService();
@@ -56,17 +58,10 @@ namespace Photobooth.Tests.Integration
         {
             try
             {
-                var tempFiles = System.IO.Directory.GetFiles(System.IO.Path.GetTempPath(), "tmp*.tmp");
-                foreach (var file in tempFiles)
+                // Only delete the specific temp file we created for this test
+                if (!string.IsNullOrWhiteSpace(_tempPath) && System.IO.File.Exists(_tempPath))
                 {
-                    try
-                    {
-                        if (file.Contains("tmp") && System.IO.File.Exists(file))
-                        {
-                            System.IO.File.Delete(file);
-                        }
-                    }
-                    catch { }
+                    System.IO.File.Delete(_tempPath);
                 }
             }
             catch { }
@@ -230,6 +225,9 @@ namespace Photobooth.Tests.Integration
             
             // But application should check rate limit before verification
             isRateLimited.Should().BeTrue("rate limit should still be active");
+            
+            // Cleanup static rate-limit state for this user
+            _pinService.ClearFailedAttempts(user!.Username);
         }
 
         [TestMethod]
@@ -440,7 +438,7 @@ namespace Photobooth.Tests.Integration
         }
 
         [TestMethod]
-        public async Task EdgeCase_InactiveUser_PINStillValid()
+        public async Task EdgeCase_UserPINVerification_IndependentOfIsActiveFlag()
         {
             // Arrange & Act - Get user data
             var userResult = await _databaseService.GetByUserIdAsync<AdminUser>(_testUser.UserId);
