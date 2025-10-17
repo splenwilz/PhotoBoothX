@@ -1277,6 +1277,7 @@ namespace Photobooth
                 if (passwordResetScreen != null)
                 {
                     passwordResetScreen.PasswordResetSuccessful -= PasswordResetScreen_PasswordResetSuccessful;
+                    passwordResetScreen.PasswordResetCancelled -= PasswordResetScreen_PasswordResetCancelled;
                 }
 
                 // Create new instance
@@ -1284,6 +1285,7 @@ namespace Photobooth
                 
                 // Subscribe to events
                 passwordResetScreen.PasswordResetSuccessful += PasswordResetScreen_PasswordResetSuccessful;
+                passwordResetScreen.PasswordResetCancelled += PasswordResetScreen_PasswordResetCancelled;
 
                 CurrentScreenContainer.Content = passwordResetScreen;
                 LoggingService.Application.Information("Password reset screen loaded",
@@ -2359,6 +2361,23 @@ namespace Photobooth
         }
 
         /// <summary>
+        /// Handle password reset cancellation - user clicked Back button
+        /// </summary>
+        private void PasswordResetScreen_PasswordResetCancelled(object? sender, EventArgs e)
+        {
+            try
+            {
+                LoggingService.Application.Information("Password reset cancelled by user - returning to login");
+                NavigateToAdminLogin();
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Post-password-reset-cancellation navigation failed", ex);
+                NavigateToWelcome();
+            }
+        }
+
+        /// <summary>
         /// Handles admin dashboard exit request
         /// </summary>
         private void AdminDashboardScreen_ExitAdminRequested(object? sender, EventArgs e)
@@ -2540,6 +2559,7 @@ namespace Photobooth
                 if (passwordResetScreen != null)
                 {
                     passwordResetScreen.PasswordResetSuccessful -= PasswordResetScreen_PasswordResetSuccessful;
+                    passwordResetScreen.PasswordResetCancelled -= PasswordResetScreen_PasswordResetCancelled;
                 }
 
                 // Shutdown logging system

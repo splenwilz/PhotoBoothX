@@ -1086,6 +1086,67 @@ namespace Photobooth.Services
         /// </summary>
         private void HandleEnter()
         {
+            // Get the control name for both TextBox and PasswordBox
+            var controlName = _activeInput?.Name?.ToLower() ?? "";
+            
+            // Check for password fields (both TextBox and PasswordBox)
+            if (controlName.Contains("password"))
+            {
+                Console.WriteLine($"=== VirtualKeyboardService: Detected password field {_activeInput?.Name}, looking for action button ===");
+                
+                // Find the appropriate action button based on the screen
+                var parentWindow = Window.GetWindow(_activeInput);
+                if (parentWindow != null)
+                {
+                    // Try to find LoginButton first (Login screen)
+                    var loginButton = FindVisualChild<Button>(parentWindow, "LoginButton");
+                    if (loginButton != null && loginButton.IsEnabled)
+                    {
+                        Console.WriteLine($"=== VirtualKeyboardService: Found LoginButton, clicking it ===");
+                        loginButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                        
+                        // Hide keyboard after login attempt
+                        HideKeyboard();
+                        return;
+                    }
+                    
+                    // Try to find ChangePasswordButton (Forced Password Change screen)
+                    var changePasswordButton = FindVisualChild<Button>(parentWindow, "ChangePasswordButton");
+                    if (changePasswordButton != null && changePasswordButton.IsEnabled)
+                    {
+                        Console.WriteLine($"=== VirtualKeyboardService: Found ChangePasswordButton, clicking it ===");
+                        changePasswordButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                        
+                        // Hide keyboard after password change attempt
+                        HideKeyboard();
+                        return;
+                    }
+                    
+                    // Try to find ResetPasswordButton (Password Reset screen)
+                    var resetPasswordButton = FindVisualChild<Button>(parentWindow, "ResetPasswordButton");
+                    if (resetPasswordButton != null && resetPasswordButton.IsEnabled)
+                    {
+                        Console.WriteLine($"=== VirtualKeyboardService: Found ResetPasswordButton, clicking it ===");
+                        resetPasswordButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                        
+                        // Hide keyboard after password reset attempt
+                        HideKeyboard();
+                        return;
+                    }
+                    
+                    Console.WriteLine($"=== VirtualKeyboardService: No action button found or enabled ===");
+                }
+                
+                // Fallback: try to raise keyboard events
+                var passwordEnterKey = new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(_activeInput), 0, Key.Enter)
+                {
+                    RoutedEvent = UIElement.PreviewKeyDownEvent
+                };
+                
+                _activeInput?.RaiseEvent(passwordEnterKey);
+                return;
+            }
+            
             // Check if we're in a price input field in the Admin Dashboard
             if (_activeInput is TextBox textBox)
             {
@@ -1152,39 +1213,6 @@ namespace Photobooth.Services
                     };
                     
                     _activeInput?.RaiseEvent(pinEnterKey);
-                    return;
-                }
-                
-                // Check if this is a password input field (NewPasswordInput, NewPasswordTextInput, ConfirmPasswordInput, etc.)
-                if (textBoxName.Contains("password") || textBoxName.Contains("Password"))
-                {
-                    Console.WriteLine($"=== VirtualKeyboardService: Detected password field {textBoxName}, looking for ResetPasswordButton ===");
-                    
-                    // Find the ResetPasswordButton in the Password Reset screen
-                    var parentWindow = Window.GetWindow(_activeInput);
-                    if (parentWindow != null)
-                    {
-                        var resetPasswordButton = FindVisualChild<Button>(parentWindow, "ResetPasswordButton");
-                        if (resetPasswordButton != null && resetPasswordButton.IsEnabled)
-                        {
-                            Console.WriteLine($"=== VirtualKeyboardService: Found ResetPasswordButton, clicking it ===");
-                            resetPasswordButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                            
-                            // Hide keyboard after password reset attempt
-                            HideKeyboard();
-                            return;
-                        }
-                        
-                        Console.WriteLine($"=== VirtualKeyboardService: ResetPasswordButton not found or not enabled ===");
-                    }
-                    
-                    // Fallback: try to raise keyboard events
-                    var passwordEnterKey = new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(_activeInput), 0, Key.Enter)
-                    {
-                        RoutedEvent = UIElement.PreviewKeyDownEvent
-                    };
-                    
-                    _activeInput?.RaiseEvent(passwordEnterKey);
                     return;
                 }
             }

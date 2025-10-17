@@ -133,7 +133,7 @@
             <StackPanel>
                 <!-- Header -->
                 <TextBlock Text="🔐" 
-                           FontSize="56" 
+                           FontSize="34" 
                            HorizontalAlignment="Center"
                            Margin="0,0,0,16"/>
                 

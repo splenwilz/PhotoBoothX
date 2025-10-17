@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using Photobooth.Models;
 using Photobooth.Services;
 
@@ -20,6 +21,7 @@ namespace Photobooth
         private readonly TextBox[] _pinBoxes;
         private readonly Border[] _pinBorders;
         private AdminUser? _selectedUser;
+        private DispatcherTimer? _lockoutTimer;
 
         public event EventHandler<AdminUser>? RecoverySuccessful;
         public event EventHandler? BackToLogin;
@@ -94,7 +96,7 @@ namespace Photobooth
                 if (_pinService.IsRateLimited(selectedUser.Username))
                 {
                     PINEntrySection.Visibility = Visibility.Collapsed;
-                    ShowError("Too many failed attempts for this account. Please try again in 30 minutes.");
+                    ShowError("Too many failed attempts for this account. Please try again in 1 minute.");
                     VerifyButton.IsEnabled = false;
                     return;
                 }
@@ -332,15 +334,27 @@ namespace Photobooth
                     }
                     else
                     {
-                        ShowError("✗ Too many failed attempts for this account. Please try again in 30 minutes.");
+                        ShowError("✗ Too many failed attempts for this account. Please try again in 1 minute.");
                         AttemptsWarning.Visibility = Visibility.Collapsed;
                         PINEntrySection.Visibility = Visibility.Collapsed;
-                        UserComboBox.IsEnabled = false;
+                        
+                        // Start 1-minute lockout timer
+                        StartLockoutTimer();
                     }
 
-                    // Clear PIN boxes for retry
+                    // Clear PIN boxes for retry - do NOT hide keyboard
                     ClearPINBoxes();
+                    
+                    // Small delay to ensure keyboard doesn't disappear during clearing
+                    await System.Threading.Tasks.Task.Delay(50);
+                    
+                    // Re-focus and ensure keyboard stays visible
                     PIN1.Focus();
+                    var parentWindow = Window.GetWindow(this);
+                    if (parentWindow != null)
+                    {
+                        await VirtualKeyboardService.Instance.ShowKeyboardAsync(PIN1, parentWindow);
+                    }
                 }
 
                 VerifyButton.IsEnabled = true;
@@ -394,6 +408,49 @@ namespace Photobooth
         {
             StatusMessage.Visibility = Visibility.Collapsed;
             AttemptsWarning.Visibility = Visibility.Collapsed;
+        }
+
+        /// <summary>
+        /// Start a 1-minute timer to automatically re-enable the UI after lockout
+        /// Rationale: Prevents permanent lockout - allows other admins to use the recovery system
+        /// 1-minute lockout provides good security while maintaining usability in kiosk environments
+        /// </summary>
+        private void StartLockoutTimer()
+        {
+            // Stop existing timer if any
+            _lockoutTimer?.Stop();
+            
+            // Create a new timer for 1 minute lockout
+            _lockoutTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromMinutes(1)
+            };
+            
+            _lockoutTimer.Tick += (s, e) =>
+            {
+                // Re-enable the UI after lockout period
+                UserComboBox.IsEnabled = true;
+                HideMessages();
+                
+                // If a user is still selected, show the PIN entry section again
+                if (_selectedUser != null)
+                {
+                    PINEntrySection.Visibility = Visibility.Visible;
+                    ClearPINBoxes();
+                    PIN1.Focus();
+                }
+                
+                LoggingService.Application.Information("PIN recovery lockout timer expired - UI re-enabled");
+                
+                // Stop and dispose timer
+                _lockoutTimer?.Stop();
+                _lockoutTimer = null;
+            };
+            
+            _lockoutTimer.Start();
+            
+            LoggingService.Application.Information("PIN recovery lockout timer started - 1 minute",
+                ("LockedUser", _selectedUser?.Username ?? "Unknown"));
         }
 
         #endregion

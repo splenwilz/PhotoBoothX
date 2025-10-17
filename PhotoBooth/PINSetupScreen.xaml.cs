@@ -243,7 +243,15 @@ namespace Photobooth
                 {
                     ShowErrorMessage($"Failed to save PIN: {result.ErrorMessage ?? "Unknown error"}");
                     ContinueButton.Content = "Continue";
-                    ContinueButton.IsEnabled = true;
+                    
+                    // Only re-enable if PIN is still complete
+                    var hasCompletePIN = _pinBoxes.All(box => !string.IsNullOrEmpty(box.Text));
+                    ContinueButton.IsEnabled = hasCompletePIN;
+                    
+                    if (!hasCompletePIN)
+                    {
+                        _enteredPIN = string.Empty;
+                    }
                 }
             }
             catch (Exception ex)
@@ -252,7 +260,15 @@ namespace Photobooth
                     ("UserId", _currentUser.UserId));
                 ShowErrorMessage("An error occurred. Please try again.");
                 ContinueButton.Content = "Continue";
-                ContinueButton.IsEnabled = true;
+                
+                // Only re-enable if PIN is still complete
+                var hasCompletePIN = _pinBoxes.All(box => !string.IsNullOrEmpty(box.Text));
+                ContinueButton.IsEnabled = hasCompletePIN;
+                
+                if (!hasCompletePIN)
+                {
+                    _enteredPIN = string.Empty;
+                }
             }
         }
 

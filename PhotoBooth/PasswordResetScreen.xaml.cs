@@ -20,6 +20,7 @@ namespace Photobooth
         private bool _isPasswordMatch;
 
         public event EventHandler? PasswordResetSuccessful;
+        public event EventHandler? PasswordResetCancelled;
 
         public PasswordResetScreen(IDatabaseService databaseService, AdminUser user)
         {
@@ -303,7 +304,7 @@ namespace Photobooth
         private void BackButton_Click(object sender, RoutedEventArgs e)
         {
             LoggingService.Application.Information("User cancelled password reset - returning to login");
-            PasswordResetSuccessful?.Invoke(this, EventArgs.Empty);
+            PasswordResetCancelled?.Invoke(this, EventArgs.Empty);
         }
 
         #endregion

@@ -143,11 +143,26 @@ namespace Photobooth.Behaviors
                     var virtualKeyboardService = VirtualKeyboardService.Instance;
                     if (virtualKeyboardService != null)
                     {
-                        // Use reflection to directly set the _activeInput field
+                        // Use reflection to get the _activeInput field
                         var field = typeof(VirtualKeyboardService).GetField("_activeInput", 
                             BindingFlags.NonPublic | BindingFlags.Instance);
                         if (field != null)
                         {
+                            // Save the previous input control before changing it
+                            var previousInput = field.GetValue(virtualKeyboardService) as Control;
+                            
+                            // If there's a previous input, manually re-enable its binding
+                            if (previousInput != null && previousInput != control)
+                            {
+                                Console.WriteLine($"=== VirtualKeyboardBehavior: Manually re-enabling binding for previous input {previousInput.Name} ===");
+                                
+                                // Use reflection to call ReenableBinding on the previous control
+                                var reenableMethod = typeof(VirtualKeyboardService).GetMethod("ReenableBinding",
+                                    BindingFlags.NonPublic | BindingFlags.Instance);
+                                reenableMethod?.Invoke(virtualKeyboardService, new object[] { previousInput });
+                            }
+                            
+                            // Now set the new active input
                             field.SetValue(virtualKeyboardService, control);
                             Console.WriteLine($"=== VirtualKeyboardBehavior: Directly set _activeInput to {control.Name} ===");
                         }
