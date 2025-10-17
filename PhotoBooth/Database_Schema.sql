@@ -12,6 +12,7 @@ CREATE TABLE AdminUsers (
     UserId TEXT PRIMARY KEY, -- UUID for unique user identification
     Username TEXT NOT NULL UNIQUE,
     DisplayName TEXT NOT NULL DEFAULT '',
+    Email TEXT DEFAULT '',
     PasswordHash TEXT NOT NULL,
     AccessLevel TEXT NOT NULL CHECK (AccessLevel IN ('Master', 'User')),
     IsActive BOOLEAN NOT NULL DEFAULT 1,
@@ -20,6 +21,11 @@ CREATE TABLE AdminUsers (
     UpdatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CreatedBy TEXT,
     UpdatedBy TEXT,
+    -- Simple PIN Recovery: 4-6 digit PIN for password recovery (kiosk-appropriate security)
+    RecoveryPIN TEXT,              -- Hashed PIN (PBKDF2 with salt)
+    RecoveryPINSalt TEXT,          -- Salt for PIN hashing
+    RecoveryPINSetDate DATETIME,   -- When PIN was created/last changed
+    PINSetupRequired BOOLEAN NOT NULL DEFAULT 1, -- Whether user must set up PIN (mandatory)
     FOREIGN KEY (CreatedBy) REFERENCES AdminUsers(UserId),
     FOREIGN KEY (UpdatedBy) REFERENCES AdminUsers(UserId)
 );

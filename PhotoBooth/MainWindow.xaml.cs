@@ -33,11 +33,18 @@ namespace Photobooth
         private AdminLoginScreen? adminLoginScreen;
         private AdminDashboardScreen? adminDashboardScreen;
         private ForcedPasswordChangeScreen? forcedPasswordChangeScreen;
+        private PINSetupScreen? pinSetupScreen;
+        private PINRecoveryScreen? pinRecoveryScreen;
+        private PasswordResetScreen? passwordResetScreen;
 
         // Current state tracking
         private ProductInfo? currentProduct;
         private TemplateCategory? currentCategory;
         private TemplateInfo? currentTemplate;
+        
+        // Temporary storage for PIN setup navigation
+        private AdminAccessLevel _tempAccessLevel;
+        private string? _tempUserId;
         private AdminAccessLevel currentAdminAccess = AdminAccessLevel.None;
         private string currentOperationMode = "Coin"; // Default to Coin Operated
 
@@ -1098,6 +1105,7 @@ namespace Photobooth
                     // Subscribe to admin login events
                     adminLoginScreen.LoginSuccessful += AdminLoginScreen_LoginSuccessful;
                     adminLoginScreen.LoginCancelled += AdminLoginScreen_LoginCancelled;
+                    adminLoginScreen.ForgotPasswordRequested += AdminLoginScreen_ForgotPasswordRequested;
                     LoggingService.Application.Debug("AdminLoginScreen created and events subscribed");
                 }
                 else
@@ -1155,6 +1163,143 @@ namespace Photobooth
                 // Fallback to welcome screen
                 NavigateToWelcome();
                 return System.Threading.Tasks.Task.CompletedTask;
+            }
+        }
+
+        /// <summary>
+        /// Navigates to PIN setup screen after successful password change
+        /// Rationale: Separate PIN setup from password change for cleaner UX
+        /// </summary>
+        private void NavigateToPINSetup(AdminUser user, AdminAccessLevel accessLevel)
+        {
+            try
+            {
+                System.Diagnostics.Debug.WriteLine(">>> ENTERING NavigateToPINSetup");
+                System.Diagnostics.Debug.WriteLine($">>> User: {user.Username}, AccessLevel: {accessLevel}");
+                
+                // Unsubscribe from existing instance to prevent memory leaks
+                if (pinSetupScreen != null)
+                {
+                    System.Diagnostics.Debug.WriteLine(">>> Unsubscribing from old PIN setup screen");
+                    pinSetupScreen.PINSetupCompleted -= PINSetupScreen_PINSetupCompleted;
+                }
+
+                System.Diagnostics.Debug.WriteLine(">>> Creating new PINSetupScreen instance");
+                
+                // Create new instance
+                pinSetupScreen = new PINSetupScreen(_databaseService, user);
+                
+                System.Diagnostics.Debug.WriteLine(">>> PINSetupScreen created successfully");
+                
+                // Subscribe to events
+                pinSetupScreen.PINSetupCompleted += PINSetupScreen_PINSetupCompleted;
+
+                System.Diagnostics.Debug.WriteLine(">>> Events subscribed");
+
+                // Store access level for later navigation
+                _tempAccessLevel = accessLevel;
+                _tempUserId = user.UserId;
+
+                System.Diagnostics.Debug.WriteLine($">>> Setting CurrentScreenContainer.Content to pinSetupScreen");
+                CurrentScreenContainer.Content = pinSetupScreen;
+                System.Diagnostics.Debug.WriteLine($">>> CurrentScreenContainer.Content set successfully");
+                
+                LoggingService.Application.Information("PIN setup screen loaded",
+                    ("UserId", user.UserId),
+                    ("Username", user.Username),
+                    ("AccessLevel", accessLevel.ToString()));
+                    
+                System.Diagnostics.Debug.WriteLine(">>> NavigateToPINSetup completed successfully");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($">>> ERROR in NavigateToPINSetup: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($">>> Stack trace: {ex.StackTrace}");
+                
+                LoggingService.Application.Error("Navigation to PIN setup failed", ex,
+                    ("UserId", user.UserId),
+                    ("Username", user.Username));
+                System.Diagnostics.Debug.WriteLine($"Navigation to PIN setup failed: {ex.Message}");
+                
+                // Fallback - go directly to admin dashboard
+                _ = NavigateToAdminDashboard(accessLevel, user.UserId);
+            }
+        }
+
+        /// <summary>
+        /// Navigate to PIN recovery screen (forgot password flow)
+        /// Rationale: Simple PIN-based password recovery for kiosk users
+        /// </summary>
+        private void NavigateToPINRecovery()
+        {
+            try
+            {
+                LoggingService.Application.Information("Navigating to PIN recovery");
+                
+                // Unsubscribe from existing instance to prevent memory leaks
+                if (pinRecoveryScreen != null)
+                {
+                    pinRecoveryScreen.RecoverySuccessful -= PINRecoveryScreen_RecoverySuccessful;
+                    pinRecoveryScreen.BackToLogin -= PINRecoveryScreen_BackToLogin;
+                }
+
+                // Create new instance
+                pinRecoveryScreen = new PINRecoveryScreen(_databaseService);
+                
+                // Subscribe to events
+                pinRecoveryScreen.RecoverySuccessful += PINRecoveryScreen_RecoverySuccessful;
+                pinRecoveryScreen.BackToLogin += PINRecoveryScreen_BackToLogin;
+
+                CurrentScreenContainer.Content = pinRecoveryScreen;
+                LoggingService.Application.Information("PIN recovery screen loaded");
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Navigation to PIN recovery failed", ex);
+                
+                // Fallback - go back to login
+                NavigateToAdminLogin();
+            }
+        }
+
+        /// <summary>
+        /// Navigate to password reset screen after successful PIN verification
+        /// </summary>
+        private void NavigateToPasswordReset(AdminUser user)
+        {
+            try
+            {
+                LoggingService.Application.Information("Navigating to password reset",
+                    ("UserId", user.UserId),
+                    ("Username", user.Username));
+                
+                // Unsubscribe from existing instance to prevent memory leaks
+                if (passwordResetScreen != null)
+                {
+                    passwordResetScreen.PasswordResetSuccessful -= PasswordResetScreen_PasswordResetSuccessful;
+                    passwordResetScreen.PasswordResetCancelled -= PasswordResetScreen_PasswordResetCancelled;
+                }
+
+                // Create new instance
+                passwordResetScreen = new PasswordResetScreen(_databaseService, user);
+                
+                // Subscribe to events
+                passwordResetScreen.PasswordResetSuccessful += PasswordResetScreen_PasswordResetSuccessful;
+                passwordResetScreen.PasswordResetCancelled += PasswordResetScreen_PasswordResetCancelled;
+
+                CurrentScreenContainer.Content = passwordResetScreen;
+                LoggingService.Application.Information("Password reset screen loaded",
+                    ("UserId", user.UserId),
+                    ("Username", user.Username));
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Navigation to password reset failed", ex,
+                    ("UserId", user.UserId),
+                    ("Username", user.Username));
+                
+                // Fallback - go back to login
+                NavigateToAdminLogin();
             }
         }
 
@@ -2064,8 +2209,33 @@ namespace Photobooth
                 }
                 else
                 {
-                    // Normal login - go to dashboard
-                await NavigateToAdminDashboard(e.AccessLevel, e.UserId);
+                    // Normal login - check if PIN setup is required
+                    var userData = await _databaseService.GetByUserIdAsync<AdminUser>(e.UserId);
+                    if (userData.Success && userData.Data != null)
+                    {
+                        if (userData.Data.PINSetupRequired)
+                        {
+                            LoggingService.Application.Information("PIN setup required - redirecting to PIN setup screen",
+                                ("UserId", e.UserId),
+                                ("Username", e.Username),
+                                ("AccessLevel", e.AccessLevel.ToString()));
+                            
+                            // Navigate to PIN setup screen
+                            NavigateToPINSetup(userData.Data, e.AccessLevel);
+                        }
+                        else
+                        {
+                            // PIN already set up - go to dashboard
+                            await NavigateToAdminDashboard(e.AccessLevel, e.UserId);
+                        }
+                    }
+                    else
+                    {
+                        // Fallback - go to dashboard if user data retrieval fails
+                        LoggingService.Application.Error("Failed to retrieve user data for PIN setup check", null,
+                            ("UserId", e.UserId));
+                        await NavigateToAdminDashboard(e.AccessLevel, e.UserId);
+                    }
                 }
             }
             catch (Exception ex)
@@ -2095,6 +2265,119 @@ namespace Photobooth
         }
 
         /// <summary>
+        /// Handles forgot password request from login screen - navigate to PIN recovery
+        /// </summary>
+        private void AdminLoginScreen_ForgotPasswordRequested(object? sender, EventArgs e)
+        {
+            try
+            {
+                LoggingService.Application.Information("Forgot password requested - navigating to PIN recovery");
+                NavigateToPINRecovery();
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Forgot password navigation failed", ex);
+                NavigateToAdminLogin();
+            }
+        }
+
+        /// <summary>
+        /// Handles PIN setup completion - navigate to admin dashboard
+        /// </summary>
+        private async void PINSetupScreen_PINSetupCompleted(object? sender, EventArgs e)
+        {
+            try
+            {
+                LoggingService.Application.Information("PIN setup completed - proceeding to admin dashboard",
+                    ("UserId", _tempUserId ?? "Unknown"),
+                    ("AccessLevel", _tempAccessLevel.ToString()));
+
+                // Navigate to admin dashboard
+                await NavigateToAdminDashboard(_tempAccessLevel, _tempUserId ?? string.Empty);
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Post-PIN-setup navigation failed", ex,
+                    ("UserId", _tempUserId ?? "Unknown"));
+                System.Diagnostics.Debug.WriteLine($"Post-PIN-setup navigation failed: {ex.Message}");
+                NavigateToWelcome();
+            }
+        }
+
+        /// <summary>
+        /// Handles successful PIN verification - navigate to password reset
+        /// </summary>
+        private void PINRecoveryScreen_RecoverySuccessful(object? sender, AdminUser user)
+        {
+            try
+            {
+                LoggingService.Application.Information("PIN recovery successful - proceeding to password reset",
+                    ("UserId", user.UserId),
+                    ("Username", user.Username));
+
+                // Navigate to password reset screen
+                NavigateToPasswordReset(user);
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Post-PIN-recovery navigation failed", ex,
+                    ("UserId", user?.UserId ?? "Unknown"));
+                NavigateToAdminLogin();
+            }
+        }
+
+        /// <summary>
+        /// Handles PIN recovery back to login request
+        /// </summary>
+        private void PINRecoveryScreen_BackToLogin(object? sender, EventArgs e)
+        {
+            try
+            {
+                LoggingService.Application.Information("User returned to login from PIN recovery");
+                NavigateToAdminLogin();
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Navigation back to login failed", ex);
+                NavigateToWelcome();
+            }
+        }
+
+        /// <summary>
+        /// Handles successful password reset - return to login
+        /// </summary>
+        private void PasswordResetScreen_PasswordResetSuccessful(object? sender, EventArgs e)
+        {
+            try
+            {
+                LoggingService.Application.Information("Password reset successful - returning to login");
+                NavigateToAdminLogin();
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Post-password-reset navigation failed", ex);
+                NavigateToWelcome();
+            }
+        }
+
+        /// <summary>
+        /// Handle password reset cancellation - user clicked Back button
+        /// </summary>
+        private void PasswordResetScreen_PasswordResetCancelled(object? sender, EventArgs e)
+        {
+            try
+            {
+                LoggingService.Application.Information("Password reset cancelled by user - returning to login");
+                NavigateToAdminLogin();
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Post-password-reset-cancellation navigation failed", ex);
+                NavigateToWelcome();
+            }
+        }
+
+        /// <summary>
         /// Handles admin dashboard exit request
         /// </summary>
         private void AdminDashboardScreen_ExitAdminRequested(object? sender, EventArgs e)
@@ -2114,12 +2397,16 @@ namespace Photobooth
 
         /// <summary>
         /// Handles successful password change completion
+        /// Rationale: After password change, show PIN setup screen before going to admin dashboard
         /// </summary>
-        private async void ForcedPasswordChangeScreen_PasswordChangeCompleted(object? sender, PasswordChangeCompletedEventArgs e)
+        private void ForcedPasswordChangeScreen_PasswordChangeCompleted(object? sender, PasswordChangeCompletedEventArgs e)
         {
             try
             {
-                LoggingService.Application.Information("Setup password changed successfully - proceeding to admin dashboard",
+                System.Diagnostics.Debug.WriteLine("=== PASSWORD CHANGE COMPLETED EVENT FIRED ===");
+                System.Diagnostics.Debug.WriteLine($"User: {e.User.Username}, AccessLevel: {e.AccessLevel}");
+                
+                LoggingService.Application.Information("Setup password changed successfully - proceeding to PIN setup",
                     ("UserId", e.User.UserId),
                     ("Username", e.User.Username),
                     ("AccessLevel", e.AccessLevel.ToString()));
@@ -2136,11 +2423,16 @@ namespace Photobooth
                         ("Error", cleanupEx.Message));
                 }
 
-                // Navigate to admin dashboard with new credentials
-                await NavigateToAdminDashboard(e.AccessLevel, e.User.UserId);
+                System.Diagnostics.Debug.WriteLine("=== CALLING NavigateToPINSetup ===");
+                
+                // Navigate to PIN setup screen
+                NavigateToPINSetup(e.User, e.AccessLevel);
+                
+                System.Diagnostics.Debug.WriteLine("=== NavigateToPINSetup COMPLETED ===");
             }
             catch (Exception ex)
             {
+                System.Diagnostics.Debug.WriteLine($"=== ERROR IN PASSWORD CHANGE HANDLER: {ex.Message} ===");
                 LoggingService.Application.Error("Post-password-change navigation failed", ex,
                     ("UserId", e.User.UserId),
                     ("Username", e.User.Username));
@@ -2240,6 +2532,7 @@ namespace Photobooth
                 {
                     adminLoginScreen.LoginSuccessful -= AdminLoginScreen_LoginSuccessful;
                     adminLoginScreen.LoginCancelled -= AdminLoginScreen_LoginCancelled;
+                    adminLoginScreen.ForgotPasswordRequested -= AdminLoginScreen_ForgotPasswordRequested;
                 }
 
                 if (adminDashboardScreen != null)
@@ -2250,6 +2543,23 @@ namespace Photobooth
                 if (forcedPasswordChangeScreen != null)
                 {
                     forcedPasswordChangeScreen.PasswordChangeCompleted -= ForcedPasswordChangeScreen_PasswordChangeCompleted;
+                }
+
+                if (pinSetupScreen != null)
+                {
+                    pinSetupScreen.PINSetupCompleted -= PINSetupScreen_PINSetupCompleted;
+                }
+
+                if (pinRecoveryScreen != null)
+                {
+                    pinRecoveryScreen.RecoverySuccessful -= PINRecoveryScreen_RecoverySuccessful;
+                    pinRecoveryScreen.BackToLogin -= PINRecoveryScreen_BackToLogin;
+                }
+
+                if (passwordResetScreen != null)
+                {
+                    passwordResetScreen.PasswordResetSuccessful -= PasswordResetScreen_PasswordResetSuccessful;
+                    passwordResetScreen.PasswordResetCancelled -= PasswordResetScreen_PasswordResetCancelled;
                 }
 
                 // Shutdown logging system

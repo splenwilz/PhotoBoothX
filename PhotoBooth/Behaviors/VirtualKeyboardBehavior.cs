@@ -135,13 +135,29 @@ namespace Photobooth.Behaviors
             {
                 if (sender is Control control)
                 {
+                    Console.WriteLine($"=== VirtualKeyboardBehavior.Control_GotFocus: {control.Name} ===");
+                    
+                    // IMMEDIATELY switch the active input in the virtual keyboard service
+                    // This ensures the virtual keyboard knows which control is active before any key presses
+                    // and properly restores binding for the previous control
+                    var virtualKeyboardService = VirtualKeyboardService.Instance;
+                    if (virtualKeyboardService != null)
+                    {
+                        virtualKeyboardService.SwitchActiveInput(control);
+                    }
                     
                     // Find the parent window
                     var parentWindow = Window.GetWindow(control);
                     if (parentWindow != null)
                     {
+                        Console.WriteLine($"Calling VirtualKeyboardService.ShowKeyboardAsync for {control.Name}");
                         // Show virtual keyboard for this control
                         await VirtualKeyboardService.Instance.ShowKeyboardAsync(control, parentWindow);
+                        Console.WriteLine($"VirtualKeyboardService.ShowKeyboardAsync completed for {control.Name}");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"No parent window found for {control.Name}");
                     }
                 }
             }

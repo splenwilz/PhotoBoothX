@@ -24,9 +24,11 @@ namespace Photobooth.Services
         
         // Specialized methods
         Task<DatabaseResult<AdminUser?>> AuthenticateAsync(string username, string password);
+        Task<DatabaseResult<AdminUser?>> GetUserByUsernameAsync(string username); // For PIN recovery - get user without password check
         Task<DatabaseResult<bool>> IsUsingSetupCredentialsAsync(string username, string password);
         Task<DatabaseResult> UpdateAdminPasswordAsync(AdminAccessLevel accessLevel, string newPassword, string? updatedBy = null);
-        Task<DatabaseResult> UpdateUserPasswordByUserIdAsync(string userId, string newPassword, string? updatedBy = null);
+        Task<DatabaseResult> UpdateUserPasswordByUserIdAsync(string userId, string newPassword, string? updatedBy = null, string? email = null);
+        Task<DatabaseResult> UpdateUserRecoveryPINAsync(string userId, string pinHash, string pinSalt);
         Task<DatabaseResult> CreateAdminUserAsync(AdminUser user, string password, string? createdBy = null);
         Task<DatabaseResult> DeleteAdminUserAsync(string userId, string? deletedBy = null);
         Task<DatabaseResult<List<SalesOverviewDto>>> GetSalesOverviewAsync(DateTime? startDate = null, DateTime? endDate = null);
@@ -733,6 +735,38 @@ namespace Photobooth.Services
             }
         }
 
+        /// <summary>
+        /// Get user by username without password verification
+        /// Rationale: Used for PIN recovery - need to fetch user data (including PIN hash/salt) to verify recovery PIN
+        /// </summary>
+        public async Task<DatabaseResult<AdminUser?>> GetUserByUsernameAsync(string username)
+        {
+            try
+            {
+                var query = "SELECT * FROM AdminUsers WHERE Username = @username AND IsActive = 1";
+                
+                using var connection = await CreateConnectionAsync();
+                using var command = new SqliteCommand(query, connection);
+                command.Parameters.AddWithValue("@username", username);
+                
+                using var reader = await command.ExecuteReaderAsync();
+
+                if (await reader.ReadAsync())
+                {
+                    var user = MapReaderToEntity<AdminUser>(reader);
+                    return DatabaseResult<AdminUser?>.SuccessResult(user);
+                }
+
+                return DatabaseResult<AdminUser?>.SuccessResult(null); // User not found (not an error, just null data)
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to retrieve user by username", ex,
+                    ("Username", username));
+                return DatabaseResult<AdminUser?>.ErrorResult($"Failed to retrieve user: {ex.Message}", ex);
+            }
+        }
+
         public async Task<DatabaseResult<bool>> IsUsingSetupCredentialsAsync(string username, string password)
         {
             try
@@ -801,17 +835,26 @@ namespace Photobooth.Services
             }
         }
 
-        public async Task<DatabaseResult> UpdateUserPasswordByUserIdAsync(string userId, string newPassword, string? updatedBy = null)
+        public async Task<DatabaseResult> UpdateUserPasswordByUserIdAsync(string userId, string newPassword, string? updatedBy = null, string? email = null)
         {
             try
             {
                 // Update password AND mark as no longer setup credentials by setting CreatedBy and UpdatedBy
-                var query = @"UPDATE AdminUsers 
-                             SET PasswordHash = @newPassword, 
-                                 UpdatedAt = @updatedAt,
-                                 UpdatedBy = @updatedBy,
-                                 CreatedBy = COALESCE(CreatedBy, @updatedBy)
-                             WHERE UserId = @userId";
+                // Optionally update email if provided
+                var query = email != null 
+                    ? @"UPDATE AdminUsers 
+                       SET PasswordHash = @newPassword, 
+                           Email = @email,
+                           UpdatedAt = @updatedAt,
+                           UpdatedBy = @updatedBy,
+                           CreatedBy = COALESCE(CreatedBy, @updatedBy)
+                       WHERE UserId = @userId"
+                    : @"UPDATE AdminUsers 
+                       SET PasswordHash = @newPassword, 
+                           UpdatedAt = @updatedAt,
+                           UpdatedBy = @updatedBy,
+                           CreatedBy = COALESCE(CreatedBy, @updatedBy)
+                       WHERE UserId = @userId";
 
                 using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
@@ -819,19 +862,60 @@ namespace Photobooth.Services
                 command.Parameters.AddWithValue("@userId", userId);
                 command.Parameters.AddWithValue("@updatedAt", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
                 command.Parameters.AddWithValue("@updatedBy", updatedBy ?? userId); // Self-update if no updatedBy specified
+                
+                if (email != null)
+                {
+                    command.Parameters.AddWithValue("@email", email);
+                }
 
                 await command.ExecuteNonQueryAsync();
                 
                 // Use file-based logging instead of database logging
                 LoggingService.Application.Information("User password updated - setup credentials converted",
                     ("UserId", userId),
-                    ("UpdatedBy", updatedBy ?? "Self"));
+                    ("UpdatedBy", updatedBy ?? "Self"),
+                    ("EmailUpdated", email != null));
                 
                 return DatabaseResult.SuccessResult();
             }
             catch (Exception ex)
             {
                 return DatabaseResult.ErrorResult($"Failed to update user password: {ex.Message}", ex);
+            }
+        }
+
+        /// <summary>
+        /// Update user's recovery PIN (hash and salt)
+        /// Rationale: Separate method for PIN updates to keep concerns separated
+        /// </summary>
+        public async Task<DatabaseResult> UpdateUserRecoveryPINAsync(string userId, string pinHash, string pinSalt)
+        {
+            try
+            {
+                var query = @"UPDATE AdminUsers 
+                             SET RecoveryPIN = @pinHash, 
+                                 RecoveryPINSalt = @pinSalt,
+                                 RecoveryPINSetDate = @setDate,
+                                 PINSetupRequired = 0
+                             WHERE UserId = @userId";
+
+                using var connection = await CreateConnectionAsync();
+                using var command = new SqliteCommand(query, connection);
+                command.Parameters.AddWithValue("@pinHash", pinHash);
+                command.Parameters.AddWithValue("@pinSalt", pinSalt);
+                command.Parameters.AddWithValue("@setDate", DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss"));
+                command.Parameters.AddWithValue("@userId", userId);
+
+                await command.ExecuteNonQueryAsync();
+                
+                LoggingService.Application.Information("User recovery PIN updated",
+                    ("UserId", userId));
+                
+                return DatabaseResult.SuccessResult();
+            }
+            catch (Exception ex)
+            {
+                return DatabaseResult.ErrorResult($"Failed to update recovery PIN: {ex.Message}", ex);
             }
         }
 

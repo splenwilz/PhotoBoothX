@@ -100,11 +100,15 @@ namespace Photobooth
         /// <summary>
         /// Handle Enter key press in confirm password field
         /// </summary>
-        private async void ConfirmPasswordInput_KeyDown(object sender, KeyEventArgs e)
+        private void ConfirmPasswordInput_KeyDown(object sender, KeyEventArgs e)
         {
+            // Trigger the button click when Enter is pressed (which will invoke ChangePasswordButton_Click)
+            // Rationale: Centralize password change logic in one place instead of duplicating
             if (e.Key == Key.Enter && ChangePasswordButton.IsEnabled)
             {
-                await PerformPasswordChange();
+                System.Diagnostics.Debug.WriteLine("@@@ ENTER KEY PRESSED - TRIGGERING BUTTON CLICK @@@");
+                ChangePasswordButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                e.Handled = true; // Prevent duplicate handlers and system ding
             }
         }
 
@@ -115,17 +119,13 @@ namespace Photobooth
         {
             var password = GetCurrentNewPassword();
 
-            // Check length (at least 8 characters)
-            _isLength8Valid = password.Length >= 8;
-
-            // Check for uppercase letter
-            _isUppercaseValid = Regex.IsMatch(password, @"[A-Z]");
-
-            // Check for lowercase letter
-            _isLowercaseValid = Regex.IsMatch(password, @"[a-z]");
-
-            // Check for number
-            _isNumberValid = Regex.IsMatch(password, @"[0-9]");
+            // Use centralized password policy for consistent validation
+            var validation = PasswordPolicyService.ValidatePassword(password);
+            
+            _isLength8Valid = validation.MeetsLengthRequirement;
+            _isUppercaseValid = validation.HasUppercase;
+            _isLowercaseValid = validation.HasLowercase;
+            _isNumberValid = validation.HasNumber;
 
             // Revalidate password match
             ValidatePasswordMatch();
@@ -341,7 +341,7 @@ namespace Photobooth
                     ("Username", _currentUser.Username),
                     ("AccessLevel", _accessLevel.ToString()));
 
-                // Update password in database
+                // Update password in database (email can be added later if needed)
                 var result = await _databaseService.UpdateUserPasswordByUserIdAsync(_currentUser.UserId, newPassword, _currentUser.UserId);
 
                 if (result.Success)
@@ -359,8 +359,14 @@ namespace Photobooth
                     // Hide virtual keyboard on successful password change
                     VirtualKeyboardService.Instance.HideKeyboard();
 
+                    System.Diagnostics.Debug.WriteLine("@@@ ABOUT TO INVOKE PasswordChangeCompleted EVENT @@@");
+                    System.Diagnostics.Debug.WriteLine($"@@@ Event null? {PasswordChangeCompleted == null} @@@");
+                    System.Diagnostics.Debug.WriteLine($"@@@ Subscriber count: {PasswordChangeCompleted?.GetInvocationList().Length ?? 0} @@@");
+                    
                     // Trigger successful password change event
                     PasswordChangeCompleted?.Invoke(this, new PasswordChangeCompletedEventArgs(_currentUser, _accessLevel));
+                    
+                    System.Diagnostics.Debug.WriteLine("@@@ PasswordChangeCompleted EVENT INVOKED @@@");
                 }
                 else
                 {
