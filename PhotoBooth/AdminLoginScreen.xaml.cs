@@ -84,6 +84,7 @@ namespace Photobooth
             if (e.Key == Key.Enter)
             {
                 await PerformLogin();
+                e.Handled = true; // Prevent duplicate handlers and system ding
             }
         }
 

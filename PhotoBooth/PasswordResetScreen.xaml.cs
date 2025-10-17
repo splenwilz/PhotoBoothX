@@ -31,6 +31,9 @@ namespace Photobooth
 
             UsernameDisplay.Text = $"Setting new password for: {user.Username}";
 
+            // Ensure initial disabled state until requirements are met
+            UpdateResetButton();
+
             // Set focus to new password input when loaded
             Loaded += (s, e) => NewPasswordInput.Focus();
         }
@@ -60,6 +63,7 @@ namespace Photobooth
             if (e.Key == Key.Enter && ResetPasswordButton.IsEnabled)
             {
                 ResetPasswordButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                e.Handled = true; // Prevent duplicate handlers and system ding
             }
         }
 
@@ -86,6 +90,7 @@ namespace Photobooth
             if (e.Key == Key.Enter && ResetPasswordButton.IsEnabled)
             {
                 ResetPasswordButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                e.Handled = true; // Prevent duplicate handlers and system ding
             }
         }
 

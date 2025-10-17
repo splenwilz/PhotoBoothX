@@ -108,6 +108,7 @@ namespace Photobooth
             {
                 System.Diagnostics.Debug.WriteLine("@@@ ENTER KEY PRESSED - TRIGGERING BUTTON CLICK @@@");
                 ChangePasswordButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                e.Handled = true; // Prevent duplicate handlers and system ding
             }
         }
 
