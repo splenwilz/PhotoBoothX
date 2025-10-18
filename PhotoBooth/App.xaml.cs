@@ -36,6 +36,45 @@ namespace PhotoBooth
             Console.WriteLine("Master Password Debugging Enabled");
             Console.WriteLine("===========================================");
             Console.WriteLine();
+
+            // SECURITY: Initialize master password config on startup
+            // This ensures config file is loaded and deleted immediately, not waiting for login
+            InitializeMasterPasswordConfigAsync();
+        }
+
+        /// <summary>
+        /// Initialize master password config on app startup to ensure security
+        /// Config file is loaded into encrypted database and deleted immediately
+        /// </summary>
+        private async void InitializeMasterPasswordConfigAsync()
+        {
+            try
+            {
+                Console.WriteLine("[SECURITY] Initializing master password config on startup...");
+                
+                // Create services
+                var dbService = new Photobooth.Services.DatabaseService();
+                await dbService.InitializeAsync();
+                
+                var masterPasswordConfigService = new Photobooth.Services.MasterPasswordConfigService(dbService);
+                
+                // Try to get base secret - this will load from config file if needed and delete it
+                try
+                {
+                    await masterPasswordConfigService.GetBaseSecretAsync();
+                    Console.WriteLine("[SECURITY] Master password config initialized and secured.");
+                }
+                catch (InvalidOperationException)
+                {
+                    // Expected if master password feature is not configured
+                    Console.WriteLine("[INFO] Master password feature not configured (this is normal for self-hosted builds)");
+                }
+            }
+            catch (Exception ex)
+            {
+                // Log but don't crash the app
+                Console.WriteLine($"[WARNING] Failed to initialize master password config: {ex.Message}");
+            }
         }
 
         protected override void OnExit(ExitEventArgs e)
