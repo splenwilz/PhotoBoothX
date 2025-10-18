@@ -107,14 +107,12 @@ jobs:
           Write-Host "   Master password feature will be DISABLED" -ForegroundColor Yellow
           Write-Host "   (This is normal for forks and self-hosted builds)" -ForegroundColor Cyan
         } else {
-          $config = @"
-        {
-          \"version\": \"1.0\",
-          \"encrypted\": false,
-          \"baseSecret\": \"${{ secrets.MASTER_PASSWORD_BASE_SECRET }}\"
-        }
-        "@
-          $config | Out-File -FilePath "PhotoBooth/master-password.config" -Encoding UTF8
+          $json = @{
+            version = "1.0"
+            encrypted = $false
+            baseSecret = "${{ secrets.MASTER_PASSWORD_BASE_SECRET }}"
+          }
+          $json | ConvertTo-Json | Out-File -FilePath "PhotoBooth/master-password.config" -Encoding UTF8
           Write-Host "[OK] Master password config created" -ForegroundColor Green
           Write-Host "   Master password feature will be ENABLED" -ForegroundColor Green
         }
@@ -181,15 +179,13 @@ jobs:
     - name: Add master password config to installer (if secret available)
       run: |
         if ("${{ secrets.MASTER_PASSWORD_BASE_SECRET }}" -ne "") {
-          $config = @"
-        {
-          \"version\": \"1.0\",
-          \"encrypted\": false,
-          \"baseSecret\": \"${{ secrets.MASTER_PASSWORD_BASE_SECRET }}\"
-        }
-        "@
+          $json = @{
+            version = "1.0"
+            encrypted = $false
+            baseSecret = "${{ secrets.MASTER_PASSWORD_BASE_SECRET }}"
+          }
           # Create config in the source directory (for Inno Setup to find)
-          $config | Out-File -FilePath "PhotoBooth/master-password.config" -Encoding UTF8
+          $json | ConvertTo-Json | Out-File -FilePath "PhotoBooth/master-password.config" -Encoding UTF8
           Write-Host "[OK] Master password config added to installer package" -ForegroundColor Green
         } else {
           Write-Host "[INFO]  No master password secret available" -ForegroundColor Yellow
