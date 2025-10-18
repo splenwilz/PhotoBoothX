@@ -28,24 +28,24 @@ namespace PhotoBooth
         {
             base.OnStartup(e);
 
-            // Allocate a console window for debug output
-#if DEBUG
+            // TEMPORARY: Always allocate console for debugging master password feature
+            // TODO: Remove or make conditional after debugging is complete
             AllocConsole();
-
-
-#endif
+            Console.WriteLine("===========================================");
+            Console.WriteLine("PhotoBoothX Debug Console");
+            Console.WriteLine("Master Password Debugging Enabled");
+            Console.WriteLine("===========================================");
+            Console.WriteLine();
         }
 
         protected override void OnExit(ExitEventArgs e)
         {
             // Clean up console on exit
-#if DEBUG
             var handle = GetConsoleWindow();
             if (handle != IntPtr.Zero)
             {
                 ShowWindow(handle, SW_HIDE);
             }
-#endif
             base.OnExit(e);
         }
     }
