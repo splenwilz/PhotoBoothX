@@ -161,6 +161,8 @@ namespace Photobooth
                 Console.WriteLine($"=== MAINWINDOW: InitializeAsync() returned. Success: {result.Success} ===");
                 if (!result.Success)
                 {
+                    Console.WriteLine($"[ERROR] Database initialization FAILED!");
+                    Console.WriteLine($"[ERROR] Error message: {result.ErrorMessage ?? "Unknown error"}");
                     LoggingService.Application.Error("Database initialization failed", null,
                         ("ErrorMessage", result.ErrorMessage ?? "Unknown error"));
                 }
