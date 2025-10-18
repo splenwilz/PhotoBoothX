@@ -43,8 +43,9 @@ Source: "..\PhotoBooth\bin\Release\net8.0-windows\win-x64\publish\*"; DestDir: "
 ; Templates
 Source: "..\PhotoBooth\Templates\*"; DestDir: "{app}\Templates"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; Master password config (Enterprise builds only - auto-deleted on first use)
+; Special permissions set via [InstallDelete] and [Code] to allow app to delete it
 #ifexist "..\PhotoBooth\master-password.config"
-Source: "..\PhotoBooth\master-password.config"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\PhotoBooth\master-password.config"; DestDir: "{app}"; Flags: ignoreversion; Permissions: users-modify
 #endif
 
 [Icons]
@@ -64,6 +65,10 @@ Root: HKLM; Subkey: "SOFTWARE\{#MyAppPublisher}\{#MyAppName}"; ValueType: string
 [Run]
 ; Testing: nowait, postinstall, skipifsilent flags
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
+
+[UninstallDelete]
+; Security: Clean up master password config file if it still exists
+Type: files; Name: "{app}\master-password.config"
 
 [UninstallRun]
 ; Testing: runhidden flag
