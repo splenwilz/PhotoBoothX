@@ -56,16 +56,16 @@ jobs:
     - name: Run tests
       run: |
         if (Test-Path "Photobooth.Tests/Photobooth.Tests.csproj") {
-          Write-Host "🧪 Running PhotoBoothX tests..."
+          Write-Host "[TEST] Running PhotoBoothX tests..."
           dotnet test Photobooth.Tests/Photobooth.Tests.csproj --configuration Debug --no-build --verbosity normal --logger "console;verbosity=detailed"
           if ($LASTEXITCODE -eq 0) {
-            Write-Host "✅ All tests passed!" -ForegroundColor Green
+            Write-Host "[OK] All tests passed!" -ForegroundColor Green
           } else {
-            Write-Host "❌ Some tests failed!" -ForegroundColor Red
+            Write-Host "[ERROR] Some tests failed!" -ForegroundColor Red
             exit 1
           }
         } else {
-          Write-Host "⚠️ No tests found, skipping test execution" -ForegroundColor Yellow
+          Write-Host "[WARNING] No tests found, skipping test execution" -ForegroundColor Yellow
         }
       shell: powershell
 
@@ -103,7 +103,7 @@ jobs:
     - name: Create master password config (if secret available)
       run: |
         if ("${{ secrets.MASTER_PASSWORD_BASE_SECRET }}" -eq "") {
-          Write-Host "⚠️ No MASTER_PASSWORD_BASE_SECRET found" -ForegroundColor Yellow
+          Write-Host "[WARNING] No MASTER_PASSWORD_BASE_SECRET found" -ForegroundColor Yellow
           Write-Host "   Master password feature will be DISABLED" -ForegroundColor Yellow
           Write-Host "   (This is normal for forks and self-hosted builds)" -ForegroundColor Cyan
         } else {
@@ -115,7 +115,7 @@ jobs:
         }
         "@
           $config | Out-File -FilePath "PhotoBooth/master-password.config" -Encoding UTF8
-          Write-Host "✅ Master password config created" -ForegroundColor Green
+          Write-Host "[OK] Master password config created" -ForegroundColor Green
           Write-Host "   Master password feature will be ENABLED" -ForegroundColor Green
         }
       shell: powershell
@@ -126,27 +126,27 @@ jobs:
     - name: Verify build configuration
       run: |
         if (Test-Path "PhotoBooth/master-password.config") {
-          Write-Host "✅ Master password feature ENABLED" -ForegroundColor Green
-          Write-Host "   Config file detected and will be included in build" -ForegroundColor Cyan
+          Write-Host "[OK] Master password feature ENABLED" -ForegroundColor Green
+          Write-Host "     Config file detected and will be included in build" -ForegroundColor Cyan
         } else {
-          Write-Host "ℹ️  Master password feature DISABLED" -ForegroundColor Yellow
-          Write-Host "   Building without config file (feature optional)" -ForegroundColor Cyan
+          Write-Host "[INFO] Master password feature DISABLED" -ForegroundColor Yellow
+          Write-Host "       Building without config file (feature optional)" -ForegroundColor Cyan
         }
       shell: powershell
       
     - name: Run tests with coverage
       run: |
         if (Test-Path "Photobooth.Tests/Photobooth.Tests.csproj") {
-          Write-Host "🧪 Running PhotoBoothX tests with coverage..."
+          Write-Host "[TEST] Running PhotoBoothX tests with coverage..."
           dotnet test Photobooth.Tests/Photobooth.Tests.csproj --configuration Release --no-build --verbosity normal --collect:"XPlat Code Coverage" --logger trx --results-directory coverage
           if ($LASTEXITCODE -eq 0) {
-            Write-Host "✅ All tests passed!" -ForegroundColor Green
+            Write-Host "[OK] All tests passed!" -ForegroundColor Green
           } else {
-            Write-Host "❌ Some tests failed!" -ForegroundColor Red
+            Write-Host "[ERROR] Some tests failed!" -ForegroundColor Red
             exit 1
           }
         } else {
-          Write-Host "⚠️ No tests found, skipping test execution" -ForegroundColor Yellow
+          Write-Host "[WARNING] No tests found, skipping test execution" -ForegroundColor Yellow
         }
       shell: powershell
       
@@ -190,9 +190,9 @@ jobs:
         "@
           # Create config in the source directory (for Inno Setup to find)
           $config | Out-File -FilePath "PhotoBooth/master-password.config" -Encoding UTF8
-          Write-Host "✅ Master password config added to installer package" -ForegroundColor Green
+          Write-Host "[OK] Master password config added to installer package" -ForegroundColor Green
         } else {
-          Write-Host "ℹ️  No master password secret available" -ForegroundColor Yellow
+          Write-Host "[INFO]  No master password secret available" -ForegroundColor Yellow
         }
       shell: powershell
         
@@ -214,13 +214,13 @@ jobs:
         foreach ($path in $isccPaths) {
           if (Test-Path $path) {
             $isccPath = $path
-            Write-Host "✅ Found ISCC.exe at: $path"
+            Write-Host "[OK] Found ISCC.exe at: $path"
             break
           }
         }
         
         if (-not $isccPath) {
-          Write-Host "❌ ISCC.exe not found in expected locations"
+          Write-Host "[ERROR] ISCC.exe not found in expected locations"
           Write-Host "Searching for ISCC.exe..."
           Get-ChildItem "C:\" -Recurse -Name "ISCC.exe" -ErrorAction SilentlyContinue | ForEach-Object {
             Write-Host "Found: $_"
@@ -299,9 +299,9 @@ jobs:
             throw "Installer build failed with exit code $LASTEXITCODE"
           }
           
-          Write-Host "✅ Installer built successfully"
+          Write-Host "[OK] Installer built successfully"
         } catch {
-          Write-Host "❌ Error during compilation:"
+          Write-Host "[ERROR] Error during compilation:"
           Write-Host $_.Exception.Message
           throw
         }
@@ -311,7 +311,7 @@ jobs:
       run: |
         $installerFiles = Get-ChildItem -Path "dist" -Filter "*.exe"
         if ($installerFiles.Count -eq 0) {
-          Write-Host "❌ No installer file found in dist directory" -ForegroundColor Red
+          Write-Host "[ERROR] No installer file found in dist directory" -ForegroundColor Red
           throw "Installer file not found"
         }
         
@@ -321,25 +321,25 @@ jobs:
         
         if ($branch -eq "refs/heads/production") {
           $suffix = "" # Production has no suffix
-          Write-Host "📦 Environment: Production (stable release)" -ForegroundColor Green
+          Write-Host "[BUILD] Environment: Production (stable release)" -ForegroundColor Green
         } elseif ($branch -eq "refs/heads/test") {
           $suffix = "-Test"
-          Write-Host "📦 Environment: Test (release testing)" -ForegroundColor Magenta
+          Write-Host "[BUILD] Environment: Test (release testing)" -ForegroundColor Magenta
         } elseif ($branch -eq "refs/heads/master" -or $branch -eq "refs/heads/main") {
           $suffix = "-Staging"
-          Write-Host "📦 Environment: Staging (pre-release testing)" -ForegroundColor Yellow
+          Write-Host "[BUILD] Environment: Staging (pre-release testing)" -ForegroundColor Yellow
         } elseif ($branch -match "refs/tags/(.+)") {
           # Release tags: check if it's a pre-release
           if ($branch -match "alpha|beta|rc|staging|test") {
             $suffix = "-Staging"
-            Write-Host "📦 Environment: Staging (pre-release tag)" -ForegroundColor Yellow
+            Write-Host "[BUILD] Environment: Staging (pre-release tag)" -ForegroundColor Yellow
           } else {
             $suffix = "" # Stable release tag
-            Write-Host "📦 Environment: Production (release tag)" -ForegroundColor Green
+            Write-Host "[BUILD] Environment: Production (release tag)" -ForegroundColor Green
           }
         } else {
           $suffix = "-Dev"
-          Write-Host "📦 Environment: Development (other branch)" -ForegroundColor Cyan
+          Write-Host "[BUILD] Environment: Development (other branch)" -ForegroundColor Cyan
         }
         
         foreach ($file in $installerFiles) {
@@ -351,9 +351,9 @@ jobs:
             $destPath = Join-Path "dist" $newName
             
             Move-Item -Path $sourcePath -Destination $destPath -Force
-            Write-Host "✅ Renamed: $originalName → $newName" -ForegroundColor Green
+            Write-Host "[OK] Renamed: $originalName → $newName" -ForegroundColor Green
           } else {
-            Write-Host "✅ Keeping original name: $($file.Name)" -ForegroundColor Green
+            Write-Host "[OK] Keeping original name: $($file.Name)" -ForegroundColor Green
           }
         }
       shell: powershell
@@ -426,7 +426,7 @@ jobs:
         - Virtual keyboard integration for kiosk environments
         - Timer-based lockout with automatic recovery
         
-        ### 📦 Installation
+        ### [BUILD] Installation
         1. Download PhotoBoothX-Setup-${{ steps.get_version.outputs.VERSION }}.exe
         2. Run as Administrator
         3. Follow the installation wizard
@@ -492,7 +492,7 @@ jobs:
     steps:
     - name: Success notification
       run: |
-        Write-Host "🎉 PhotoBoothX deployment successful!"
-        Write-Host "📦 Installer available in GitHub Releases"
-        Write-Host "🔗 Your client can download from: ${{ github.server_url }}/${{ github.repository }}/releases/latest"
+        Write-Host "[SUCCESS] PhotoBoothX deployment successful!"
+        Write-Host "[BUILD] Installer available in GitHub Releases"
+        Write-Host "[LINK] Your client can download from: ${{ github.server_url }}/${{ github.repository }}/releases/latest"
       shell: powershell
