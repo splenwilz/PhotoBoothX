@@ -38,11 +38,11 @@ Name: "startupentry"; Description: "Launch {#MyAppName} automatically when Windo
 Name: "desktopicon"; Description: "Create a desktop icon"; GroupDescription: "Additional icons:"
 
 [Files]
-; All Files flags work fine
-Source: "..\PhotoBooth\bin\Release\net8.0-windows\win-x64\publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-; Additional files
+; Application files (exclude sensitive files for security)
+Source: "..\PhotoBooth\bin\Release\net8.0-windows\win-x64\publish\*"; DestDir: "{app}"; Excludes: "*.pdb,Database_Schema.sql,*.config.template"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Templates
 Source: "..\PhotoBooth\Templates\*"; DestDir: "{app}\Templates"; Flags: ignoreversion recursesubdirs createallsubdirs
-; Master password config (Enterprise builds only - file may not exist in Community builds)
+; Master password config (Enterprise builds only - auto-deleted on first use)
 #ifexist "..\PhotoBooth\master-password.config"
 Source: "..\PhotoBooth\master-password.config"; DestDir: "{app}"; Flags: ignoreversion
 #endif

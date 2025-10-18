@@ -24,6 +24,13 @@
     <Copyright>© 2024 PhotoBoothX. All rights reserved.</Copyright>
   </PropertyGroup>
 
+  <!-- Security: Remove debug symbols from release builds to prevent reverse engineering -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+
   <!-- Publish Settings - Only applied during publish -->
   <PropertyGroup Condition="'$(PublishProfile)' != '' OR '$(IsPublishing)' == 'true'">
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>

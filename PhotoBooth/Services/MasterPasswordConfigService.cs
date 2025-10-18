@@ -16,6 +16,7 @@ namespace Photobooth.Services
         private readonly IDatabaseService _databaseService;
         private const string SETTINGS_CATEGORY = "Security";
         private const string BASE_SECRET_KEY = "MasterPasswordBaseSecret";
+        private const string CONFIG_FILENAME = "master-password.config";
 
         public MasterPasswordConfigService(IDatabaseService databaseService)
         {
@@ -57,6 +58,10 @@ namespace Photobooth.Services
                     await SetBaseSecretAsync(configSecret);
                     LoggingService.Application.Information("Master password base secret initialized from config file");
                     Console.WriteLine("✓ Successfully initialized from config file");
+                    
+                    // SECURITY: Delete the config file to remove plain text secret
+                    DeleteConfigFile();
+                    
                     return configSecret;
                 }
 
@@ -87,6 +92,31 @@ namespace Photobooth.Services
         }
 
         /// <summary>
+        /// Deletes the config file after successfully reading it (security measure)
+        /// </summary>
+        private void DeleteConfigFile()
+        {
+            try
+            {
+                var baseDir = AppDomain.CurrentDomain.BaseDirectory;
+                var configPath = Path.Combine(baseDir, CONFIG_FILENAME);
+                
+                if (File.Exists(configPath))
+                {
+                    File.Delete(configPath);
+                    LoggingService.Application.Information($"Deleted master password config file for security: {configPath}");
+                    Console.WriteLine($"[SECURITY] Deleted config file: {configPath}");
+                }
+            }
+            catch (Exception ex)
+            {
+                // Log but don't throw - deletion failure shouldn't break the app
+                LoggingService.Application.Warning($"Failed to delete master password config file: {ex.Message}");
+                Console.WriteLine($"[WARNING] Could not delete config file: {ex.Message}");
+            }
+        }
+
+        /// <summary>
         /// Loads base secret from config file (if exists)
         /// Config file is only included in enterprise installer packages
         /// </summary>
@@ -98,7 +128,7 @@ namespace Photobooth.Services
                 var baseDir = AppDomain.CurrentDomain.BaseDirectory;
                 Console.WriteLine($"Base directory: {baseDir}");
                 
-                var configPath = Path.Combine(baseDir, "master-password.config");
+                var configPath = Path.Combine(baseDir, CONFIG_FILENAME);
                 Console.WriteLine($"Looking for config at: {configPath}");
 
                 if (!File.Exists(configPath))
