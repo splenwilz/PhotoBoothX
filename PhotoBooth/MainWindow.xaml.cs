@@ -168,6 +168,10 @@ namespace Photobooth
                 {
                     LoggingService.Application.Information("Database initialization completed successfully");
                     
+                    // SECURITY: Initialize master password config now that database is ready
+                    // This ensures config file is loaded and deleted immediately
+                    await InitializeMasterPasswordConfigAsync();
+                    
                     // Initialize templates from file system on startup
                     // This ensures templates are available immediately without requiring admin login first
                     try
@@ -2622,6 +2626,42 @@ namespace Photobooth
         private bool IsTemplateValidForProduct(TemplateInfo template, ProductInfo product)
         {
             return _templateConversionService.IsTemplateValidForProduct(template, product);
+        }
+
+        #endregion
+
+        #region Master Password Initialization
+
+        /// <summary>
+        /// Initialize master password config after database is ready
+        /// This ensures config file is loaded into encrypted database and deleted immediately
+        /// </summary>
+        private async System.Threading.Tasks.Task InitializeMasterPasswordConfigAsync()
+        {
+            try
+            {
+                Console.WriteLine("[SECURITY] Initializing master password config (database is now ready)...");
+                
+                var masterPasswordConfigService = new Photobooth.Services.MasterPasswordConfigService(_databaseService);
+                
+                // Try to get base secret - this will load from config file if needed and delete it
+                try
+                {
+                    await masterPasswordConfigService.GetBaseSecretAsync();
+                    Console.WriteLine("[SECURITY] Master password config initialized and secured.");
+                }
+                catch (InvalidOperationException)
+                {
+                    // Expected if master password feature is not configured
+                    Console.WriteLine("[INFO] Master password feature not configured (this is normal for self-hosted builds)");
+                }
+            }
+            catch (Exception ex)
+            {
+                // Log but don't crash the app
+                Console.WriteLine($"[WARNING] Failed to initialize master password config: {ex.Message}");
+                LoggingService.Application.Warning($"Failed to initialize master password config: {ex.Message}");
+            }
         }
 
         #endregion

@@ -55,7 +55,16 @@ namespace Photobooth.Services
                 {
                     Console.WriteLine("Storing config secret in database...");
                     // Store in database for future use (encrypted)
-                    await SetBaseSecretAsync(configSecret);
+                    var saveSuccess = await SetBaseSecretAsync(configSecret);
+                    Console.WriteLine($"Database save result: {saveSuccess}");
+                    
+                    if (!saveSuccess)
+                    {
+                        Console.WriteLine("[ERROR] Failed to save secret to database!");
+                        LoggingService.Application.Error("Failed to save master password secret to database");
+                        throw new InvalidOperationException("Failed to initialize master password configuration");
+                    }
+                    
                     LoggingService.Application.Information("Master password base secret initialized from config file");
                     Console.WriteLine("✓ Successfully initialized from config file");
                     
@@ -184,17 +193,29 @@ namespace Photobooth.Services
         /// </summary>
         public async Task<bool> SetBaseSecretAsync(string baseSecret)
         {
+            Console.WriteLine("--- SetBaseSecretAsync START ---");
+            Console.WriteLine($"Input secret length: {baseSecret?.Length ?? 0}");
+            
             if (string.IsNullOrWhiteSpace(baseSecret))
+            {
+                Console.WriteLine("[ERROR] Base secret is empty!");
                 throw new ArgumentException("Base secret cannot be empty", nameof(baseSecret));
+            }
 
             if (baseSecret.Length < 32)
+            {
+                Console.WriteLine($"[ERROR] Base secret too short: {baseSecret.Length} chars (need 32+)");
                 throw new ArgumentException("Base secret must be at least 32 characters for security", nameof(baseSecret));
+            }
 
             try
             {
+                Console.WriteLine("Encrypting secret with DPAPI...");
                 // Encrypt using DPAPI (machine-specific)
                 var encrypted = EncryptSecret(baseSecret);
+                Console.WriteLine($"Encrypted secret length: {encrypted?.Length ?? 0}");
 
+                Console.WriteLine($"Calling database SetSettingValueAsync (Category: {SETTINGS_CATEGORY}, Key: {BASE_SECRET_KEY})...");
                 // Store in database
                 var result = await _databaseService.SetSettingValueAsync(
                     SETTINGS_CATEGORY, 
@@ -202,16 +223,27 @@ namespace Photobooth.Services
                     encrypted, 
                     "System");
 
+                Console.WriteLine($"Database SetSettingValueAsync result: Success={result.Success}");
+                if (!result.Success)
+                {
+                    Console.WriteLine($"[ERROR] Database error: {result.ErrorMessage}");
+                }
+
                 if (result.Success)
                 {
                     LoggingService.Application.Information("Master password base secret updated");
+                    Console.WriteLine("✓ Secret successfully saved to database");
                 }
 
+                Console.WriteLine("--- SetBaseSecretAsync END ---");
                 return result.Success;
             }
             catch (Exception ex)
             {
+                Console.WriteLine($"[ERROR] Exception in SetBaseSecretAsync: {ex.Message}");
+                Console.WriteLine($"Stack trace: {ex.StackTrace}");
                 LoggingService.Application.Error($"Failed to set base secret: {ex.Message}");
+                Console.WriteLine("--- SetBaseSecretAsync END (with error) ---");
                 return false;
             }
         }
