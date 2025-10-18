@@ -27,8 +27,8 @@ jobs:
   test-only:
     name: Run Tests
     runs-on: windows-latest
-    # Skip this job if we're doing a full build (production/main/master)
-    if: github.ref != 'refs/heads/production' && github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master'
+    # Skip this job if we're doing a full build (production/main/master/test)
+    if: github.ref != 'refs/heads/production' && github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master' && github.ref != 'refs/heads/test'
     
     steps:
     - name: Checkout code
@@ -73,8 +73,8 @@ jobs:
   build-and-test:
     name: Build and Test (Full)
     runs-on: windows-latest
-    # Only run on production/main/master branches or release events
-    if: github.ref == 'refs/heads/production' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.event_name == 'release'
+    # Only run on production/main/master/test branches or release events
+    if: github.ref == 'refs/heads/production' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/test' || github.event_name == 'release'
     
     steps:
     - name: Checkout code
@@ -98,8 +98,41 @@ jobs:
     - name: Restore dependencies
       run: dotnet restore ${{ env.PROJECT_PATH }}
       
+    # Inject master password config if GitHub secret exists
+    # This enables the feature for official releases while keeping forks/self-hosted simple
+    - name: Create master password config (if secret available)
+      run: |
+        if ("${{ secrets.MASTER_PASSWORD_BASE_SECRET }}" -eq "") {
+          Write-Host "⚠️ No MASTER_PASSWORD_BASE_SECRET found" -ForegroundColor Yellow
+          Write-Host "   Master password feature will be DISABLED" -ForegroundColor Yellow
+          Write-Host "   (This is normal for forks and self-hosted builds)" -ForegroundColor Cyan
+        } else {
+          $config = @"
+        {
+          \"version\": \"1.0\",
+          \"encrypted\": false,
+          \"baseSecret\": \"${{ secrets.MASTER_PASSWORD_BASE_SECRET }}\"
+        }
+        "@
+          $config | Out-File -FilePath "PhotoBooth/master-password.config" -Encoding UTF8
+          Write-Host "✅ Master password config created" -ForegroundColor Green
+          Write-Host "   Master password feature will be ENABLED" -ForegroundColor Green
+        }
+      shell: powershell
+      
     - name: Build application
       run: dotnet build ${{ env.PROJECT_PATH }} --configuration Release --no-restore
+      
+    - name: Verify build configuration
+      run: |
+        if (Test-Path "PhotoBooth/master-password.config") {
+          Write-Host "✅ Master password feature ENABLED" -ForegroundColor Green
+          Write-Host "   Config file detected and will be included in build" -ForegroundColor Cyan
+        } else {
+          Write-Host "ℹ️  Master password feature DISABLED" -ForegroundColor Yellow
+          Write-Host "   Building without config file (feature optional)" -ForegroundColor Cyan
+        }
+      shell: powershell
       
     - name: Run tests with coverage
       run: |
@@ -131,7 +164,7 @@ jobs:
     name: Create Installer
     needs: build-and-test
     runs-on: windows-latest
-    if: github.ref == 'refs/heads/production' || github.ref == 'refs/heads/master' || github.event_name == 'release'
+    if: github.ref == 'refs/heads/production' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/test' || github.event_name == 'release'
     
     steps:
     - name: Checkout code
@@ -142,6 +175,26 @@ jobs:
       with:
         name: published-app
         path: ${{ env.PUBLISH_PATH }}
+        
+    # Re-inject master password config if GitHub secret available
+    # (config file must be in source directory for Inno Setup to include it)
+    - name: Add master password config to installer (if secret available)
+      run: |
+        if ("${{ secrets.MASTER_PASSWORD_BASE_SECRET }}" -ne "") {
+          $config = @"
+        {
+          \"version\": \"1.0\",
+          \"encrypted\": false,
+          \"baseSecret\": \"${{ secrets.MASTER_PASSWORD_BASE_SECRET }}\"
+        }
+        "@
+          # Create config in the source directory (for Inno Setup to find)
+          $config | Out-File -FilePath "PhotoBooth/master-password.config" -Encoding UTF8
+          Write-Host "✅ Master password config added to installer package" -ForegroundColor Green
+        } else {
+          Write-Host "ℹ️  No master password secret available" -ForegroundColor Yellow
+        }
+      shell: powershell
         
     - name: Setup Inno Setup
       uses: crazy-max/ghaction-chocolatey@v3
@@ -254,6 +307,57 @@ jobs:
         }
       shell: powershell
       
+    - name: Add environment suffix to installer
+      run: |
+        $installerFiles = Get-ChildItem -Path "dist" -Filter "*.exe"
+        if ($installerFiles.Count -eq 0) {
+          Write-Host "❌ No installer file found in dist directory" -ForegroundColor Red
+          throw "Installer file not found"
+        }
+        
+        # Determine environment based on branch
+        $branch = "${{ github.ref }}"
+        $suffix = ""
+        
+        if ($branch -eq "refs/heads/production") {
+          $suffix = "" # Production has no suffix
+          Write-Host "📦 Environment: Production (stable release)" -ForegroundColor Green
+        } elseif ($branch -eq "refs/heads/test") {
+          $suffix = "-Test"
+          Write-Host "📦 Environment: Test (release testing)" -ForegroundColor Magenta
+        } elseif ($branch -eq "refs/heads/master" -or $branch -eq "refs/heads/main") {
+          $suffix = "-Staging"
+          Write-Host "📦 Environment: Staging (pre-release testing)" -ForegroundColor Yellow
+        } elseif ($branch -match "refs/tags/(.+)") {
+          # Release tags: check if it's a pre-release
+          if ($branch -match "alpha|beta|rc|staging|test") {
+            $suffix = "-Staging"
+            Write-Host "📦 Environment: Staging (pre-release tag)" -ForegroundColor Yellow
+          } else {
+            $suffix = "" # Stable release tag
+            Write-Host "📦 Environment: Production (release tag)" -ForegroundColor Green
+          }
+        } else {
+          $suffix = "-Dev"
+          Write-Host "📦 Environment: Development (other branch)" -ForegroundColor Cyan
+        }
+        
+        foreach ($file in $installerFiles) {
+          if ($suffix -ne "") {
+            $originalName = $file.Name
+            $newName = $originalName -replace "\.exe$", "$suffix.exe"
+            
+            $sourcePath = $file.FullName
+            $destPath = Join-Path "dist" $newName
+            
+            Move-Item -Path $sourcePath -Destination $destPath -Force
+            Write-Host "✅ Renamed: $originalName → $newName" -ForegroundColor Green
+          } else {
+            Write-Host "✅ Keeping original name: $($file.Name)" -ForegroundColor Green
+          }
+        }
+      shell: powershell
+      
     - name: Upload installer artifact
       uses: actions/upload-artifact@v4
       with:
@@ -269,7 +373,7 @@ jobs:
     name: Create GitHub Release
     needs: [build-and-test, create-installer]
     runs-on: windows-latest
-    if: github.ref == 'refs/heads/production' || github.ref == 'refs/heads/master'
+    if: github.ref == 'refs/heads/production' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/test'
     
     steps:
     - name: Checkout code
@@ -383,7 +487,7 @@ jobs:
     name: Notify Deployment Success
     needs: [create-release]
     runs-on: windows-latest
-    if: success() && (github.ref == 'refs/heads/production' || github.ref == 'refs/heads/master')
+    if: success() && (github.ref == 'refs/heads/production' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/test')
     
     steps:
     - name: Success notification

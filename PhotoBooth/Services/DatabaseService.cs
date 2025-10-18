@@ -29,6 +29,11 @@ namespace Photobooth.Services
         Task<DatabaseResult> UpdateAdminPasswordAsync(AdminAccessLevel accessLevel, string newPassword, string? updatedBy = null);
         Task<DatabaseResult> UpdateUserPasswordByUserIdAsync(string userId, string newPassword, string? updatedBy = null, string? email = null);
         Task<DatabaseResult> UpdateUserRecoveryPINAsync(string userId, string pinHash, string pinSalt);
+        
+        // Master password methods
+        Task<DatabaseResult<bool>> IsMasterPasswordUsedAsync(string passwordHash);
+        Task<DatabaseResult> MarkMasterPasswordUsedAsync(string passwordHash, string nonce, string macAddress, string username);
+        
         Task<DatabaseResult> CreateAdminUserAsync(AdminUser user, string password, string? createdBy = null);
         Task<DatabaseResult> DeleteAdminUserAsync(string userId, string? deletedBy = null);
         Task<DatabaseResult<List<SalesOverviewDto>>> GetSalesOverviewAsync(DateTime? startDate = null, DateTime? endDate = null);
@@ -916,6 +921,63 @@ namespace Photobooth.Services
             catch (Exception ex)
             {
                 return DatabaseResult.ErrorResult($"Failed to update recovery PIN: {ex.Message}", ex);
+            }
+        }
+
+        /// <summary>
+        /// Checks if a master password has already been used (prevents replay attacks)
+        /// </summary>
+        public async Task<DatabaseResult<bool>> IsMasterPasswordUsedAsync(string passwordHash)
+        {
+            try
+            {
+                var query = "SELECT COUNT(*) FROM UsedMasterPasswords WHERE PasswordHash = @passwordHash";
+                
+                using var connection = await CreateConnectionAsync();
+                using var command = new SqliteCommand(query, connection);
+                command.Parameters.AddWithValue("@passwordHash", passwordHash);
+                
+                var count = Convert.ToInt32(await command.ExecuteScalarAsync());
+                var isUsed = count > 0;
+                
+                return DatabaseResult<bool>.SuccessResult(isUsed);
+            }
+            catch (Exception ex)
+            {
+                return DatabaseResult<bool>.ErrorResult($"Failed to check master password: {ex.Message}", ex);
+            }
+        }
+
+        /// <summary>
+        /// Marks a master password as used in the database (single-use enforcement)
+        /// </summary>
+        public async Task<DatabaseResult> MarkMasterPasswordUsedAsync(string passwordHash, string nonce, string macAddress, string username)
+        {
+            try
+            {
+                var query = @"INSERT INTO UsedMasterPasswords (PasswordHash, Nonce, MacAddress, UsedByUsername, UsedAt)
+                             VALUES (@passwordHash, @nonce, @macAddress, @username, @usedAt)";
+                
+                using var connection = await CreateConnectionAsync();
+                using var command = new SqliteCommand(query, connection);
+                command.Parameters.AddWithValue("@passwordHash", passwordHash);
+                command.Parameters.AddWithValue("@nonce", nonce);
+                command.Parameters.AddWithValue("@macAddress", macAddress);
+                command.Parameters.AddWithValue("@username", username);
+                command.Parameters.AddWithValue("@usedAt", DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss"));
+                
+                await command.ExecuteNonQueryAsync();
+                
+                LoggingService.Application.Information("Master password used for temporary admin access",
+                    ("Username", username),
+                    ("MacAddress", macAddress),
+                    ("Nonce", nonce));
+                
+                return DatabaseResult.SuccessResult();
+            }
+            catch (Exception ex)
+            {
+                return DatabaseResult.ErrorResult($"Failed to mark master password as used: {ex.Message}", ex);
             }
         }
 

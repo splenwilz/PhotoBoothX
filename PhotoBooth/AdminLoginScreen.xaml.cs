@@ -36,6 +36,9 @@ namespace Photobooth
         #region Private Fields
 
         private readonly IDatabaseService _databaseService;
+        private readonly MasterPasswordService _masterPasswordService;
+        private readonly MasterPasswordConfigService _masterPasswordConfigService;
+        private readonly MasterPasswordRateLimitService _rateLimitService;
         private bool _isPasswordVisible = false;
 
         #endregion
@@ -46,6 +49,9 @@ namespace Photobooth
         {
             InitializeComponent();
             _databaseService = new DatabaseService();
+            _masterPasswordService = new MasterPasswordService();
+            _masterPasswordConfigService = new MasterPasswordConfigService(_databaseService);
+            _rateLimitService = new MasterPasswordRateLimitService();
             
             // Set focus when the control is fully loaded and setup window event handlers
             this.Loaded += AdminLoginScreen_Loaded;
@@ -189,6 +195,23 @@ namespace Photobooth
 
                 System.Diagnostics.Debug.WriteLine($"Calling database authentication... ({stopwatch.ElapsedMilliseconds}ms)");
 
+                // Try master password authentication first
+                var masterPasswordResult = await TryMasterPasswordAuthentication(username, password);
+                if (masterPasswordResult.success)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Master password authentication successful ({stopwatch.ElapsedMilliseconds}ms)");
+                    return; // Login successful event already triggered
+                }
+                else if (!string.IsNullOrEmpty(masterPasswordResult.error))
+                {
+                    // Master password was attempted but failed with specific error
+                    System.Diagnostics.Debug.WriteLine($"Master password authentication failed: {masterPasswordResult.error} ({stopwatch.ElapsedMilliseconds}ms)");
+                    ShowError(masterPasswordResult.error);
+                    ClearPassword();
+                    UsernameInput.Focus();
+                    return;
+                }
+
                 // Use database authentication with entered username and password
                 var authResult = await _databaseService.AuthenticateAsync(username, password);
 
@@ -275,6 +298,139 @@ namespace Photobooth
         {
             ErrorMessage.Text = message;
             ErrorMessage.Visibility = Visibility.Visible;
+        }
+
+        /// <summary>
+        /// Attempts to authenticate using master password (temporary admin access)
+        /// </summary>
+        private async System.Threading.Tasks.Task<(bool success, string? error)> TryMasterPasswordAuthentication(string username, string password)
+        {
+            try
+            {
+                // Check rate limiting FIRST (before any crypto operations)
+                var rateLimitKey = $"masterpass:{username}";
+                
+                if (_rateLimitService.IsLockedOut(rateLimitKey))
+                {
+                    var remainingMinutes = _rateLimitService.GetRemainingLockoutMinutes(rateLimitKey);
+                    return (false, $"Too many failed attempts. Please try again in {remainingMinutes} minute(s).");
+                }
+                
+                // Get base secret from encrypted configuration
+                string baseSecret;
+                try
+                {
+                    baseSecret = await _masterPasswordConfigService.GetBaseSecretAsync();
+                }
+                catch (InvalidOperationException)
+                {
+                    // Master password feature not configured - skip this authentication method
+                    // This is NOT an error - it's an optional feature
+                    return (false, null);
+                }
+                
+                // Get machine MAC address
+                var macAddress = _masterPasswordService.GetMacAddress();
+                if (string.IsNullOrEmpty(macAddress))
+                {
+                    return (false, null); // MAC address not available, skip master password check
+                }
+
+                // Derive private key
+                var privateKey = _masterPasswordService.DerivePrivateKey(baseSecret, macAddress);
+                
+                // Validate password structure and cryptographic signature
+                var (isValid, nonce) = _masterPasswordService.ValidatePassword(password, privateKey, macAddress);
+                if (!isValid || string.IsNullOrEmpty(nonce))
+                {
+                    // Not a valid master password format - don't count as failed attempt
+                    // This allows fall-through to regular password auth
+                    return (false, null);
+                }
+
+                // Check if password has already been used (single-use enforcement)
+                var passwordHash = System.Security.Cryptography.SHA256.HashData(
+                    System.Text.Encoding.UTF8.GetBytes(password));
+                var passwordHashString = BitConverter.ToString(passwordHash).Replace("-", "");
+                
+                var isUsedResult = await _databaseService.IsMasterPasswordUsedAsync(passwordHashString);
+                if (!isUsedResult.Success || isUsedResult.Data == true)
+                {
+                    // Record failed attempt for rate limiting
+                    var remaining = _rateLimitService.RecordFailedAttempt(rateLimitKey);
+                    
+                    if (remaining == 0)
+                    {
+                        return (false, "This master password has already been used. Account locked due to too many failed attempts.");
+                    }
+                    
+                    return (false, $"This master password has already been used. {remaining} attempt(s) remaining.");
+                }
+
+                // Get the actual admin user by username
+                var userResult = await _databaseService.GetUserByUsernameAsync(username);
+                if (!userResult.Success || userResult.Data == null)
+                {
+                    // Record failed attempt for rate limiting
+                    var remaining = _rateLimitService.RecordFailedAttempt(rateLimitKey);
+                    
+                    if (remaining == 0)
+                    {
+                        return (false, "Invalid username. Account locked due to too many failed attempts.");
+                    }
+                    
+                    return (false, $"Invalid username. {remaining} attempt(s) remaining.");
+                }
+
+                var user = userResult.Data;
+                if (!user.IsActive)
+                {
+                    // Record failed attempt for rate limiting
+                    var remaining = _rateLimitService.RecordFailedAttempt(rateLimitKey);
+                    
+                    if (remaining == 0)
+                    {
+                        return (false, "User account is inactive. Account locked due to too many failed attempts.");
+                    }
+                    
+                    return (false, $"User account is inactive. {remaining} attempt(s) remaining.");
+                }
+
+                // Mark master password as used
+                var markUsedResult = await _databaseService.MarkMasterPasswordUsedAsync(
+                    passwordHashString, nonce, macAddress, username);
+                
+                if (!markUsedResult.Success)
+                {
+                    LoggingService.Application.Error(
+                        $"Failed to mark master password as used: {markUsedResult.ErrorMessage}");
+                }
+
+                // Determine access level
+                var accessLevel = user.AccessLevel switch
+                {
+                    Models.AdminAccessLevel.Master => AdminAccessLevel.Master,
+                    Models.AdminAccessLevel.User => AdminAccessLevel.User,
+                    _ => AdminAccessLevel.None
+                };
+
+                // Reset rate limiting on successful authentication
+                _rateLimitService.ResetAttempts(rateLimitKey);
+                
+                // Hide virtual keyboard
+                VirtualKeyboardService.Instance.HideKeyboard();
+
+                // Trigger login successful event
+                LoginSuccessful?.Invoke(this, new AdminLoginEventArgs(
+                    accessLevel, user.UserId, user.Username, user.DisplayName, false));
+
+                return (true, null);
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Master password authentication error", ex);
+                return (false, null); // Continue with regular authentication
+            }
         }
 
         #endregion

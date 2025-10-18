@@ -75,6 +75,13 @@
 		</None>
 	</ItemGroup>
 
+	<!-- Master password config file (only exists locally or in enterprise builds) -->
+	<ItemGroup>
+		<None Include="master-password.config" Condition="Exists('master-password.config')">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+	</ItemGroup>
+
 	<ItemGroup>
 		<PackageReference Include="AForge.Video" Version="2.2.5" />
 		<PackageReference Include="AForge.Video.DirectShow" Version="2.2.5" />

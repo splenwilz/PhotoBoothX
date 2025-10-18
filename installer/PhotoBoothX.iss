@@ -42,6 +42,10 @@ Name: "desktopicon"; Description: "Create a desktop icon"; GroupDescription: "Ad
 Source: "..\PhotoBooth\bin\Release\net8.0-windows\win-x64\publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; Additional files
 Source: "..\PhotoBooth\Templates\*"; DestDir: "{app}\Templates"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Master password config (Enterprise builds only - file may not exist in Community builds)
+#ifexist "..\PhotoBooth\master-password.config"
+Source: "..\PhotoBooth\master-password.config"; DestDir: "{app}"; Flags: ignoreversion
+#endif
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"

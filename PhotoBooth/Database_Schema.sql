@@ -30,6 +30,18 @@ CREATE TABLE AdminUsers (
     FOREIGN KEY (UpdatedBy) REFERENCES AdminUsers(UserId)
 );
 
+-- Master password usage tracking for temporary admin access
+-- Each password is single-use and derived from machine-specific key
+CREATE TABLE UsedMasterPasswords (
+    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+    PasswordHash TEXT NOT NULL UNIQUE, -- SHA256 hash of used password
+    Nonce TEXT NOT NULL, -- The 4-digit nonce used in password generation
+    MacAddress TEXT NOT NULL, -- MAC address of kiosk where password was used
+    UsedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UsedByUsername TEXT NOT NULL, -- Admin username that was authenticated
+    FOREIGN KEY (UsedByUsername) REFERENCES AdminUsers(Username)
+);
+
 -- =============================================
 -- 2. PRODUCT MANAGEMENT
 -- =============================================
