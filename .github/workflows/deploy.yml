@@ -487,38 +487,50 @@ jobs:
       run: |
         $branch = "${{ github.ref }}"
         $version = "${{ steps.get_version.outputs.VERSION }}"
+        $releaseTag = "${{ steps.get_version.outputs.RELEASE_TAG }}"
         
         # Determine if this is a prerelease and tag suffix
         if ($branch -eq "refs/heads/test") {
-          "PRERELEASE=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          "TAG_SUFFIX=-test" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          "MAKE_LATEST=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          $tagSuffix = "-test"
+          $prerelease = "true"
+          $makeLatest = "false"
         } elseif ($branch -eq "refs/heads/master" -or $branch -eq "refs/heads/main") {
-          "PRERELEASE=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          "TAG_SUFFIX=-staging" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          "MAKE_LATEST=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          $tagSuffix = "-staging"
+          $prerelease = "true"
+          $makeLatest = "false"
         } else {
           # production branch
-          "PRERELEASE=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          "TAG_SUFFIX=" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          "MAKE_LATEST=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          $tagSuffix = ""
+          $prerelease = "false"
+          $makeLatest = "true"
         }
+        
+        # Build full tag name (no spaces!)
+        $fullTagName = "$releaseTag$tagSuffix"
+        $releaseName = "PhotoBoothX $version$tagSuffix"
+        
+        # Write outputs
+        "PRERELEASE=$prerelease" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+        "MAKE_LATEST=$makeLatest" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+        "FULL_TAG_NAME=$fullTagName" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+        "RELEASE_NAME=$releaseName" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
       shell: powershell
       
     - name: Debug release settings
       run: |
-        Write-Host "[DEBUG] RELEASE_TAG: ${{ steps.get_version.outputs.RELEASE_TAG }}"
-        Write-Host "[DEBUG] TAG_SUFFIX: ${{ steps.release_settings.outputs.TAG_SUFFIX }}"
-        Write-Host "[DEBUG] PRERELEASE: ${{ steps.release_settings.outputs.PRERELEASE }}"
-        Write-Host "[DEBUG] MAKE_LATEST: ${{ steps.release_settings.outputs.MAKE_LATEST }}"
-        Write-Host "[DEBUG] Full tag name: ${{ steps.get_version.outputs.RELEASE_TAG }}${{ steps.release_settings.outputs.TAG_SUFFIX }}"
+        Write-Host "[DEBUG] Base version: ${{ steps.get_version.outputs.VERSION }}"
+        Write-Host "[DEBUG] Base tag: ${{ steps.get_version.outputs.RELEASE_TAG }}"
+        Write-Host "[DEBUG] Full tag name: ${{ steps.release_settings.outputs.FULL_TAG_NAME }}"
+        Write-Host "[DEBUG] Release name: ${{ steps.release_settings.outputs.RELEASE_NAME }}"
+        Write-Host "[DEBUG] Prerelease: ${{ steps.release_settings.outputs.PRERELEASE }}"
+        Write-Host "[DEBUG] Make latest: ${{ steps.release_settings.outputs.MAKE_LATEST }}"
       shell: powershell
     
     - name: Create Release
       uses: softprops/action-gh-release@v2
       with:
-        tag_name: ${{ steps.get_version.outputs.RELEASE_TAG }}${{ steps.release_settings.outputs.TAG_SUFFIX }}
-        name: PhotoBoothX ${{ steps.get_version.outputs.VERSION }}${{ steps.release_settings.outputs.TAG_SUFFIX }}
+        tag_name: ${{ steps.release_settings.outputs.FULL_TAG_NAME }}
+        name: ${{ steps.release_settings.outputs.RELEASE_NAME }}
         body: ${{ steps.release_notes.outputs.RELEASE_BODY }}
         draft: false
         prerelease: ${{ steps.release_settings.outputs.PRERELEASE }}
