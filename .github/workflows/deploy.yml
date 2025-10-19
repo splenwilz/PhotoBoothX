@@ -409,21 +409,26 @@ jobs:
         
         Write-Host "[INFO] Checking for existing release: $tagName"
         
-        # Try to delete the release (will fail silently if it doesn't exist)
-        try {
-          gh release delete $tagName --yes 2>$null
+        # Try to delete the release (ignore errors if it doesn't exist)
+        $ErrorActionPreference = 'SilentlyContinue'
+        gh release delete $tagName --yes 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) {
           Write-Host "[OK] Deleted existing release: $tagName" -ForegroundColor Green
-        } catch {
+        } else {
           Write-Host "[INFO] No existing release to delete" -ForegroundColor Cyan
         }
         
-        # Delete the tag if it exists
-        try {
-          git push origin --delete $tagName 2>$null
+        # Delete the tag if it exists (ignore errors)
+        git push origin --delete $tagName 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) {
           Write-Host "[OK] Deleted existing tag: $tagName" -ForegroundColor Green
-        } catch {
+        } else {
           Write-Host "[INFO] No existing tag to delete" -ForegroundColor Cyan
         }
+        
+        # Reset error preference and exit successfully
+        $ErrorActionPreference = 'Continue'
+        exit 0
       shell: powershell
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
