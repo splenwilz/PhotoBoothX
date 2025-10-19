@@ -1,132 +1,202 @@
-# PhotoBoothX - Professional Photobooth Software
+# PhotoBoothX
 
-**Transform any Windows PC into a professional photobooth kiosk with PhotoBoothX - the complete solution for events, venues, and entertainment businesses.**
+A professional photobooth kiosk application built with C#/WPF for Windows, featuring enterprise-grade security, offline operation, and comprehensive hardware integration.
 
-## 🎯 Key Features
+## Overview
 
-- **Touchscreen Interface**: Intuitive, finger-friendly design for all ages
-- **Professional Templates**: Customizable layouts for any event or brand
-- **Instant Printing**: High-quality prints with thermal printer support
-- **Complete Kiosk Mode**: Full-screen operation with Windows integration
-- **Sales Tracking**: Built-in analytics and reporting for business insights
-- **Multi-Level Admin**: Secure access controls for staff and management
-- **Auto-Launch**: Starts automatically on system boot - perfect for unattended operation
+PhotoBoothX is a production-ready kiosk application designed for unattended operation in commercial environments. The codebase emphasizes security, reliability, and maintainability with a modular architecture, comprehensive test coverage, and automated CI/CD deployment.
 
-## 🚀 Installation
+## Technology Stack
 
-### System Requirements
-- **Operating System**: Windows 10 or Windows 11 (64-bit)
-- **Memory**: 4GB RAM minimum, 8GB recommended
-- **Storage**: 500MB available space plus room for photos and database
-- **Hardware**: USB ports for camera, printer, and accessories
-- **Permissions**: Administrator access required for installation
+### Core Technologies
+- **.NET 8.0** - Modern C# runtime with performance optimizations
+- **WPF (Windows Presentation Foundation)** - Rich desktop UI framework
+- **SQLite** - Embedded database for local data persistence
+- **xUnit** - Unit and integration testing framework
 
-### Quick Installation
-1. **Download**: Get the latest installer from our [**Releases Page**](../../releases/latest)
-2. **Install**: Run `PhotoBoothX-Setup-{version}.exe` as Administrator
-3. **Setup**: Follow the installation wizard prompts
-4. **Launch**: PhotoBoothX will start automatically and configure itself for kiosk operation
+### Security & Cryptography
+- **PBKDF2-SHA256** - Password hashing and key derivation
+- **HMAC-SHA256** - Master password generation and validation
+- **Windows DPAPI** - Secure credential storage with machine-specific encryption
+- **Rate Limiting** - Brute-force attack prevention
 
-## 🔐 First-Time Setup
+### Build & Deployment
+- **GitHub Actions** - Automated CI/CD pipeline
+- **Inno Setup** - Professional Windows installer creation
+- **PowerShell** - Build automation and deployment scripts
 
-### Secure First-Time Setup
-PhotoBoothX implements a **secure initialization process** to protect your installation:
+## Architecture
 
-- **Setup Wizard**: First launch guides you through secure account creation
-- **Random Credentials**: Initial admin account uses cryptographically secure random password
-- **Mandatory Setup**: Must complete setup wizard before accessing admin features
-- **Strong Passwords**: Enforced password complexity requirements
+### Project Structure
+```
+PhotoBooth/                  # Main WPF application
+├── Services/               # Business logic and core services
+│   ├── DatabaseService.cs  # SQLite data access layer
+│   ├── MasterPasswordService.cs
+│   ├── TemplateManager.cs
+│   └── ...
+├── Models/                 # Data models and entities
+├── Controls/              # Reusable WPF controls
+├── Converters/            # XAML value converters
+├── Configuration/         # Application configuration
+└── Assets/               # Images, icons, sounds
 
-**🔒 Security First**: No default passwords - every installation is unique and secure.
+Photobooth.Tests/         # Test project (xUnit)
+├── Services/             # Service unit tests
+├── Integration/          # Integration tests
+└── Mocks/               # Test doubles and mocks
 
-### Initial Configuration
-1. **License**: Enter your PhotoBoothX license key
-2. **Templates**: Upload your custom photo templates
-3. **Pricing**: Set your per-print pricing structure
-4. **Hardware**: Configure camera, printer, and payment systems
-5. **Branding**: Customize colors, logos, and welcome messages
+installer/                # Inno Setup installer configuration
+docs/                    # Technical documentation
+website/                 # Next.js support tool for master password generation
+```
 
-## 💼 Business Features
+### Key Design Patterns
+- **Service Layer Pattern** - Business logic encapsulation
+- **Repository Pattern** - Data access abstraction
+- **MVVM (Model-View-ViewModel)** - UI separation of concerns
+- **Dependency Injection** - Loose coupling and testability
 
-### Sales & Analytics
-- Real-time sales tracking and reporting
-- Daily, weekly, and monthly revenue summaries
-- Print volume and template popularity metrics
-- Export data for accounting and analysis
+## Development Setup
 
-### Template Management
-- Upload and manage custom photo layouts
-- Seasonal template rotation
-- Brand-specific designs for different events
-- Easy template preview and testing
+### Prerequisites
+- **Visual Studio 2022** (17.8 or later) or **Rider 2024.1+**
+- **.NET 8.0 SDK** - [Download](https://dotnet.microsoft.com/download/dotnet/8.0)
+- **Windows 10/11** - Required for WPF development
+- **Git** - Version control
 
-### Kiosk Operation
-- Automatic startup on system boot
-- Secure kiosk mode prevents unauthorized access
-- Inactivity timeout returns to welcome screen
-- Remote monitoring capabilities for fleet management
+### Building from Source
 
-## 🛠️ Hardware Compatibility
+```powershell
+# Clone the repository
+git clone https://github.com/splenwilz/PhotoBoothX.git
+cd PhotoBoothX
 
-### Supported Cameras
-- Logitech C920 (recommended)
-- Most USB webcams with Windows drivers
+# Restore NuGet packages
+dotnet restore PhotoBooth/PhotoBooth.csproj
 
-### Supported Printers
-- DNP RX1hs Thermal Printer (professional grade)
-- Standard photo printers with Windows drivers
+# Build the application
+dotnet build PhotoBooth/PhotoBooth.csproj --configuration Debug
 
-### Payment Systems
-- Bill acceptors with pulse output
-- Credit card readers with pulse output
-- Arduino-based control systems
+# Run the application
+dotnet run --project PhotoBooth/PhotoBooth.csproj
+```
 
-## 📞 Support & Documentation
+### Running Tests
 
-### Getting Help
-- **Quick Reference**: [Essential commands and troubleshooting](docs/quick-reference.md)
-- **User Manual**: Comprehensive operation guide built into the application
-- **Technical Support**: Contact information provided with license
-- **Developer Docs**: [Complete development documentation](docs/)
-- **Community**: User forums and knowledge base
+```powershell
+# Run all tests
+dotnet test Photobooth.Tests/Photobooth.Tests.csproj
 
-### Updates
-PhotoBoothX automatically checks for updates and notifies administrators when new versions are available. Updates include:
-- New features and improvements
-- Bug fixes and security patches
-- Additional templates and themes
-- Hardware driver updates
+# Run with coverage
+dotnet test Photobooth.Tests/Photobooth.Tests.csproj `
+  --collect:"XPlat Code Coverage" `
+  --settings:PhotoBooth/coverlet.runsettings
 
-## 📋 What's Included
+# Generate coverage report
+dotnet tool install --global dotnet-reportgenerator-globaltool
+reportgenerator -reports:TestResults/**/coverage.cobertura.xml `
+  -targetdir:TestResults/CoverageReport -reporttypes:Html
+```
 
-### Software License
-- Full PhotoBoothX application
-- Automatic Windows startup configuration
-- Database and settings management
-- Basic photo templates
-- First-year support and updates
+**Current Test Coverage**: 92.4% (63 tests)
 
-### Professional Installation
-- Guided setup wizard
-- Kiosk mode configuration
-- Hardware detection and setup
-- Security configuration
-- Performance optimization
+## Security Features
 
-## 🌟 Perfect For
+### Authentication & Authorization
+- **Multi-level admin system** - Master and User access levels
+- **PIN-based password recovery** - Offline password reset capability
+- **Master password system** - Enterprise support access with HMAC-based OTP
+- **Rate limiting** - 5 attempts with 1-minute lockout
+- **Audit logging** - All security events tracked
 
-- **Event Venues**: Weddings, parties, corporate events
-- **Entertainment Centers**: Arcades, malls, family entertainment
-- **Retail Locations**: Stores, restaurants, waiting areas
-- **Photo Studios**: Automated photo services
-- **Corporate Events**: Trade shows, conferences, team building
+### Data Protection
+- **Windows DPAPI encryption** - Machine-specific credential storage
+- **Embedded database schema** - Prevents tampering with schema files
+- **Foreign key constraints** - Data integrity enforcement
+- **Parameterized queries** - SQL injection prevention
+
+### Build Security
+- **Debug symbols removed** - Release builds exclude PDB files
+- **Config file auto-deletion** - Sensitive files removed after initialization
+- **Secret injection via CI/CD** - No secrets in source code
+- **Signed installers** - (Planned) Code signing for authenticity
+
+## CI/CD Pipeline
+
+### Automated Workflows
+The project uses GitHub Actions for continuous integration and deployment:
+
+- **Test Branch** - Pre-release testing (`v{version}-test`)
+- **Master/Main Branch** - Staging releases (`v{version}-staging`)
+- **Production Branch** - Stable releases (`v{version}`)
+
+### Build Process
+1. **Checkout code** - Clone repository and submodules
+2. **Restore dependencies** - NuGet package restoration
+3. **Build application** - Release configuration with optimizations
+4. **Run tests** - Execute test suite with coverage reporting
+5. **Inject secrets** - Add master password config (if available)
+6. **Create installer** - Build Windows installer with Inno Setup
+7. **Create release** - Upload artifacts to GitHub Releases
+8. **Notify** - Deployment status notifications
+
+See [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) for full pipeline configuration.
+
+## Database Schema
+
+PhotoBoothX uses SQLite for local data persistence:
+
+- **AdminUsers** - User accounts and authentication
+- **Settings** - Application configuration
+- **Templates** - Photo layout templates
+- **Transactions** - Sales and payment records
+- **UsedMasterPasswords** - Replay attack prevention
+
+Schema is embedded as a resource in the application DLL for security. See [`PhotoBooth/Database_Schema.sql`](PhotoBooth/Database_Schema.sql) for complete schema.
+
+## Contributing
+
+We welcome contributions! Please see our [Contributing Guide](docs/contributing.md) for:
+- Code style guidelines
+- Commit message conventions
+- Pull request process
+- Development workflow
+- Testing requirements
+
+### Quick Contribution Guide
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Write tests for your changes
+4. Ensure all tests pass
+5. Commit with descriptive messages (`git commit -m 'Add amazing feature'`)
+6. Push to your fork (`git push origin feature/amazing-feature`)
+7. Open a Pull Request
+
+## Documentation
+
+### Technical Documentation
+- [Project Structure](docs/project-structure.md) - Detailed codebase organization
+- [Development Guide](docs/development.md) - Development environment setup
+- [Deployment Guide](docs/deployment.md) - Release and deployment process
+- [Security Hardening](docs/SECURITY_HARDENING.md) - Security measures and best practices
+- [Release Notes](docs/release-notes.md) - Version history and changelog
+
+### API Documentation
+- Service layer interfaces are documented with XML comments
+- Database schema includes inline documentation
+- XAML controls include usage examples
+
+## License
+
+This project is proprietary software. See [LICENSE.txt](LICENSE.txt) for details.
+
+## Support
+
+- **Bug Reports**: [GitHub Issues](../../issues)
+- **Feature Requests**: [GitHub Discussions](../../discussions)
+- **Security Issues**: See [SECURITY.md](SECURITY.md) for responsible disclosure
 
 ---
 
-**Ready to transform your business with professional photobooth technology?**
-
-[**Download PhotoBoothX Now**](../../releases/latest) | [**View Documentation**](docs/) | [**Get Support**](../../issues)
-
----
-
-*PhotoBoothX - Professional photobooth software designed for business success.*
+**Built with .NET 8.0 | Maintained by the PhotoBoothX Team**
