@@ -392,6 +392,41 @@ jobs:
       with:
         name: installer
         path: installer-files
+    
+    - name: Delete existing release if it exists
+      run: |
+        $branch = "${{ github.ref }}"
+        $version = "${{ steps.get_version.outputs.VERSION }}"
+        
+        # Determine tag name based on branch
+        if ($branch -eq "refs/heads/test") {
+          $tagName = "v$version-test"
+        } elseif ($branch -eq "refs/heads/master" -or $branch -eq "refs/heads/main") {
+          $tagName = "v$version-staging"
+        } else {
+          $tagName = "v$version"
+        }
+        
+        Write-Host "[INFO] Checking for existing release: $tagName"
+        
+        # Try to delete the release (will fail silently if it doesn't exist)
+        try {
+          gh release delete $tagName --yes 2>$null
+          Write-Host "[OK] Deleted existing release: $tagName" -ForegroundColor Green
+        } catch {
+          Write-Host "[INFO] No existing release to delete" -ForegroundColor Cyan
+        }
+        
+        # Delete the tag if it exists
+        try {
+          git push origin --delete $tagName 2>$null
+          Write-Host "[OK] Deleted existing tag: $tagName" -ForegroundColor Green
+        } catch {
+          Write-Host "[INFO] No existing tag to delete" -ForegroundColor Cyan
+        }
+      shell: powershell
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         
     - name: Generate release notes
       id: release_notes
