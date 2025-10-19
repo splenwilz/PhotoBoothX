@@ -181,7 +181,7 @@ namespace Photobooth.Services
                 // Read embedded resource instead of file for security
                 var assembly = System.Reflection.Assembly.GetExecutingAssembly();
                 var resourceName = "PhotoBooth.Database_Schema.sql";
-                
+
 #if DEBUG
                 Console.WriteLine($"Reading embedded resource: {resourceName}");
 #endif
@@ -190,7 +190,7 @@ namespace Photobooth.Services
                 using (var stream = assembly.GetManifestResourceStream(resourceName))
                 {
                     if (stream == null)
-                    {
+                {
 #if DEBUG
                         Console.WriteLine("=== EMBEDDED RESOURCE NOT FOUND ===");
                         Console.WriteLine("Available resources:");
@@ -200,8 +200,8 @@ namespace Photobooth.Services
                         }
 #endif
                         var errorMsg = $"Database schema embedded resource not found: {resourceName}";
-                        return DatabaseResult.ErrorResult(errorMsg);
-                    }
+                    return DatabaseResult.ErrorResult(errorMsg);
+                }
                     
 #if DEBUG
                     Console.WriteLine("=== EMBEDDED RESOURCE FOUND, READING CONTENT ===");
@@ -211,7 +211,7 @@ namespace Photobooth.Services
                         schemaScript = await reader.ReadToEndAsync();
                     }
                 }
-                
+
 #if DEBUG
                 Console.WriteLine($"Schema script length: {schemaScript.Length} characters");
 #endif

@@ -2,7 +2,8 @@
 
 import { generateMasterPassword } from "@/lib/crypto";
 import { useState } from "react";
-import { Copy, Key, Lock, Shield } from "lucide-react";
+import { Copy, Eye, EyeOff, Key, Lock, Shield } from "lucide-react";
+import { Input } from "@/components/ui/input";
 
 export default function MasterPasswordGenerator() {
   const [baseSecret, setBaseSecret] = useState("");
@@ -12,6 +13,7 @@ export default function MasterPasswordGenerator() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
+  const [showBaseSecret, setShowBaseSecret] = useState(false);  
 
   const handleGenerate = async () => {
     setError("");
@@ -91,15 +93,19 @@ export default function MasterPasswordGenerator() {
                 Base Secret
               </div>
             </label>
-            <input
+            <div className="flex items-center gap-2 relative">
+            <Input
               id="baseSecret"
-              type="password"
+              type={showBaseSecret ? "text" : "password"}
               value={baseSecret}
               onChange={(e) => setBaseSecret(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleGenerate()}
               placeholder="Enter base secret"
-              className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+              className="h-12 outline-none pr-10 focus:ring-0 focus:ring-offset-0 focus:border-transparent bg-transparent focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
             />
+            {showBaseSecret ? 
+            <Eye onClick={() => setShowBaseSecret(!showBaseSecret)} className="w-4 h-4 absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600 dark:hover:text-slate-400" /> : <EyeOff onClick={() => setShowBaseSecret(!showBaseSecret)} className="w-4 h-4 absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600 dark:hover:text-slate-400" />}
+            </div>
           </div>
 
           {/* MAC Address Input */}
@@ -110,14 +116,14 @@ export default function MasterPasswordGenerator() {
                 Kiosk MAC Address
               </div>
             </label>
-            <input
+            <Input
               id="macAddress"
               type="text"
               value={macAddress}
               onChange={(e) => setMacAddress(e.target.value.toUpperCase())}
               onKeyDown={(e) => e.key === "Enter" && handleGenerate()}
               placeholder="00:1A:2B:3C:4D:5E"
-              className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-slate-700 text-slate-900 dark:text-white font-mono"
+              className="h-12 outline-none pr-10 focus:ring-0 focus:ring-offset-0 focus:border-transparent bg-transparent focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
             />
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
               Format: XX:XX:XX:XX:XX:XX or XX-XX-XX-XX-XX-XX

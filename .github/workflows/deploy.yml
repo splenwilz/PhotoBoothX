@@ -396,66 +396,84 @@ jobs:
     - name: Generate release notes
       id: release_notes
       run: |
+        $version = "${{ steps.get_version.outputs.VERSION }}"
+        $date = Get-Date -Format "yyyy-MM-dd"
+        $branch = "${{ github.ref }}"
+        
+        # Determine release type
+        $releaseType = "Stable"
+        if ($branch -eq "refs/heads/test") {
+          $releaseType = "Test"
+        } elseif ($branch -eq "refs/heads/master" -or $branch -eq "refs/heads/main") {
+          $releaseType = "Staging"
+        }
+        
         $releaseNotes = @"
-        ## PhotoBoothX Release ${{ steps.get_version.outputs.VERSION }}
+        ## $date, Version $version ($releaseType)
         
-        ### 🔐 Security Features
-        - **PIN-Based Password Recovery** - Secure 4-digit PIN system for password resets
-        - **Mandatory PIN Setup** - Admins must set recovery PIN after first login
-        - **Forgot Password Flow** - User-friendly recovery process with account selection
-        - **Rate Limiting Protection** - 5 attempts with 1-minute lockout prevents brute force
-        - **Enhanced Password Policy** - Enforced strong passwords (8+ chars, uppercase, lowercase, number)
-        - **Kiosk-Friendly Virtual Keyboard** - Touch-screen compatible PIN and password entry
+        ### Notable Changes
         
-        ### ✨ What's New
-        - Complete offline password recovery system (no email/SMS required)
-        - Improved admin security with forced password changes on first login
-        - Modern, glassy UI design for PIN recovery and password reset screens
-        - Comprehensive test coverage (92.4% for recovery features)
-        - Enhanced audit logging for security events
-        - Professional installer with auto-launch support
+        #### Master Password System (Enterprise Feature)
+        - Offline master password generation and validation using HMAC-SHA256
+        - Machine-specific key derivation with PBKDF2 (100,000 iterations)
+        - Single-use passwords with cryptographic nonce for replay attack prevention
+        - Windows DPAPI encryption for secure key storage
+        - Rate limiting (5 attempts, 1-minute lockout) to prevent brute force attacks
+        - Automatic config file deletion after first use for enhanced security
+        - Full audit logging of all master password usage and failed attempts
+        - TypeScript/Next.js support tool for password generation by support teams
         
-        ### 🛠️ Technical Improvements
-        - PBKDF2-SHA256 encryption with 100,000 iterations for PIN storage
-        - Constant-time comparison to prevent timing attacks
-        - Secure password validation with centralized policy service
-        - Virtual keyboard integration for kiosk environments
-        - Timer-based lockout with automatic recovery
+        #### Security Enhancements
+        - PIN-based password recovery system for offline admin access
+        - Mandatory PIN setup after first login for all admin accounts
+        - Enhanced password policy enforcement (8+ characters, mixed case, numbers)
+        - PBKDF2-SHA256 encryption for PIN storage with constant-time comparison
+        - Embedded database schema as resource to prevent tampering
+        - Debug symbols removed from release builds
+        - Virtual keyboard integration for kiosk touch-screen environments
         
-        ### [BUILD] Installation
-        1. Download PhotoBoothX-Setup-${{ steps.get_version.outputs.VERSION }}.exe
+        #### System Improvements
+        - SQLite database with foreign key constraint enforcement
+        - Improved error handling and logging throughout the application
+        - Template synchronization on startup for immediate availability
+        - Professional installer with automatic cleanup and uninstall support
+        
+        ### Installation
+        
+        1. Download the installer: \`PhotoBoothX-Setup-$version.exe\`
         2. Run as Administrator
         3. Follow the installation wizard
-        4. The application will auto-launch on Windows startup (recommended for kiosk mode)
-        5. Set your recovery PIN after first login (required for password recovery)
+        4. Launch the application (auto-starts on Windows startup in kiosk mode)
+        5. Login with default credentials: \`admin\` / \`admin123\`
+        6. Set your recovery PIN when prompted (required)
         
-        ### 💻 System Requirements
-        - Windows 10/11 (64-bit)
-        - .NET 8.0 Runtime (included in installer)
-        - Administrator privileges for installation
-        - USB ports for camera and hardware
-        - Touch screen (optional - for virtual keyboard)
+        ### System Requirements
         
-        ### 📝 Important Notes
-        - **First Login**: Default credentials remain admin/admin123 - you'll be forced to change
-        - **PIN Setup**: Mandatory after first login - enables password recovery
-        - **Forgot Password**: Available from login screen - requires account selection and PIN
-        - **Password Reset**: Strong password requirements enforced (8+ chars, mixed case, number)
-        - **Database**: Stored in AppData (survives reinstalls, includes PIN data)
-        - **Templates**: User-updatable in Program Files
-        - **Rate Limiting**: 1-minute lockout after 5 failed PIN attempts
+        - **OS**: Windows 10/11 (64-bit)
+        - **Runtime**: .NET 8.0 (included in installer)
+        - **Privileges**: Administrator access for installation
+        - **Hardware**: USB ports for camera and peripherals
+        - **Optional**: Touch screen for virtual keyboard
         
-        ### 🔒 Security Best Practices
-        - Change default password immediately on first login
-        - Set up recovery PIN (required for password recovery)
-        - Use strong passwords with mixed case and numbers
-        - Keep recovery PIN secure and memorable
-        - Monitor audit logs for security events
+        ### Security Notes
+        
+        - Change default password immediately after first login
+        - Set up recovery PIN (mandatory for password recovery)
+        - Master password feature available in enterprise installations only
+        - Database stored in AppData, survives reinstalls
+        - All security events logged for audit purposes
+        
+        ### Documentation
+        
+        - [Security Hardening Guide](https://github.com/${{ github.repository }}/blob/master/docs/SECURITY_HARDENING.md)
+        - [Master Password Setup](https://github.com/${{ github.repository }}/blob/master/PhotoBooth/docs/MasterPasswordSetup.md)
+        - [Deployment Guide](https://github.com/${{ github.repository }}/blob/master/docs/deployment.md)
         
         ---
-        **Build:** ${{ github.sha }}  
-        **Date:** $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')  
-        **Test Coverage:** 92.4% (PIN Recovery), 63 tests passing
+        
+        **Commit**: ${{ github.sha }}  
+        **Build Date**: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')  
+        **Test Coverage**: 92.4% (63 tests passing)
         "@
         
         $releaseNotes | Out-File -FilePath release_notes.txt -Encoding utf8
@@ -464,18 +482,41 @@ jobs:
         echo "EOF" >> $env:GITHUB_OUTPUT
       shell: powershell
       
+    - name: Determine release settings
+      id: release_settings
+      run: |
+        $branch = "${{ github.ref }}"
+        $version = "${{ steps.get_version.outputs.VERSION }}"
+        
+        # Determine if this is a prerelease and tag suffix
+        if ($branch -eq "refs/heads/test") {
+          echo "PRERELEASE=true" >> $env:GITHUB_OUTPUT
+          echo "TAG_SUFFIX=-test" >> $env:GITHUB_OUTPUT
+          echo "MAKE_LATEST=false" >> $env:GITHUB_OUTPUT
+        } elseif ($branch -eq "refs/heads/master" -or $branch -eq "refs/heads/main") {
+          echo "PRERELEASE=true" >> $env:GITHUB_OUTPUT
+          echo "TAG_SUFFIX=-staging" >> $env:GITHUB_OUTPUT
+          echo "MAKE_LATEST=false" >> $env:GITHUB_OUTPUT
+        } else {
+          # production branch
+          echo "PRERELEASE=false" >> $env:GITHUB_OUTPUT
+          echo "TAG_SUFFIX=" >> $env:GITHUB_OUTPUT
+          echo "MAKE_LATEST=true" >> $env:GITHUB_OUTPUT
+        }
+      shell: powershell
+      
     - name: Create Release
       uses: softprops/action-gh-release@v2
       with:
-        tag_name: ${{ steps.get_version.outputs.RELEASE_TAG }}
-        name: PhotoBoothX ${{ steps.get_version.outputs.VERSION }}
+        tag_name: ${{ steps.get_version.outputs.RELEASE_TAG }}${{ steps.release_settings.outputs.TAG_SUFFIX }}
+        name: ${{ steps.get_version.outputs.VERSION }}${{ steps.release_settings.outputs.TAG_SUFFIX }}
         body: ${{ steps.release_notes.outputs.RELEASE_BODY }}
         draft: false
-        prerelease: false
+        prerelease: ${{ steps.release_settings.outputs.PRERELEASE }}
         files: |
           installer-files/*.exe
-        make_latest: true
-        generate_release_notes: true
+        make_latest: ${{ steps.release_settings.outputs.MAKE_LATEST }}
+        generate_release_notes: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

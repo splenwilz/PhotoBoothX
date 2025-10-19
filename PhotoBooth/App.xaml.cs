@@ -28,14 +28,14 @@ namespace PhotoBooth
         {
             base.OnStartup(e);
 
-            // TEMPORARY: Always allocate console for debugging master password feature
-            // TODO: Remove or make conditional after debugging is complete
+#if DEBUG
+            // Debug console only in DEBUG builds
             AllocConsole();
             Console.WriteLine("===========================================");
             Console.WriteLine("PhotoBoothX Debug Console");
-            Console.WriteLine("Master Password Debugging Enabled");
             Console.WriteLine("===========================================");
             Console.WriteLine();
+#endif
         }
 
         protected override void OnExit(ExitEventArgs e)
