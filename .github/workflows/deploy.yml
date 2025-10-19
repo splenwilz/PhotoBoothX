@@ -485,9 +485,9 @@ jobs:
     - name: Determine release settings
       id: release_settings
       run: |
-        $branch = "${{ github.ref }}"
-        $version = "${{ steps.get_version.outputs.VERSION }}"
-        $releaseTag = "${{ steps.get_version.outputs.RELEASE_TAG }}"
+        $branch = "${{ github.ref }}".Trim()
+        $version = "${{ steps.get_version.outputs.VERSION }}".Trim()
+        $releaseTag = "${{ steps.get_version.outputs.RELEASE_TAG }}".Trim()
         
         # Determine if this is a prerelease and tag suffix
         if ($branch -eq "refs/heads/test") {
@@ -505,11 +505,19 @@ jobs:
           $makeLatest = "true"
         }
         
-        # Build full tag name (no spaces!)
-        $fullTagName = "$releaseTag$tagSuffix"
-        $releaseName = "PhotoBoothX $version$tagSuffix"
+        # Build full tag name (no spaces!) - trim everything
+        $fullTagName = ($releaseTag + $tagSuffix).Trim()
+        $releaseName = ("PhotoBoothX " + $version + $tagSuffix).Trim()
         
-        # Write outputs
+        # Debug output
+        Write-Host "DEBUG: branch='$branch'"
+        Write-Host "DEBUG: version='$version'"
+        Write-Host "DEBUG: releaseTag='$releaseTag'"
+        Write-Host "DEBUG: tagSuffix='$tagSuffix'"
+        Write-Host "DEBUG: fullTagName='$fullTagName'"
+        Write-Host "DEBUG: releaseName='$releaseName'"
+        
+        # Write outputs (trim to ensure no whitespace)
         "PRERELEASE=$prerelease" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
         "MAKE_LATEST=$makeLatest" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
         "FULL_TAG_NAME=$fullTagName" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
