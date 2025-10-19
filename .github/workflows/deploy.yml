@@ -490,18 +490,18 @@ jobs:
         
         # Determine if this is a prerelease and tag suffix
         if ($branch -eq "refs/heads/test") {
-          echo "PRERELEASE=true" >> $env:GITHUB_OUTPUT
-          echo "TAG_SUFFIX=-test" >> $env:GITHUB_OUTPUT
-          echo "MAKE_LATEST=false" >> $env:GITHUB_OUTPUT
+          "PRERELEASE=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "TAG_SUFFIX=-test" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "MAKE_LATEST=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
         } elseif ($branch -eq "refs/heads/master" -or $branch -eq "refs/heads/main") {
-          echo "PRERELEASE=true" >> $env:GITHUB_OUTPUT
-          echo "TAG_SUFFIX=-staging" >> $env:GITHUB_OUTPUT
-          echo "MAKE_LATEST=false" >> $env:GITHUB_OUTPUT
+          "PRERELEASE=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "TAG_SUFFIX=-staging" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "MAKE_LATEST=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
         } else {
           # production branch
-          echo "PRERELEASE=false" >> $env:GITHUB_OUTPUT
-          echo "TAG_SUFFIX=" >> $env:GITHUB_OUTPUT
-          echo "MAKE_LATEST=true" >> $env:GITHUB_OUTPUT
+          "PRERELEASE=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "TAG_SUFFIX=" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "MAKE_LATEST=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
         }
       shell: powershell
       
