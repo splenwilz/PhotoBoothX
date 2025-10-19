@@ -505,11 +505,20 @@ jobs:
         }
       shell: powershell
       
+    - name: Debug release settings
+      run: |
+        Write-Host "[DEBUG] RELEASE_TAG: ${{ steps.get_version.outputs.RELEASE_TAG }}"
+        Write-Host "[DEBUG] TAG_SUFFIX: ${{ steps.release_settings.outputs.TAG_SUFFIX }}"
+        Write-Host "[DEBUG] PRERELEASE: ${{ steps.release_settings.outputs.PRERELEASE }}"
+        Write-Host "[DEBUG] MAKE_LATEST: ${{ steps.release_settings.outputs.MAKE_LATEST }}"
+        Write-Host "[DEBUG] Full tag name: ${{ steps.get_version.outputs.RELEASE_TAG }}${{ steps.release_settings.outputs.TAG_SUFFIX }}"
+      shell: powershell
+    
     - name: Create Release
       uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ steps.get_version.outputs.RELEASE_TAG }}${{ steps.release_settings.outputs.TAG_SUFFIX }}
-        name: ${{ steps.get_version.outputs.VERSION }}${{ steps.release_settings.outputs.TAG_SUFFIX }}
+        name: PhotoBoothX ${{ steps.get_version.outputs.VERSION }}${{ steps.release_settings.outputs.TAG_SUFFIX }}
         body: ${{ steps.release_notes.outputs.RELEASE_BODY }}
         draft: false
         prerelease: ${{ steps.release_settings.outputs.PRERELEASE }}
@@ -517,6 +526,7 @@ jobs:
           installer-files/*.exe
         make_latest: ${{ steps.release_settings.outputs.MAKE_LATEST }}
         generate_release_notes: false
+        target_commitish: ${{ github.sha }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
