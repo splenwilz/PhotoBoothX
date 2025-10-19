@@ -173,28 +173,45 @@ namespace Photobooth.Services
                     return DatabaseResult.SuccessResult();
                 }
 
-                // Database needs initialization - read and execute schema
+                // Database needs initialization - read schema from embedded resource
 #if DEBUG
                 Console.WriteLine("=== DATABASE IS NEW - INITIALIZING SCHEMA ===");
 #endif
-                var schemaPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Database_Schema.sql");
-
+                
+                // Read embedded resource instead of file for security
+                var assembly = System.Reflection.Assembly.GetExecutingAssembly();
+                var resourceName = "PhotoBooth.Database_Schema.sql";
+                
 #if DEBUG
-                Console.WriteLine($"Schema path: {schemaPath}");
+                Console.WriteLine($"Reading embedded resource: {resourceName}");
 #endif
-                if (!File.Exists(schemaPath))
+                
+                string schemaScript;
+                using (var stream = assembly.GetManifestResourceStream(resourceName))
                 {
+                    if (stream == null)
+                    {
 #if DEBUG
-                    Console.WriteLine("=== SCHEMA FILE NOT FOUND ===");
+                        Console.WriteLine("=== EMBEDDED RESOURCE NOT FOUND ===");
+                        Console.WriteLine("Available resources:");
+                        foreach (var res in assembly.GetManifestResourceNames())
+                        {
+                            Console.WriteLine($"  - {res}");
+                        }
 #endif
-                    var errorMsg = $"Database schema file not found at: {schemaPath}";
-                    return DatabaseResult.ErrorResult(errorMsg);
+                        var errorMsg = $"Database schema embedded resource not found: {resourceName}";
+                        return DatabaseResult.ErrorResult(errorMsg);
+                    }
+                    
+#if DEBUG
+                    Console.WriteLine("=== EMBEDDED RESOURCE FOUND, READING CONTENT ===");
+#endif
+                    using (var reader = new System.IO.StreamReader(stream))
+                    {
+                        schemaScript = await reader.ReadToEndAsync();
+                    }
                 }
-#if DEBUG
-                Console.WriteLine("=== SCHEMA FILE FOUND, READING CONTENT ===");
-#endif
-
-                var schemaScript = await File.ReadAllTextAsync(schemaPath);
+                
 #if DEBUG
                 Console.WriteLine($"Schema script length: {schemaScript.Length} characters");
 #endif

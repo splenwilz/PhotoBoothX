@@ -76,10 +76,9 @@
 		</None>
 	</ItemGroup>
 
+	<!-- Embed database schema as resource (not exposed as separate file for security) -->
 	<ItemGroup>
-		<None Include="Database_Schema.sql">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-		</None>
+		<EmbeddedResource Include="Database_Schema.sql" />
 	</ItemGroup>
 
 	<!-- Master password config file (only exists locally or in enterprise builds) -->

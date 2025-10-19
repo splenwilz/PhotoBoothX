@@ -39,7 +39,8 @@ Name: "desktopicon"; Description: "Create a desktop icon"; GroupDescription: "Ad
 
 [Files]
 ; Application files (exclude sensitive files for security)
-Source: "..\PhotoBooth\bin\Release\net8.0-windows\win-x64\publish\*"; DestDir: "{app}"; Excludes: "*.pdb,Database_Schema.sql,*.config.template"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Note: Database_Schema.sql is now embedded in DLL, *.pdb files excluded by build config
+Source: "..\PhotoBooth\bin\Release\net8.0-windows\win-x64\publish\*"; DestDir: "{app}"; Excludes: "*.config.template"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; Templates
 Source: "..\PhotoBooth\Templates\*"; DestDir: "{app}\Templates"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; Master password config (Enterprise builds only - auto-deleted on first use)
