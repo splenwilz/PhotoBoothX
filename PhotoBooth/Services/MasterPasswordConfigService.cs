@@ -217,11 +217,12 @@ namespace Photobooth.Services
 
                 Console.WriteLine($"Calling database SetSettingValueAsync (Category: {SETTINGS_CATEGORY}, Key: {BASE_SECRET_KEY})...");
                 // Store in database
+                // Use NULL for ModifiedBy to avoid FK constraint (system initialization)
                 var result = await _databaseService.SetSettingValueAsync(
                     SETTINGS_CATEGORY, 
                     BASE_SECRET_KEY, 
                     encrypted, 
-                    "System");
+                    null);
 
                 Console.WriteLine($"Database SetSettingValueAsync result: Success={result.Success}");
                 if (!result.Success)
