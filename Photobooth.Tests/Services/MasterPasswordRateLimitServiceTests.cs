@@ -378,16 +378,18 @@ namespace Photobooth.Tests.Services
         }
 
         [TestMethod]
-        public void RecordFailedAttempt_EmptyUsername_Works()
+        public void RecordFailedAttempt_EmptyPrefixUsername_HandledGracefully()
         {
             // Arrange
-            var username = UniqueUsername(""); // Use unique empty-prefix username to avoid test interference
+            // Test that the service handles usernames with empty prefix gracefully
+            // Note: Using UniqueUsername("") to avoid test interference from static dictionary
+            var username = UniqueUsername("");
 
             // Act
             var remaining = _service.RecordFailedAttempt(username);
 
             // Assert
-            remaining.Should().Be(2, "empty string username should work as valid key");
+            remaining.Should().Be(2, "username with empty prefix should be handled gracefully");
         }
 
         [TestMethod]

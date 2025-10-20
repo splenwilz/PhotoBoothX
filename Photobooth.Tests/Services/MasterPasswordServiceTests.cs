@@ -582,7 +582,7 @@ namespace Photobooth.Tests.Services
         }
 
         [TestMethod]
-        public void ValidatePassword_CaseInsensitiveMac_FailsValidation()
+        public void ValidatePassword_CaseInsensitiveMac_PassesValidation()
         {
             // Arrange
             var baseSecret = "test-secret-12345678901234567890123456789012";
