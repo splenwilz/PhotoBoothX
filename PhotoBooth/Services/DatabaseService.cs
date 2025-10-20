@@ -29,6 +29,10 @@ namespace Photobooth.Services
         Task<DatabaseResult> UpdateAdminPasswordAsync(AdminAccessLevel accessLevel, string newPassword, string? updatedBy = null);
         Task<DatabaseResult> UpdateUserPasswordByUserIdAsync(string userId, string newPassword, string? updatedBy = null, string? email = null);
         Task<DatabaseResult> UpdateUserRecoveryPINAsync(string userId, string pinHash, string pinSalt);
+        
+        // Master password methods
+        Task<DatabaseResult<bool>> MarkMasterPasswordUsedAsync(string passwordHash, string nonce, string macAddress, string userId);
+        
         Task<DatabaseResult> CreateAdminUserAsync(AdminUser user, string password, string? createdBy = null);
         Task<DatabaseResult> DeleteAdminUserAsync(string userId, string? deletedBy = null);
         Task<DatabaseResult<List<SalesOverviewDto>>> GetSalesOverviewAsync(DateTime? startDate = null, DateTime? endDate = null);
@@ -168,28 +172,45 @@ namespace Photobooth.Services
                     return DatabaseResult.SuccessResult();
                 }
 
-                // Database needs initialization - read and execute schema
+                // Database needs initialization - read schema from embedded resource
 #if DEBUG
                 Console.WriteLine("=== DATABASE IS NEW - INITIALIZING SCHEMA ===");
 #endif
-                var schemaPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Database_Schema.sql");
+                
+                // Read embedded resource instead of file for security
+                var assembly = System.Reflection.Assembly.GetExecutingAssembly();
+                var resourceName = "PhotoBooth.Database_Schema.sql";
 
 #if DEBUG
-                Console.WriteLine($"Schema path: {schemaPath}");
+                Console.WriteLine($"Reading embedded resource: {resourceName}");
 #endif
-                if (!File.Exists(schemaPath))
+                
+                string schemaScript;
+                using (var stream = assembly.GetManifestResourceStream(resourceName))
+                {
+                    if (stream == null)
                 {
 #if DEBUG
-                    Console.WriteLine("=== SCHEMA FILE NOT FOUND ===");
+                        Console.WriteLine("=== EMBEDDED RESOURCE NOT FOUND ===");
+                        Console.WriteLine("Available resources:");
+                        foreach (var res in assembly.GetManifestResourceNames())
+                        {
+                            Console.WriteLine($"  - {res}");
+                        }
 #endif
-                    var errorMsg = $"Database schema file not found at: {schemaPath}";
+                        var errorMsg = $"Database schema embedded resource not found: {resourceName}";
                     return DatabaseResult.ErrorResult(errorMsg);
                 }
+                    
 #if DEBUG
-                Console.WriteLine("=== SCHEMA FILE FOUND, READING CONTENT ===");
+                    Console.WriteLine("=== EMBEDDED RESOURCE FOUND, READING CONTENT ===");
 #endif
+                    using (var reader = new System.IO.StreamReader(stream))
+                    {
+                        schemaScript = await reader.ReadToEndAsync();
+                    }
+                }
 
-                var schemaScript = await File.ReadAllTextAsync(schemaPath);
 #if DEBUG
                 Console.WriteLine($"Schema script length: {schemaScript.Length} characters");
 #endif
@@ -916,6 +937,51 @@ namespace Photobooth.Services
             catch (Exception ex)
             {
                 return DatabaseResult.ErrorResult($"Failed to update recovery PIN: {ex.Message}", ex);
+            }
+        }
+
+        /// <summary>
+        /// Atomically marks a master password as used in the database (single-use enforcement)
+        /// Returns true if password was already used, false if successfully marked as used
+        /// This is atomic - no race condition between check and insert
+        /// Uses ON CONFLICT DO NOTHING for clean, performant enforcement without exceptions
+        /// </summary>
+        public async Task<DatabaseResult<bool>> MarkMasterPasswordUsedAsync(string passwordHash, string nonce, string macAddress, string userId)
+        {
+            try
+            {
+                var query = @"INSERT INTO UsedMasterPasswords (PasswordHash, Nonce, MacAddress, UsedByUserId, UsedAt)
+                             VALUES (@passwordHash, @nonce, @macAddress, @userId, @usedAt)
+                             ON CONFLICT(PasswordHash) DO NOTHING;
+                             SELECT changes();";
+                
+                using var connection = await CreateConnectionAsync();
+                using var command = new SqliteCommand(query, connection);
+                command.Parameters.AddWithValue("@passwordHash", passwordHash);
+                command.Parameters.AddWithValue("@nonce", nonce);
+                command.Parameters.AddWithValue("@macAddress", macAddress);
+                command.Parameters.AddWithValue("@userId", userId);
+                command.Parameters.AddWithValue("@usedAt", DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss"));
+                
+                var changes = Convert.ToInt32(await command.ExecuteScalarAsync());
+                
+                if (changes == 0)
+                {
+                    // No rows changed = conflict on PasswordHash = already used
+                    return DatabaseResult<bool>.SuccessResult(true);
+                }
+                
+                // Row inserted = password was NOT already used
+                LoggingService.Application.Information("Master password used for temporary admin access",
+                    ("UserId", userId),
+                    ("MacAddress", MaskMac(macAddress)), // Mask for privacy (GDPR/PII compliance)
+                    ("Nonce", nonce));
+                
+                return DatabaseResult<bool>.SuccessResult(false);
+            }
+            catch (Exception ex)
+            {
+                return DatabaseResult<bool>.ErrorResult($"Failed to mark master password as used: {ex.Message}", ex);
             }
         }
 
@@ -3957,6 +4023,31 @@ Security Best Practices:
                 Console.WriteLine($"DatabaseService: Error saving camera settings - {ex.Message}");
                 return DatabaseResult.ErrorResult($"Failed to save camera settings: {ex.Message}");
             }
+        }
+
+        #endregion
+
+        #region Privacy Helpers
+
+        /// <summary>
+        /// Masks MAC address for privacy-compliant logging (GDPR/PII protection)
+        /// Shows only last 2 bytes for debugging while protecting device identity
+        /// </summary>
+        private static string MaskMac(string macAddress)
+        {
+            if (string.IsNullOrEmpty(macAddress)) return "unknown";
+            
+            // MAC format: XX:XX:XX:XX:XX:XX or XX-XX-XX-XX-XX-XX
+            var cleaned = macAddress.Replace("-", ":").ToLowerInvariant();
+            var parts = cleaned.Split(':');
+            
+            if (parts.Length >= 6)
+            {
+                // Mask first 4 bytes, show last 2 bytes
+                return $"XX:XX:XX:XX:{parts[4]}:{parts[5]}";
+            }
+            
+            return "masked";
         }
 
         #endregion

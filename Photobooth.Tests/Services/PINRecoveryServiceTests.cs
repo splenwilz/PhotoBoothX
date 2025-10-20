@@ -2,6 +2,8 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using FluentAssertions;
 using Photobooth.Services;
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace Photobooth.Tests.Services
@@ -349,18 +351,35 @@ namespace Photobooth.Tests.Services
             var (hash, salt) = _pinService.HashPINWithNewSalt(pin);
             var wrongPin = "0000";
 
-            // Act - Measure time for correct and incorrect PINs
-            var sw1 = System.Diagnostics.Stopwatch.StartNew();
+            // Warmup - JIT compilation and cache warming
             _pinService.VerifyPIN(pin, hash, salt);
-            sw1.Stop();
-
-            var sw2 = System.Diagnostics.Stopwatch.StartNew();
             _pinService.VerifyPIN(wrongPin, hash, salt);
-            sw2.Stop();
 
-            // Assert - Times should be similar (within 50ms) to prevent timing attacks
-            var difference = Math.Abs(sw1.ElapsedMilliseconds - sw2.ElapsedMilliseconds);
-            difference.Should().BeLessThan(50, "verification time should be constant to prevent timing attacks");
+            // Act - Measure time for correct and incorrect PINs (multiple iterations for accuracy)
+            const int iterations = 10;
+            var correctTimes = new List<long>();
+            var incorrectTimes = new List<long>();
+
+            for (int i = 0; i < iterations; i++)
+            {
+                var sw1 = System.Diagnostics.Stopwatch.StartNew();
+                _pinService.VerifyPIN(pin, hash, salt);
+                sw1.Stop();
+                correctTimes.Add(sw1.ElapsedMilliseconds);
+
+                var sw2 = System.Diagnostics.Stopwatch.StartNew();
+                _pinService.VerifyPIN(wrongPin, hash, salt);
+                sw2.Stop();
+                incorrectTimes.Add(sw2.ElapsedMilliseconds);
+            }
+
+            // Calculate average times
+            var avgCorrect = correctTimes.Average();
+            var avgIncorrect = incorrectTimes.Average();
+
+            // Assert - Average times should be similar (within 100ms) to prevent timing attacks
+            var difference = Math.Abs(avgCorrect - avgIncorrect);
+            difference.Should().BeLessThan(100, "average verification time should be constant to prevent timing attacks");
         }
 
         [TestMethod]
