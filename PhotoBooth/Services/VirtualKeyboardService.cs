@@ -636,6 +636,36 @@ namespace Photobooth.Services
         }
 
         /// <summary>
+        /// Switch active input control and restore binding for previous control
+        /// This should be called before ShowKeyboardAsync to ensure proper cleanup
+        /// </summary>
+        /// <param name="newControl">The new control to set as active</param>
+        public void SwitchActiveInput(Control newControl)
+        {
+            try
+            {
+                Console.WriteLine($"=== VirtualKeyboardService.SwitchActiveInput: {_activeInput?.Name ?? "null"} -> {newControl?.Name ?? "null"} ===");
+                
+                // If there's a previous input and it's different from the new one, restore its binding
+                if (_activeInput != null && _activeInput != newControl)
+                {
+                    Console.WriteLine($"Restoring binding for previous input: {_activeInput.Name}");
+                    ReenableBinding(_activeInput);
+                }
+                
+                // Set the new active input
+                _activeInput = newControl;
+                Console.WriteLine($"Active input switched to: {newControl?.Name ?? "null"}");
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to switch active input", ex,
+                    ("PreviousInput", _activeInput?.Name ?? "null"),
+                    ("NewInput", newControl?.Name ?? "null"));
+            }
+        }
+        
+        /// <summary>
         /// Reset the keyboard service state completely
         /// Call this when navigating between different screens/windows
         /// </summary>
@@ -861,14 +891,14 @@ namespace Photobooth.Services
         {
 #if DEBUG
             Console.WriteLine($"=== VirtualKeyboardService.HandleKeyPressed CALLED ===");
-            Console.WriteLine($"Key pressed: {(_activeInput is PasswordBox ? "<hidden>" : $"'{key}'")}");
+            Console.WriteLine($"Key pressed: {(IsSensitiveControl(_activeInput) ? "<hidden>" : $"'{key}'")}");
             Console.WriteLine($"Active input: {_activeInput?.GetType().Name ?? "null"} '{_activeInput?.Name ?? "null"}'");
 #endif
             
             if (_activeInput != null)
                         {
 #if DEBUG
-                Console.WriteLine($"Active input current text: '{(_activeInput is PasswordBox ? "<hidden>" : GetInputText(_activeInput))}'");
+                Console.WriteLine($"Active input current text: '{GetTextForLogging(_activeInput)}'");
                 Console.WriteLine("Sending key to active input...");
 #endif
                     
@@ -876,7 +906,7 @@ namespace Photobooth.Services
                 SendKeyToInput(key);
                 
 #if DEBUG
-                Console.WriteLine($"Active input text after key: '{(_activeInput is PasswordBox ? "<hidden>" : GetInputText(_activeInput))}'");
+                Console.WriteLine($"Active input text after key: '{GetTextForLogging(_activeInput)}'");
 #endif
                         }
             else
@@ -904,7 +934,7 @@ namespace Photobooth.Services
             if (_activeInput != null)
             {
 #if DEBUG
-                Console.WriteLine($"Active input current text: '{GetInputText(_activeInput)}'");
+                Console.WriteLine($"Active input current text: '{GetTextForLogging(_activeInput)}'");
 #endif
             }
 
@@ -951,7 +981,7 @@ namespace Photobooth.Services
             if (_activeInput != null)
             {
 #if DEBUG
-                Console.WriteLine($"Active input text after special key: '{GetInputText(_activeInput)}'");
+                Console.WriteLine($"Active input text after special key: '{GetTextForLogging(_activeInput)}'");
 #endif
             }
 #if DEBUG
@@ -978,7 +1008,7 @@ namespace Photobooth.Services
             }
 
 #if DEBUG
-            Console.WriteLine($"Active input current text before backspace: '{GetInputText(_activeInput)}'");
+            Console.WriteLine($"Active input current text before backspace: '{GetTextForLogging(_activeInput)}'");
 #endif
 
             try
@@ -1060,10 +1090,102 @@ namespace Photobooth.Services
         }
 
         /// <summary>
+        /// Find a visual child by name
+        /// </summary>
+        private static T? FindVisualChild<T>(DependencyObject parent, string name) where T : DependencyObject
+        {
+            for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+            {
+                var child = VisualTreeHelper.GetChild(parent, i);
+                if (child is T t && (child as FrameworkElement)?.Name == name)
+                {
+                    return t;
+                }
+                
+                var childOfChild = FindVisualChild<T>(child, name);
+                if (childOfChild != null)
+                {
+                    return childOfChild;
+                }
+            }
+            return null;
+        }
+
+        /// <summary>
         /// Handle enter key
         /// </summary>
         private void HandleEnter()
         {
+            // Get the control name for both TextBox and PasswordBox
+            var controlName = _activeInput?.Name?.ToLower() ?? "";
+            
+            // Check for password fields (both TextBox and PasswordBox)
+            if (controlName.Contains("password"))
+            {
+                Console.WriteLine($"=== VirtualKeyboardService: Detected password field {_activeInput?.Name}, looking for action button ===");
+                
+                // Find the appropriate action button based on the screen
+                var parentWindow = Window.GetWindow(_activeInput);
+                if (parentWindow != null)
+                {
+                    // Try to find LoginButton first (Login screen)
+                    var loginButton = FindVisualChild<Button>(parentWindow, "LoginButton");
+                    if (loginButton != null && loginButton.IsEnabled)
+                    {
+                        Console.WriteLine($"=== VirtualKeyboardService: Found LoginButton, clicking it ===");
+                        loginButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                        
+                        // Hide keyboard after login attempt
+                        HideKeyboard();
+                        return;
+                    }
+                    
+                    // Try to find ChangePasswordButton (Forced Password Change screen)
+                    var changePasswordButton = FindVisualChild<Button>(parentWindow, "ChangePasswordButton");
+                    if (changePasswordButton != null && changePasswordButton.IsEnabled)
+                    {
+                        Console.WriteLine($"=== VirtualKeyboardService: Found ChangePasswordButton, clicking it ===");
+                        changePasswordButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                        
+                        // Hide keyboard after password change attempt
+                        HideKeyboard();
+                        return;
+                    }
+                    
+                    // Try to find ResetPasswordButton (Password Reset screen)
+                    var resetPasswordButton = FindVisualChild<Button>(parentWindow, "ResetPasswordButton");
+                    if (resetPasswordButton != null && resetPasswordButton.IsEnabled)
+                    {
+                        Console.WriteLine($"=== VirtualKeyboardService: Found ResetPasswordButton, clicking it ===");
+                        resetPasswordButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                        
+                        // Hide keyboard after password reset attempt
+                        HideKeyboard();
+                        return;
+                    }
+                    
+                    Console.WriteLine($"=== VirtualKeyboardService: No action button found or enabled ===");
+                }
+                
+                // Fallback: try to raise keyboard events
+                var passwordSrc = PresentationSource.FromVisual(_activeInput);
+                if (passwordSrc != null)
+                {
+                    var passwordEnterKey = new KeyEventArgs(Keyboard.PrimaryDevice, passwordSrc, 0, Key.Enter)
+                    {
+                        RoutedEvent = UIElement.PreviewKeyDownEvent
+                    };
+                    
+                    _activeInput?.RaiseEvent(passwordEnterKey);
+                }
+                else
+                {
+                    // Fallback: move focus to next control
+                    _activeInput?.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
+                }
+                return;
+            }
+            
             // Check if we're in a price input field in the Admin Dashboard
             if (_activeInput is TextBox textBox)
             {
@@ -1086,15 +1208,74 @@ namespace Photobooth.Services
                     HideKeyboard();
                     return;
                 }
+                
+                // Check if this is a PIN box (PIN1, PIN2, PIN3, PIN4, etc.)
+                if (textBoxName.StartsWith("pin") || textBoxName.StartsWith("confirm"))
+                {
+                    Console.WriteLine($"=== VirtualKeyboardService: Detected PIN box {textBoxName}, looking for action button ===");
+                    
+                    // Find the action button in the PIN screen (ContinueButton or VerifyButton)
+                    var parentWindow = Window.GetWindow(_activeInput);
+                    if (parentWindow != null)
+                    {
+                        // Try to find ContinueButton first (PIN Setup screen)
+                        var continueButton = FindVisualChild<Button>(parentWindow, "ContinueButton");
+                        if (continueButton != null && continueButton.IsEnabled)
+                        {
+                            Console.WriteLine($"=== VirtualKeyboardService: Found Continue button, clicking it ===");
+                            continueButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                            
+                            // Hide keyboard after successful PIN submission
+                            HideKeyboard();
+                            return;
+                        }
+                        
+                        // Try to find VerifyButton (PIN Recovery screen)
+                        var verifyButton = FindVisualChild<Button>(parentWindow, "VerifyButton");
+                        if (verifyButton != null && verifyButton.IsEnabled)
+                        {
+                            Console.WriteLine($"=== VirtualKeyboardService: Found Verify button, clicking it ===");
+                            verifyButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                            
+                            // Hide keyboard after PIN verification attempt
+                            HideKeyboard();
+                            return;
+                        }
+                        
+                        Console.WriteLine($"=== VirtualKeyboardService: No action button found or enabled ===");
+                    }
+                    
+                    // Fallback: try to raise keyboard events
+                    var pinSrc = PresentationSource.FromVisual(_activeInput);
+                    if (pinSrc != null)
+                    {
+                        var pinEnterKey = new KeyEventArgs(Keyboard.PrimaryDevice, pinSrc, 0, Key.Enter)
+                        {
+                            RoutedEvent = UIElement.PreviewKeyDownEvent
+                        };
+                        
+                        _activeInput?.RaiseEvent(pinEnterKey);
+                    }
+                    else
+                    {
+                        // Fallback: move focus to next control
+                        _activeInput?.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
+                    }
+                    return;
+                }
             }
 
             // Default Enter behavior for other inputs
-            var enterKey = new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(_activeInput), 0, Key.Enter)
+            var src = PresentationSource.FromVisual(_activeInput);
+            if (src != null)
             {
-                RoutedEvent = UIElement.KeyDownEvent
-            };
-            
-            _activeInput?.RaiseEvent(enterKey);
+                var enterKey = new KeyEventArgs(Keyboard.PrimaryDevice, src, 0, Key.Enter)
+                {
+                    RoutedEvent = UIElement.KeyDownEvent
+                };
+                
+                _activeInput?.RaiseEvent(enterKey);
+            }
             
             // Also try to move focus to next control or close keyboard
             _activeInput?.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
@@ -1281,6 +1462,38 @@ namespace Photobooth.Services
                 }
                 _textBoxBindingExpressions.Remove(textBox);
             }
+        }
+        
+        /// <summary>
+        /// Check if a control contains sensitive data (passwords or PINs) that should not be logged
+        /// </summary>
+        private bool IsSensitiveControl(Control? control)
+        {
+            if (control == null) return false;
+            
+            // PasswordBox is always sensitive
+            if (control is PasswordBox) return true;
+            
+            // TextBox with PIN-related names is sensitive
+            var controlName = control.Name?.ToLower() ?? "";
+            return controlName.Contains("pin") || 
+                   controlName.Contains("password") ||
+                   controlName.Contains("confirm");
+        }
+        
+        /// <summary>
+        /// Get text from control for logging, masking sensitive data
+        /// </summary>
+        private string GetTextForLogging(Control? control)
+        {
+            if (control == null) return "null";
+            
+            if (IsSensitiveControl(control))
+            {
+                return "<hidden>";
+            }
+            
+            return GetInputText(control);
         }
     }
 

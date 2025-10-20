@@ -49,10 +49,12 @@ namespace Photobooth.Controls
             if (e.Key == Key.Enter)
             {
                 OkButton_Click(sender, e);
+                e.Handled = true; // Prevent duplicate handlers and system ding
             }
             else if (e.Key == Key.Escape)
             {
                 CancelButton_Click(sender, e);
+                e.Handled = true; // Prevent duplicate handlers and system ding
             }
         }
 

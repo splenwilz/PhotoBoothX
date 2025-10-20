@@ -28,18 +28,20 @@ namespace PhotoBooth
         {
             base.OnStartup(e);
 
-            // Allocate a console window for debug output
 #if DEBUG
+            // Debug console only in DEBUG builds
             AllocConsole();
-
-
+            Console.WriteLine("===========================================");
+            Console.WriteLine("PhotoBoothX Debug Console");
+            Console.WriteLine("===========================================");
+            Console.WriteLine();
 #endif
         }
 
         protected override void OnExit(ExitEventArgs e)
         {
-            // Clean up console on exit
 #if DEBUG
+            // Clean up console on exit
             var handle = GetConsoleWindow();
             if (handle != IntPtr.Zero)
             {

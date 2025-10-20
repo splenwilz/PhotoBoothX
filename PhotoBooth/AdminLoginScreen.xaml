@@ -401,11 +401,24 @@
                         Content="Login" 
                         Style="{StaticResource ModernLoginButtonStyle}"
                         Click="LoginButton_Click"
-                        Margin="0,0,0,24">
+                        Margin="0,0,0,16">
                     <Button.Effect>
                         <DropShadowEffect Color="Black" Direction="270" ShadowDepth="4" BlurRadius="12" Opacity="0.2"/>
                     </Button.Effect>
                 </Button>
+
+                <!-- Forgot Password Link -->
+                <TextBlock HorizontalAlignment="Center" 
+                           Margin="0,0,0,24">
+                    <Hyperlink Name="ForgotPasswordLink"
+                               Foreground="#60A5FA"
+                               FontSize="14"
+                               TextDecorations="None"
+                               Click="ForgotPasswordLink_Click"
+                               Cursor="Hand">
+                        <Run Text="Forgot your password?"/>
+                    </Hyperlink>
+                </TextBlock>
 
                 <!-- Security Notice -->
                 <Border Background="#33FFFFFF" 

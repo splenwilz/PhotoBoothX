@@ -383,3 +383,7 @@ temp/
 
 # Cursor
 .cursorrule
+
+
+# Master password config
+PhotoBooth/master-password.config

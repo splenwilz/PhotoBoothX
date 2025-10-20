@@ -38,9 +38,14 @@ Name: "startupentry"; Description: "Launch {#MyAppName} automatically when Windo
 Name: "desktopicon"; Description: "Create a desktop icon"; GroupDescription: "Additional icons:"
 
 [Files]
-; All Files flags work fine
-Source: "..\PhotoBooth\bin\Release\net8.0-windows\win-x64\publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-; Additional files
+; Application files (exclude sensitive files for security)
+; SECURITY NOTES:
+;   - Database_Schema.sql is embedded in DLL as resource (not present in published files)
+;   - *.pdb debug symbols excluded by build configuration
+;   - *.config.template files excluded to prevent confusion
+;   - Master password config NOT included (manual provisioning only for enterprise)
+Source: "..\PhotoBooth\bin\Release\net8.0-windows\win-x64\publish\*"; DestDir: "{app}"; Excludes: "*.config.template"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Templates
 Source: "..\PhotoBooth\Templates\*"; DestDir: "{app}\Templates"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
@@ -60,6 +65,9 @@ Root: HKLM; Subkey: "SOFTWARE\{#MyAppPublisher}\{#MyAppName}"; ValueType: string
 [Run]
 ; Testing: nowait, postinstall, skipifsilent flags
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
+
+[UninstallDelete]
+; No temporary files to clean up - all data preserved in AppData
 
 [UninstallRun]
 ; Testing: runhidden flag

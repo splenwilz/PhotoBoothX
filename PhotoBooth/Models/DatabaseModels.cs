@@ -26,6 +26,7 @@ namespace Photobooth.Models
         public string UserId { get; set; } = Guid.NewGuid().ToString(); // Primary key - UUID for unique identification
         public string Username { get; set; } = string.Empty;
         public string DisplayName { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
         public string PasswordHash { get; set; } = string.Empty;
         public AdminAccessLevel AccessLevel { get; set; } = AdminAccessLevel.User;
         public bool IsActive { get; set; } = true;
@@ -34,6 +35,13 @@ namespace Photobooth.Models
         public DateTime UpdatedAt { get; set; } = DateTime.Now;
         public string? CreatedBy { get; set; }
         public string? UpdatedBy { get; set; }
+        
+        // Simple PIN Recovery: 4-6 digit numeric PIN for password reset (appropriate for kiosk security)
+        // Rationale: PINs are easier to remember than 20-char recovery keys, and kiosk has physical security
+        public string? RecoveryPIN { get; set; }        // Hashed PIN (never store plaintext)
+        public string? RecoveryPINSalt { get; set; }    // Salt for PBKDF2 hashing
+        public DateTime? RecoveryPINSetDate { get; set; } // Track when PIN was set for security audits
+        public bool PINSetupRequired { get; set; } = true; // Whether user must set up PIN (mandatory for new users)
     }
 
     // =============================================

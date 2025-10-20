@@ -24,9 +24,15 @@ namespace Photobooth.Services
         
         // Specialized methods
         Task<DatabaseResult<AdminUser?>> AuthenticateAsync(string username, string password);
+        Task<DatabaseResult<AdminUser?>> GetUserByUsernameAsync(string username); // For PIN recovery - get user without password check
         Task<DatabaseResult<bool>> IsUsingSetupCredentialsAsync(string username, string password);
         Task<DatabaseResult> UpdateAdminPasswordAsync(AdminAccessLevel accessLevel, string newPassword, string? updatedBy = null);
-        Task<DatabaseResult> UpdateUserPasswordByUserIdAsync(string userId, string newPassword, string? updatedBy = null);
+        Task<DatabaseResult> UpdateUserPasswordByUserIdAsync(string userId, string newPassword, string? updatedBy = null, string? email = null);
+        Task<DatabaseResult> UpdateUserRecoveryPINAsync(string userId, string pinHash, string pinSalt);
+        
+        // Master password methods
+        Task<DatabaseResult<bool>> MarkMasterPasswordUsedAsync(string passwordHash, string nonce, string macAddress, string userId);
+        
         Task<DatabaseResult> CreateAdminUserAsync(AdminUser user, string password, string? createdBy = null);
         Task<DatabaseResult> DeleteAdminUserAsync(string userId, string? deletedBy = null);
         Task<DatabaseResult<List<SalesOverviewDto>>> GetSalesOverviewAsync(DateTime? startDate = null, DateTime? endDate = null);
@@ -166,28 +172,45 @@ namespace Photobooth.Services
                     return DatabaseResult.SuccessResult();
                 }
 
-                // Database needs initialization - read and execute schema
+                // Database needs initialization - read schema from embedded resource
 #if DEBUG
                 Console.WriteLine("=== DATABASE IS NEW - INITIALIZING SCHEMA ===");
 #endif
-                var schemaPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Database_Schema.sql");
+                
+                // Read embedded resource instead of file for security
+                var assembly = System.Reflection.Assembly.GetExecutingAssembly();
+                var resourceName = "PhotoBooth.Database_Schema.sql";
 
 #if DEBUG
-                Console.WriteLine($"Schema path: {schemaPath}");
+                Console.WriteLine($"Reading embedded resource: {resourceName}");
 #endif
-                if (!File.Exists(schemaPath))
+                
+                string schemaScript;
+                using (var stream = assembly.GetManifestResourceStream(resourceName))
+                {
+                    if (stream == null)
                 {
 #if DEBUG
-                    Console.WriteLine("=== SCHEMA FILE NOT FOUND ===");
+                        Console.WriteLine("=== EMBEDDED RESOURCE NOT FOUND ===");
+                        Console.WriteLine("Available resources:");
+                        foreach (var res in assembly.GetManifestResourceNames())
+                        {
+                            Console.WriteLine($"  - {res}");
+                        }
 #endif
-                    var errorMsg = $"Database schema file not found at: {schemaPath}";
+                        var errorMsg = $"Database schema embedded resource not found: {resourceName}";
                     return DatabaseResult.ErrorResult(errorMsg);
                 }
+                    
 #if DEBUG
-                Console.WriteLine("=== SCHEMA FILE FOUND, READING CONTENT ===");
+                    Console.WriteLine("=== EMBEDDED RESOURCE FOUND, READING CONTENT ===");
 #endif
+                    using (var reader = new System.IO.StreamReader(stream))
+                    {
+                        schemaScript = await reader.ReadToEndAsync();
+                    }
+                }
 
-                var schemaScript = await File.ReadAllTextAsync(schemaPath);
 #if DEBUG
                 Console.WriteLine($"Schema script length: {schemaScript.Length} characters");
 #endif
@@ -733,6 +756,38 @@ namespace Photobooth.Services
             }
         }
 
+        /// <summary>
+        /// Get user by username without password verification
+        /// Rationale: Used for PIN recovery - need to fetch user data (including PIN hash/salt) to verify recovery PIN
+        /// </summary>
+        public async Task<DatabaseResult<AdminUser?>> GetUserByUsernameAsync(string username)
+        {
+            try
+            {
+                var query = "SELECT * FROM AdminUsers WHERE Username = @username AND IsActive = 1";
+                
+                using var connection = await CreateConnectionAsync();
+                using var command = new SqliteCommand(query, connection);
+                command.Parameters.AddWithValue("@username", username);
+                
+                using var reader = await command.ExecuteReaderAsync();
+
+                if (await reader.ReadAsync())
+                {
+                    var user = MapReaderToEntity<AdminUser>(reader);
+                    return DatabaseResult<AdminUser?>.SuccessResult(user);
+                }
+
+                return DatabaseResult<AdminUser?>.SuccessResult(null); // User not found (not an error, just null data)
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to retrieve user by username", ex,
+                    ("Username", username));
+                return DatabaseResult<AdminUser?>.ErrorResult($"Failed to retrieve user: {ex.Message}", ex);
+            }
+        }
+
         public async Task<DatabaseResult<bool>> IsUsingSetupCredentialsAsync(string username, string password)
         {
             try
@@ -801,17 +856,26 @@ namespace Photobooth.Services
             }
         }
 
-        public async Task<DatabaseResult> UpdateUserPasswordByUserIdAsync(string userId, string newPassword, string? updatedBy = null)
+        public async Task<DatabaseResult> UpdateUserPasswordByUserIdAsync(string userId, string newPassword, string? updatedBy = null, string? email = null)
         {
             try
             {
                 // Update password AND mark as no longer setup credentials by setting CreatedBy and UpdatedBy
-                var query = @"UPDATE AdminUsers 
-                             SET PasswordHash = @newPassword, 
-                                 UpdatedAt = @updatedAt,
-                                 UpdatedBy = @updatedBy,
-                                 CreatedBy = COALESCE(CreatedBy, @updatedBy)
-                             WHERE UserId = @userId";
+                // Optionally update email if provided
+                var query = email != null 
+                    ? @"UPDATE AdminUsers 
+                       SET PasswordHash = @newPassword, 
+                           Email = @email,
+                           UpdatedAt = @updatedAt,
+                           UpdatedBy = @updatedBy,
+                           CreatedBy = COALESCE(CreatedBy, @updatedBy)
+                       WHERE UserId = @userId"
+                    : @"UPDATE AdminUsers 
+                       SET PasswordHash = @newPassword, 
+                           UpdatedAt = @updatedAt,
+                           UpdatedBy = @updatedBy,
+                           CreatedBy = COALESCE(CreatedBy, @updatedBy)
+                       WHERE UserId = @userId";
 
                 using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
@@ -819,19 +883,105 @@ namespace Photobooth.Services
                 command.Parameters.AddWithValue("@userId", userId);
                 command.Parameters.AddWithValue("@updatedAt", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
                 command.Parameters.AddWithValue("@updatedBy", updatedBy ?? userId); // Self-update if no updatedBy specified
+                
+                if (email != null)
+                {
+                    command.Parameters.AddWithValue("@email", email);
+                }
 
                 await command.ExecuteNonQueryAsync();
                 
                 // Use file-based logging instead of database logging
                 LoggingService.Application.Information("User password updated - setup credentials converted",
                     ("UserId", userId),
-                    ("UpdatedBy", updatedBy ?? "Self"));
+                    ("UpdatedBy", updatedBy ?? "Self"),
+                    ("EmailUpdated", email != null));
                 
                 return DatabaseResult.SuccessResult();
             }
             catch (Exception ex)
             {
                 return DatabaseResult.ErrorResult($"Failed to update user password: {ex.Message}", ex);
+            }
+        }
+
+        /// <summary>
+        /// Update user's recovery PIN (hash and salt)
+        /// Rationale: Separate method for PIN updates to keep concerns separated
+        /// </summary>
+        public async Task<DatabaseResult> UpdateUserRecoveryPINAsync(string userId, string pinHash, string pinSalt)
+        {
+            try
+            {
+                var query = @"UPDATE AdminUsers 
+                             SET RecoveryPIN = @pinHash, 
+                                 RecoveryPINSalt = @pinSalt,
+                                 RecoveryPINSetDate = @setDate,
+                                 PINSetupRequired = 0
+                             WHERE UserId = @userId";
+
+                using var connection = await CreateConnectionAsync();
+                using var command = new SqliteCommand(query, connection);
+                command.Parameters.AddWithValue("@pinHash", pinHash);
+                command.Parameters.AddWithValue("@pinSalt", pinSalt);
+                command.Parameters.AddWithValue("@setDate", DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss"));
+                command.Parameters.AddWithValue("@userId", userId);
+
+                await command.ExecuteNonQueryAsync();
+                
+                LoggingService.Application.Information("User recovery PIN updated",
+                    ("UserId", userId));
+                
+                return DatabaseResult.SuccessResult();
+            }
+            catch (Exception ex)
+            {
+                return DatabaseResult.ErrorResult($"Failed to update recovery PIN: {ex.Message}", ex);
+            }
+        }
+
+        /// <summary>
+        /// Atomically marks a master password as used in the database (single-use enforcement)
+        /// Returns true if password was already used, false if successfully marked as used
+        /// This is atomic - no race condition between check and insert
+        /// Uses ON CONFLICT DO NOTHING for clean, performant enforcement without exceptions
+        /// </summary>
+        public async Task<DatabaseResult<bool>> MarkMasterPasswordUsedAsync(string passwordHash, string nonce, string macAddress, string userId)
+        {
+            try
+            {
+                var query = @"INSERT INTO UsedMasterPasswords (PasswordHash, Nonce, MacAddress, UsedByUserId, UsedAt)
+                             VALUES (@passwordHash, @nonce, @macAddress, @userId, @usedAt)
+                             ON CONFLICT(PasswordHash) DO NOTHING;
+                             SELECT changes();";
+                
+                using var connection = await CreateConnectionAsync();
+                using var command = new SqliteCommand(query, connection);
+                command.Parameters.AddWithValue("@passwordHash", passwordHash);
+                command.Parameters.AddWithValue("@nonce", nonce);
+                command.Parameters.AddWithValue("@macAddress", macAddress);
+                command.Parameters.AddWithValue("@userId", userId);
+                command.Parameters.AddWithValue("@usedAt", DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss"));
+                
+                var changes = Convert.ToInt32(await command.ExecuteScalarAsync());
+                
+                if (changes == 0)
+                {
+                    // No rows changed = conflict on PasswordHash = already used
+                    return DatabaseResult<bool>.SuccessResult(true);
+                }
+                
+                // Row inserted = password was NOT already used
+                LoggingService.Application.Information("Master password used for temporary admin access",
+                    ("UserId", userId),
+                    ("MacAddress", MaskMac(macAddress)), // Mask for privacy (GDPR/PII compliance)
+                    ("Nonce", nonce));
+                
+                return DatabaseResult<bool>.SuccessResult(false);
+            }
+            catch (Exception ex)
+            {
+                return DatabaseResult<bool>.ErrorResult($"Failed to mark master password as used: {ex.Message}", ex);
             }
         }
 
@@ -3480,11 +3630,11 @@ namespace Photobooth.Services
         {
             try
             {
-                // Generate secure random passwords
-                var masterPassword = GenerateSecurePassword(16);
-                var userPassword = GenerateSecurePassword(16);
+                // Use fixed default passwords - users will be forced to change on first login
+                var masterPassword = "admin123";
+                var userPassword = "user123";
 
-                // Create default master admin with secure password
+                // Create default master admin with fixed password
                 var masterAdmin = new AdminUser
                 {
                     UserId = Guid.NewGuid().ToString(),
@@ -3494,10 +3644,10 @@ namespace Photobooth.Services
                     AccessLevel = Models.AdminAccessLevel.Master,
                     IsActive = true,
                     CreatedAt = DateTime.Now,
-                    CreatedBy = null
+                    CreatedBy = null  // Null CreatedBy indicates this is a setup account that needs password change
                 };
 
-                // Create default user admin with secure password
+                // Create default user admin with fixed password
                 var userAdmin = new AdminUser
                 {
                     UserId = Guid.NewGuid().ToString(),
@@ -3507,7 +3657,7 @@ namespace Photobooth.Services
                     AccessLevel = Models.AdminAccessLevel.User,
                     IsActive = true,
                     CreatedAt = DateTime.Now,
-                    CreatedBy = null
+                    CreatedBy = null  // Null CreatedBy indicates this is a setup account that needs password change
                 };
 
                 // Insert directly using the existing connection (UserId is now primary key)
@@ -3537,39 +3687,16 @@ namespace Photobooth.Services
                 userCommand.Parameters.AddWithValue("@createdAt", userAdmin.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss"));
                 await userCommand.ExecuteNonQueryAsync();
 
-                // Write secure credentials to a protected file for first-time setup
-                Console.WriteLine("=== CALLING WriteInitialCredentialsSecurely ===");
-                Console.WriteLine($"Master password length: {masterPassword.Length}");
-                Console.WriteLine($"User password length: {userPassword.Length}");
+                // Log that default credentials are being used
+                LoggingService.Application.Information("Default admin accounts created with fixed passwords",
+                    ("MasterUsername", "admin"),
+                    ("MasterPassword", "admin123"),
+                    ("UserUsername", "user"),
+                    ("UserPassword", "user123"),
+                    ("SecurityNote", "Users will be forced to change passwords on first login"));
                 
-                // Check if credential file creation is enabled (default: DEBUG only)
-                var createCredentialFiles = false;
-#if DEBUG
-                createCredentialFiles = true; // Allow in DEBUG builds
-#endif
-                
-                // Allow override via environment variable for special deployment scenarios
-                if (Environment.GetEnvironmentVariable("PHOTOBOOTH_ENABLE_CREDENTIAL_FILES") == "true")
-                {
-                    createCredentialFiles = true;
-                    LoggingService.Application.Warning("Credential file creation enabled via environment variable - use with caution");
-                }
-                
-                if (createCredentialFiles)
-                {
-                    await WriteInitialCredentialsSecurely(masterPassword, userPassword);
-                    Console.WriteLine("=== WriteInitialCredentialsSecurely COMPLETED ===");
-                }
-                else
-                {
-                    // Production mode: Log credentials only to secure application logs
-                    LoggingService.Application.Warning("Initial admin credentials generated - check secure logs for recovery",
-                        ("MasterUsername", "admin"),
-                        ("UserUsername", "user"),
-                        ("Note", "Contact support if admin access is lost"),
-                        ("SecurityNote", "Credential files disabled in production build"));
-                    Console.WriteLine("=== Production mode: Credentials not written to files ===");
-                }
+                Console.WriteLine("=== Default credentials set: admin/admin123, user/user123 ===");
+                Console.WriteLine("=== Users will be forced to change passwords on first login ===");
 
 
             }
@@ -3896,6 +4023,31 @@ Security Best Practices:
                 Console.WriteLine($"DatabaseService: Error saving camera settings - {ex.Message}");
                 return DatabaseResult.ErrorResult($"Failed to save camera settings: {ex.Message}");
             }
+        }
+
+        #endregion
+
+        #region Privacy Helpers
+
+        /// <summary>
+        /// Masks MAC address for privacy-compliant logging (GDPR/PII protection)
+        /// Shows only last 2 bytes for debugging while protecting device identity
+        /// </summary>
+        private static string MaskMac(string macAddress)
+        {
+            if (string.IsNullOrEmpty(macAddress)) return "unknown";
+            
+            // MAC format: XX:XX:XX:XX:XX:XX or XX-XX-XX-XX-XX-XX
+            var cleaned = macAddress.Replace("-", ":").ToLowerInvariant();
+            var parts = cleaned.Split(':');
+            
+            if (parts.Length >= 6)
+            {
+                // Mask first 4 bytes, show last 2 bytes
+                return $"XX:XX:XX:XX:{parts[4]}:{parts[5]}";
+            }
+            
+            return "masked";
         }
 
         #endregion

@@ -12,6 +12,7 @@ CREATE TABLE AdminUsers (
     UserId TEXT PRIMARY KEY, -- UUID for unique user identification
     Username TEXT NOT NULL UNIQUE,
     DisplayName TEXT NOT NULL DEFAULT '',
+    Email TEXT DEFAULT '',
     PasswordHash TEXT NOT NULL,
     AccessLevel TEXT NOT NULL CHECK (AccessLevel IN ('Master', 'User')),
     IsActive BOOLEAN NOT NULL DEFAULT 1,
@@ -20,9 +21,29 @@ CREATE TABLE AdminUsers (
     UpdatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CreatedBy TEXT,
     UpdatedBy TEXT,
+    -- Simple PIN Recovery: 4-6 digit PIN for password recovery (kiosk-appropriate security)
+    RecoveryPIN TEXT,              -- Hashed PIN (PBKDF2 with salt)
+    RecoveryPINSalt TEXT,          -- Salt for PIN hashing
+    RecoveryPINSetDate DATETIME,   -- When PIN was created/last changed
+    PINSetupRequired BOOLEAN NOT NULL DEFAULT 1, -- Whether user must set up PIN (mandatory)
     FOREIGN KEY (CreatedBy) REFERENCES AdminUsers(UserId),
     FOREIGN KEY (UpdatedBy) REFERENCES AdminUsers(UserId)
 );
+
+-- Master password usage tracking for temporary admin access
+-- Each password is single-use and derived from machine-specific key
+CREATE TABLE UsedMasterPasswords (
+    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+    PasswordHash TEXT NOT NULL UNIQUE CHECK (length(PasswordHash) = 64 AND PasswordHash GLOB '[0-9A-F]*'), -- SHA256 hash (64 hex chars)
+    Nonce TEXT NOT NULL CHECK (length(Nonce) = 4 AND Nonce GLOB '[0-9][0-9][0-9][0-9]'), -- 4-digit nonce
+    MacAddress TEXT NOT NULL, -- MAC address of kiosk where password was used
+    UsedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UsedByUserId TEXT NOT NULL, -- Admin user ID (stable, not username which can change)
+    FOREIGN KEY (UsedByUserId) REFERENCES AdminUsers(UserId) ON UPDATE CASCADE
+);
+
+-- Index for performance on time-based queries (pruning old records, usage reports, auditing)
+CREATE INDEX IF NOT EXISTS IX_UsedMasterPasswords_UsedAt ON UsedMasterPasswords(UsedAt);
 
 -- =============================================
 -- 2. PRODUCT MANAGEMENT

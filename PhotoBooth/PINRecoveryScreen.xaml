@@ -1,0 +1,384 @@
+<UserControl x:Class="Photobooth.PINRecoveryScreen"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:behaviors="clr-namespace:Photobooth.Behaviors"
+             mc:Ignorable="d"
+             d:DesignHeight="1080" d:DesignWidth="1920">
+
+    <!-- Resources for PIN box styling -->
+    <UserControl.Resources>
+        <!-- PIN Box Border Style -->
+        <Style x:Key="PINBoxStyle" TargetType="Border">
+            <Setter Property="Width" Value="70"/>
+            <Setter Property="Height" Value="70"/>
+            <Setter Property="Background">
+                <Setter.Value>
+                    <SolidColorBrush Color="White" Opacity="0.1"/>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="BorderBrush">
+                <Setter.Value>
+                    <SolidColorBrush Color="White" Opacity="0.2"/>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="12"/>
+            <Setter Property="Margin" Value="8"/>
+        </Style>
+
+        <!-- PIN Input TextBox Style -->
+        <Style x:Key="PINInputStyle" TargetType="TextBox">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="FontSize" Value="32"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="FontFamily" Value="Consolas"/>
+            <Setter Property="MaxLength" Value="1"/>
+            <Setter Property="TextAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="CaretBrush" Value="White"/>
+        </Style>
+
+        <!-- Gradient Button Style (same as login button) -->
+        <Style x:Key="ModernGradientButtonStyle" TargetType="Button">
+            <Setter Property="Background">
+                <Setter.Value>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                        <GradientStop Color="#2563EB" Offset="0"/>
+                        <GradientStop Color="#7C3AED" Offset="1"/>
+                    </LinearGradientBrush>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="FontWeight" Value="Medium"/>
+            <Setter Property="Height" Value="48"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                CornerRadius="8"
+                                x:Name="Border">
+                            <ContentPresenter HorizontalAlignment="Center" 
+                                            VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Border" Property="Background">
+                                    <Setter.Value>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                            <GradientStop Color="#1D4ED8" Offset="0"/>
+                                            <GradientStop Color="#6D28D9" Offset="1"/>
+                                        </LinearGradientBrush>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Border" Property="Background">
+                                    <Setter.Value>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                            <GradientStop Color="#1E40AF" Offset="0"/>
+                                            <GradientStop Color="#5B21B6" Offset="1"/>
+                                        </LinearGradientBrush>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.5"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid>
+        <!-- Background Gradient -->
+        <Grid.Background>
+            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                <GradientStop Color="#581C87" Offset="0"/>
+                <GradientStop Color="#1E3A8A" Offset="0.5"/>
+                <GradientStop Color="#3730A3" Offset="1"/>
+            </LinearGradientBrush>
+        </Grid.Background>
+
+        <!-- Decorative Background Elements -->
+        <Canvas>
+            <Ellipse Width="160" Height="160" Canvas.Left="-80" Canvas.Top="-80" Opacity="0.1">
+                <Ellipse.Fill>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                        <GradientStop Color="#60A5FA" Offset="0"/>
+                        <GradientStop Color="#A78BFA" Offset="1"/>
+                    </LinearGradientBrush>
+                </Ellipse.Fill>
+            </Ellipse>
+
+            <Ellipse Width="96" Height="96" Canvas.Left="1600" Canvas.Top="128" Opacity="0.12">
+                <Ellipse.Fill>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                        <GradientStop Color="#A78BFA" Offset="0"/>
+                        <GradientStop Color="#F472B6" Offset="1"/>
+                    </LinearGradientBrush>
+                </Ellipse.Fill>
+            </Ellipse>
+
+            <Ellipse Width="192" Height="192" Canvas.Left="-96" Canvas.Top="792" Opacity="0.08">
+                <Ellipse.Fill>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                        <GradientStop Color="#22D3EE" Offset="0"/>
+                        <GradientStop Color="#60A5FA" Offset="1"/>
+                    </LinearGradientBrush>
+                </Ellipse.Fill>
+            </Ellipse>
+
+            <Ellipse Width="144" Height="144" Canvas.Right="-72" Canvas.Bottom="-72" Opacity="0.1">
+                <Ellipse.Fill>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                        <GradientStop Color="#FB923C" Offset="0"/>
+                        <GradientStop Color="#FBBF24" Offset="1"/>
+                    </LinearGradientBrush>
+                </Ellipse.Fill>
+            </Ellipse>
+        </Canvas>
+
+        <!-- Main Content -->
+        <Border MaxWidth="650"
+                Width="480"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Margin="32"
+                BorderThickness="1"
+                CornerRadius="16"
+                Padding="32">
+            <Border.Background>
+                <SolidColorBrush Color="White" Opacity="0.1"/>
+            </Border.Background>
+            <Border.BorderBrush>
+                <SolidColorBrush Color="White" Opacity="0.2"/>
+            </Border.BorderBrush>
+            <Border.Effect>
+                <DropShadowEffect Color="Black" Direction="270" ShadowDepth="8" BlurRadius="24" Opacity="0.3"/>
+            </Border.Effect>
+
+            <StackPanel>
+                <!-- Header -->
+                <TextBlock Text="🔓" 
+                           FontSize="34" 
+                           HorizontalAlignment="Center"
+                           Margin="0,0,0,16"/>
+                
+                <TextBlock Text="Forgot Password?" 
+                           FontSize="32" 
+                           FontWeight="Bold" 
+                           Foreground="White" 
+                           HorizontalAlignment="Center"
+                           Margin="0,0,0,12"/>
+                
+                <TextBlock Name="InstructionText"
+                           Text="Select your account and enter your recovery PIN" 
+                           FontSize="16" 
+                           Foreground="#D1D5DB" 
+                           HorizontalAlignment="Center"
+                           TextWrapping="Wrap"
+                           TextAlignment="Center"
+                           Margin="0,0,0,32"/>
+
+                <!-- User Selection Dropdown -->
+                <!-- Rationale: Secure - prevents PIN collision between users -->
+                <TextBlock Text="Select User" 
+                           FontSize="14" 
+                           FontWeight="SemiBold"
+                           Foreground="White" 
+                           HorizontalAlignment="Center"
+                           Margin="0,0,0,12"/>
+                
+                <Grid Width="300" Margin="0,0,0,32">
+                    <!-- Background for ComboBox -->
+                    <Border Background="#1A1A1A" 
+                            BorderBrush="#3F3F46" 
+                            BorderThickness="2" 
+                            CornerRadius="8"/>
+                    
+                    <!-- Placeholder Text -->
+                    <TextBlock Name="ComboBoxPlaceholder"
+                               Text="Select account..."
+                               Foreground="#9CA3AF"
+                               FontSize="16"
+                               IsHitTestVisible="False"
+                               VerticalAlignment="Center"
+                               HorizontalAlignment="Center"
+                               Margin="0,0,0,0"/>
+                    
+                    <ComboBox Name="UserComboBox"
+                              Width="300"
+                              Height="50"
+                              Background="Transparent"
+                              Foreground="White"
+                              BorderBrush="#3F3F46"
+                              BorderThickness="2"
+                              FontSize="16"
+                              HorizontalContentAlignment="Center"
+                              VerticalContentAlignment="Center"
+                              SelectionChanged="UserComboBox_SelectionChanged">
+                        <ComboBox.Resources>
+                        <!-- ComboBox Border Style -->
+                        <Style TargetType="Border">
+                            <Setter Property="CornerRadius" Value="8"/>
+                        </Style>
+                        
+                        <!-- Popup/Dropdown Background Style -->
+                        <SolidColorBrush x:Key="{x:Static SystemColors.WindowBrushKey}" Color="#E5E7EB"/>
+                        
+                        <!-- ComboBoxItem Style - Softer background color -->
+                        <Style TargetType="ComboBoxItem">
+                            <Setter Property="Foreground" Value="#1A1A1A"/>
+                            <Setter Property="Background" Value="#E5E7EB"/>
+                            <Setter Property="Padding" Value="12,8"/>
+                            <Setter Property="FontSize" Value="16"/>
+                            <Style.Triggers>
+                                <Trigger Property="IsHighlighted" Value="True">
+                                    <Setter Property="Background" Value="#C7D2FE"/>
+                                    <Setter Property="Foreground" Value="#1A1A1A"/>
+                                </Trigger>
+                                <Trigger Property="IsSelected" Value="True">
+                                    <Setter Property="Background" Value="#6366F1"/>
+                                    <Setter Property="Foreground" Value="White"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ComboBox.Resources>
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding DisplayName}" 
+                                           FontSize="16"/>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                </Grid>
+
+                <!-- PIN Entry Section -->
+                <!-- Rationale: Only show PIN boxes after user is selected -->
+                <StackPanel Name="PINEntrySection" Visibility="Collapsed">
+
+                    <!-- Square PIN Boxes (4 boxes for 4-digit PIN) -->
+                    <!-- Rationale: Consistent with PIN setup screen, familiar UX -->
+                    <StackPanel Orientation="Horizontal" 
+                                HorizontalAlignment="Center"
+                                Margin="0,0,0,32">
+                        <Border Name="PIN1Border" Style="{StaticResource PINBoxStyle}">
+                            <TextBox Name="PIN1" Style="{StaticResource PINInputStyle}" 
+                                     PreviewTextInput="PINBox_PreviewTextInput"
+                                     TextChanged="PINBox_TextChanged"
+                                     PreviewKeyDown="PINBox_PreviewKeyDown"
+                                     GotFocus="PINBox_GotFocus"
+                                     behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True"/>
+                        </Border>
+                        <Border Name="PIN2Border" Style="{StaticResource PINBoxStyle}">
+                            <TextBox Name="PIN2" Style="{StaticResource PINInputStyle}"
+                                     PreviewTextInput="PINBox_PreviewTextInput"
+                                     TextChanged="PINBox_TextChanged"
+                                     PreviewKeyDown="PINBox_PreviewKeyDown"
+                                     GotFocus="PINBox_GotFocus"
+                                     behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True"/>
+                        </Border>
+                        <Border Name="PIN3Border" Style="{StaticResource PINBoxStyle}">
+                            <TextBox Name="PIN3" Style="{StaticResource PINInputStyle}"
+                                     PreviewTextInput="PINBox_PreviewTextInput"
+                                     TextChanged="PINBox_TextChanged"
+                                     PreviewKeyDown="PINBox_PreviewKeyDown"
+                                     GotFocus="PINBox_GotFocus"
+                                     behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True"/>
+                        </Border>
+                        <Border Name="PIN4Border" Style="{StaticResource PINBoxStyle}">
+                            <TextBox Name="PIN4" Style="{StaticResource PINInputStyle}"
+                                     PreviewTextInput="PINBox_PreviewTextInput"
+                                     TextChanged="PINBox_TextChanged"
+                                     PreviewKeyDown="PINBox_PreviewKeyDown"
+                                     GotFocus="PINBox_GotFocus"
+                                     behaviors:VirtualKeyboardBehavior.EnableVirtualKeyboard="True"/>
+                        </Border>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Status/Error Message -->
+                <TextBlock Name="StatusMessage" 
+                           FontSize="14" 
+                           Foreground="#EF4444"
+                           HorizontalAlignment="Center"
+                           TextWrapping="Wrap"
+                           TextAlignment="Center"
+                           Margin="0,0,0,24"
+                           Visibility="Collapsed"/>
+
+                <!-- Remaining Attempts Warning -->
+                <TextBlock Name="AttemptsWarning"
+                           FontSize="13" 
+                           Foreground="#F59E0B"
+                           HorizontalAlignment="Center"
+                           Margin="0,0,0,24"
+                           Visibility="Collapsed"/>
+                           
+
+                <!-- Action Buttons -->
+                <StackPanel Orientation="Horizontal" 
+                            HorizontalAlignment="Center"
+                            Margin="0,12,0,0">
+                    <Button Name="BackButton" 
+                            Content="← Back to Login"
+                            Width="160"
+                            Height="50"
+                            Margin="0,0,12,0"
+                            Background="#33FFFFFF"
+                            Foreground="#66FFFFFF"
+                            BorderThickness="0"
+                            FontSize="14"
+                            FontWeight="SemiBold"
+                            Cursor="Hand"
+                            Click="BackButton_Click">
+                        <Button.Resources>
+                            <Style TargetType="Border">
+                                <Setter Property="CornerRadius" Value="8"/>
+                            </Style>
+                        </Button.Resources>
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border Background="{TemplateBinding Background}"
+                                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                                    CornerRadius="8"
+                                                    Padding="{TemplateBinding Padding}">
+                                                <ContentPresenter HorizontalAlignment="Center" 
+                                                                VerticalAlignment="Center"/>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter Property="Background" Value="#374151"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+
+                    <Button Name="VerifyButton" 
+                            Style="{StaticResource ModernGradientButtonStyle}"
+                            Content="Verify PIN"
+                            Width="160"
+                            Click="VerifyButton_Click" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>
+
