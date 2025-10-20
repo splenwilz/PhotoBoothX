@@ -164,11 +164,10 @@ namespace Photobooth.Services
         private string GenerateSecureNonce()
         {
             using var rng = RandomNumberGenerator.Create();
-            var bytes = new byte[4];
-            rng.GetBytes(bytes);
             
-            var randomInt = BitConverter.ToInt32(bytes, 0);
-            var nonce = (Math.Abs(randomInt) % 10000).ToString().PadLeft(NONCE_LENGTH, '0');
+            // Use GetInt32 for uniform distribution (no modulo bias, no Math.Abs edge case)
+            var value = RandomNumberGenerator.GetInt32(10000);
+            var nonce = value.ToString("D4");
             
             return nonce;
         }

@@ -28,7 +28,7 @@ PhotoBoothX is a production-ready kiosk application designed for unattended oper
 ## Architecture
 
 ### Project Structure
-```
+```text
 PhotoBooth/                  # Main WPF application
 ├── Services/               # Business logic and core services
 │   ├── DatabaseService.cs  # SQLite data access layer
@@ -63,6 +63,7 @@ website/                 # Next.js support tool for master password generation
 - **Visual Studio 2022** (17.8 or later) or **Rider 2024.1+**
 - **.NET 8.0 SDK** - [Download](https://dotnet.microsoft.com/download/dotnet/8.0)
 - **Windows 10/11** - Required for WPF development
+- **Node.js 20+** (LTS) - Required to run the Next.js support tool in `website/`
 - **Git** - Version control
 
 ### Building from Source
@@ -199,4 +200,4 @@ This project is proprietary software. See [LICENSE.txt](LICENSE.txt) for details
 
 ---
 
-**Built with .NET 8.0 | Maintained by the PhotoBoothX Team**
+### Built with .NET 8.0 | Maintained by the PhotoBoothX Team

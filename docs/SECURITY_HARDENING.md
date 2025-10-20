@@ -114,8 +114,8 @@ private void DeleteConfigFile()
 - ✅ Machine-specific (derived from MAC address + base secret)
 
 **Algorithm**:
-```
-1. privateKey = PBKDF2(baseSecret + macAddress, 100000 iterations)
+```text
+1. privateKey = PBKDF2(baseSecret + macAddress, 100,000 iterations)
 2. nonce = RandomNumber(1000-9999)
 3. hmac = HMAC-SHA256(privateKey, nonce + macAddress)
 4. password = nonce + last4DigitsOf(hmac)
