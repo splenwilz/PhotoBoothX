@@ -74,6 +74,14 @@ namespace Photobooth.Tests.Integration
         [TestMethod]
         public async Task GetBaseSecret_NoSecret_ThrowsInvalidOperationException()
         {
+            // Arrange - Ensure no config file exists in base directory
+            var baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            var configPath = Path.Combine(baseDir, "master-password.config");
+            if (File.Exists(configPath))
+            {
+                File.Delete(configPath);
+            }
+
             // Act & Assert
             Func<Task> act = async () => await _masterPasswordConfigService.GetBaseSecretAsync();
             await act.Should().ThrowAsync<InvalidOperationException>(

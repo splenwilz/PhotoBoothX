@@ -2,6 +2,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using FluentAssertions;
 using Photobooth.Services;
 using System;
+using System.Linq;
 using System.Text;
 
 namespace Photobooth.Tests.Services

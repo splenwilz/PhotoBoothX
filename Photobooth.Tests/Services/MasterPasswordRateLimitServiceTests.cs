@@ -378,18 +378,30 @@ namespace Photobooth.Tests.Services
         }
 
         [TestMethod]
-        public void RecordFailedAttempt_EmptyPrefixUsername_HandledGracefully()
+        public void RecordFailedAttempt_EmptyUsername_HandledGracefully()
         {
             // Arrange
-            // Test that the service handles usernames with empty prefix gracefully
-            // Note: Using UniqueUsername("") to avoid test interference from static dictionary
-            var username = UniqueUsername("");
+            var username = string.Empty;
 
             // Act
             var remaining = _service.RecordFailedAttempt(username);
 
             // Assert
-            remaining.Should().Be(2, "username with empty prefix should be handled gracefully");
+            remaining.Should().Be(3, "empty username returns MAX_ATTEMPTS and is not tracked");
+            _service.IsLockedOut(username).Should().BeFalse("empty username should not be tracked/locked");
+        }
+
+        [TestMethod]
+        public void RecordFailedAttempt_WhitespaceUsername_HandledGracefully()
+        {
+            // Arrange
+            var username = "   " + Guid.NewGuid().ToString("N").Substring(0, 8); // Whitespace prefix with unique suffix
+
+            // Act
+            var remaining = _service.RecordFailedAttempt(username);
+
+            // Assert
+            remaining.Should().Be(2, "whitespace username should be handled gracefully");
         }
 
         [TestMethod]
@@ -528,7 +540,7 @@ namespace Photobooth.Tests.Services
         }
 
         [TestMethod]
-        public void RecordFailedAttempt_AlternatingUsers_EachGetsFiveAttempts()
+        public void RecordFailedAttempt_AlternatingUsers_EachGetsThreeAttemptsAndLock()
         {
             // Arrange - Simulate attacker trying multiple accounts
             var users = new[] { UniqueUsername("admin1"), UniqueUsername("admin2"), UniqueUsername("admin3") };
