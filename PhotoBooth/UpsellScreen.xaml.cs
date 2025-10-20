@@ -697,7 +697,7 @@ namespace Photobooth
 
         /// <summary>
         /// Calculate extra copy pricing based on quantity using configurable pricing
-        /// Returns rounded-up values for display and billing consistency
+        /// Returns exact decimal values for accurate billing
         /// </summary>
         public decimal CalculateExtraCopyPrice(int copies)
         {
@@ -709,8 +709,8 @@ namespace Photobooth
                 _ => 0
             };
             
-            // Round UP to nearest dollar for consistent display and billing
-            return Math.Ceiling(result);
+            // Return exact price (no rounding) for accurate billing
+            return result;
         }
 
         /// <summary>

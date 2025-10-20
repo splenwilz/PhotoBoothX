@@ -79,7 +79,7 @@ private void DeleteConfigFile()
 ---
 
 ### 5. **Rate Limiting**
-**Risk**: Brute force attacks on master passwords.
+**Risk**: Brute-force attacks on master passwords.
 
 **Mitigation**:
 - ✅ **5 failed attempts** = 1-minute lockout
