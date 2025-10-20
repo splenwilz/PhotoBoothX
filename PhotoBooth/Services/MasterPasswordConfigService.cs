@@ -31,30 +31,21 @@ namespace Photobooth.Services
         /// </summary>
         public async Task<string> GetBaseSecretAsync()
         {
-#if DEBUG
             Console.WriteLine("=== MasterPasswordConfigService.GetBaseSecretAsync START ===");
-#endif
             try
             {
                 // Try to get from database first (already configured)
-#if DEBUG
                 Console.WriteLine("Checking database for base secret...");
-#endif
                 var result = await _databaseService.GetSettingValueAsync<string>(SETTINGS_CATEGORY, BASE_SECRET_KEY);
-#if DEBUG
                 Console.WriteLine($"Database result: Success={result.Success}, HasData={!string.IsNullOrEmpty(result.Data)}");
-#endif
+
                 
                 if (result.Success && !string.IsNullOrEmpty(result.Data))
                 {
-#if DEBUG
                     Console.WriteLine("Found in database, decrypting...");
-#endif
                     // Decrypt the stored encrypted value
                     var decrypted = DecryptSecret(result.Data);
-#if DEBUG
                     Console.WriteLine($"Decrypted successfully, length={decrypted?.Length ?? 0}");
-#endif
                     if (string.IsNullOrEmpty(decrypted))
                     {
                         throw new InvalidOperationException("Failed to decrypt base secret - data may be corrupted");
@@ -63,38 +54,27 @@ namespace Photobooth.Services
                 }
 
                 // Not in database - try to load from config file and initialize
-#if DEBUG
                 Console.WriteLine("Not in database, trying config file...");
-#endif
                 var configSecret = LoadFromConfigFile();
-#if DEBUG
                 Console.WriteLine($"Config file result: {(configSecret != null ? $"Found (length={configSecret.Length})" : "Not found")}");
-#endif
+
                 
                 if (!string.IsNullOrEmpty(configSecret))
                 {
-#if DEBUG
                     Console.WriteLine("Storing config secret in database...");
-#endif
                     // Store in database for future use (encrypted)
                     var saveSuccess = await SetBaseSecretAsync(configSecret);
-#if DEBUG
                     Console.WriteLine($"Database save result: {saveSuccess}");
-#endif
                     
                     if (!saveSuccess)
                     {
-#if DEBUG
                         Console.WriteLine("[ERROR] Failed to save secret to database!");
-#endif
                         LoggingService.Application.Error("Failed to save master password secret to database");
                         throw new InvalidOperationException("Failed to initialize master password configuration");
                     }
                     
                     LoggingService.Application.Information("Master password base secret initialized from config file");
-#if DEBUG
                     Console.WriteLine("Successfully initialized from config file");
-#endif
                     
                     // SECURITY: Delete the config file to remove plain text secret
                     DeleteConfigFile();
@@ -104,9 +84,8 @@ namespace Photobooth.Services
 
                 // No config file - master password feature disabled
                 // This is NOT an error - it's an optional feature for self-installed systems
-#if DEBUG
                 Console.WriteLine("No config file found - master password feature disabled");
-#endif
+
                 throw new InvalidOperationException(
                     "Master password feature is not available. " +
                     "This feature is only available in enterprise installations with support contracts.");
@@ -118,19 +97,15 @@ namespace Photobooth.Services
             }
             catch (Exception ex)
             {
-#if DEBUG
                 Console.WriteLine($"ERROR: {ex.GetType().Name}: {ex.Message}");
                 Console.WriteLine($"Stack trace: {ex.StackTrace}");
-#endif
                 LoggingService.Application.Error($"Failed to get base secret: {ex.Message}");
                 throw new InvalidOperationException(
                     "Failed to retrieve master password base secret.", ex);
             }
             finally
             {
-#if DEBUG
                 Console.WriteLine("=== MasterPasswordConfigService.GetBaseSecretAsync END ===");
-#endif
             }
         }
 
@@ -148,18 +123,14 @@ namespace Photobooth.Services
                 {
                     File.Delete(configPath);
                     LoggingService.Application.Information($"Deleted master password config file for security: {configPath}");
-#if DEBUG
                     Console.WriteLine($"[SECURITY] Deleted config file: {configPath}");
-#endif
                 }
             }
             catch (Exception ex)
             {
                 // Log but don't throw - deletion failure shouldn't break the app
                 LoggingService.Application.Warning($"Failed to delete master password config file: {ex.Message}");
-#if DEBUG
                 Console.WriteLine($"[WARNING] Could not delete config file: {ex.Message}");
-#endif
             }
         }
 
@@ -169,86 +140,61 @@ namespace Photobooth.Services
         /// </summary>
         private string? LoadFromConfigFile()
         {
-#if DEBUG
             Console.WriteLine("--- LoadFromConfigFile START ---");
-#endif
             try
             {
                 var baseDir = AppDomain.CurrentDomain.BaseDirectory;
-#if DEBUG
                 Console.WriteLine($"Base directory: {baseDir}");
-#endif
                 
                 var configPath = Path.Combine(baseDir, CONFIG_FILENAME);
-#if DEBUG
                 Console.WriteLine($"Looking for config at: {configPath}");
-#endif
 
                 if (!File.Exists(configPath))
                 {
-#if DEBUG
                     Console.WriteLine("Config file does NOT exist");
-#endif
                     return null; // Config file not present - self-installed version
                 }
 
-#if DEBUG
                 Console.WriteLine("Config file EXISTS, reading...");
-#endif
                 var json = File.ReadAllText(configPath);
-#if DEBUG
                 Console.WriteLine($"Config JSON length: {json.Length}");
                 // Avoid logging sensitive config contents (baseSecret is plaintext/encrypted secret)
-#endif
+
                 
                 var config = System.Text.Json.JsonDocument.Parse(json);
                 
                 var encrypted = config.RootElement.GetProperty("encrypted").GetBoolean();
                 var secret = config.RootElement.GetProperty("baseSecret").GetString();
-#if DEBUG
                 Console.WriteLine($"Config parsed: encrypted={encrypted}, secret length={secret?.Length ?? 0}");
-#endif
 
                 if (string.IsNullOrEmpty(secret))
                 {
-#if DEBUG
                     Console.WriteLine("Secret is empty in config file");
-#endif
                     return null;
                 }
 
                 // If encrypted in config, decrypt it
                 if (encrypted)
                 {
-#if DEBUG
                     Console.WriteLine("Secret is encrypted, decrypting...");
-#endif
                     var decrypted = DecryptSecret(secret);
-#if DEBUG
                     Console.WriteLine($"Decrypted length: {decrypted?.Length ?? 0}");
-#endif
                     return decrypted;
                 }
 
-#if DEBUG
                 Console.WriteLine("Secret is not encrypted, returning as-is");
-#endif
                 return secret;
             }
             catch (Exception ex)
             {
-#if DEBUG
                 Console.WriteLine($"ERROR in LoadFromConfigFile: {ex.GetType().Name}: {ex.Message}");
                 Console.WriteLine($"Stack trace: {ex.StackTrace}");
-#endif
                 LoggingService.Application.Error($"Failed to load config file: {ex.Message}");
                 return null;
             }
             finally
             {
-#if DEBUG
                 Console.WriteLine("--- LoadFromConfigFile END ---");
-#endif
             }
         }
 
@@ -257,39 +203,30 @@ namespace Photobooth.Services
         /// </summary>
         public async Task<bool> SetBaseSecretAsync(string baseSecret)
         {
-#if DEBUG
             Console.WriteLine("--- SetBaseSecretAsync START ---");
             Console.WriteLine($"Input secret length: {baseSecret?.Length ?? 0}");
-#endif
             
             if (string.IsNullOrWhiteSpace(baseSecret))
             {
-#if DEBUG
                 Console.WriteLine("[ERROR] Base secret is empty!");
-#endif
                 throw new ArgumentException("Base secret cannot be empty", nameof(baseSecret));
             }
 
             if (baseSecret.Length < 32)
             {
-#if DEBUG
                 Console.WriteLine($"[ERROR] Base secret too short: {baseSecret.Length} chars (need 32+)");
-#endif
                 throw new ArgumentException("Base secret must be at least 32 characters for security", nameof(baseSecret));
             }
 
             try
             {
-#if DEBUG
                 Console.WriteLine("Encrypting secret with DPAPI...");
-#endif
                 // Encrypt using DPAPI CurrentUser scope (user-profile specific, secure for kiosk)
                 var encrypted = EncryptSecret(baseSecret);
-#if DEBUG
                 Console.WriteLine($"Encrypted secret length: {encrypted?.Length ?? 0}");
 
                 Console.WriteLine($"Calling database SetSettingValueAsync (Category: {SETTINGS_CATEGORY}, Key: {BASE_SECRET_KEY})...");
-#endif
+
                 // Store in database
                 // Use NULL for ModifiedBy to avoid FK constraint (system initialization)
                 var result = await _databaseService.SetSettingValueAsync(
@@ -298,37 +235,27 @@ namespace Photobooth.Services
                     encrypted, 
                     null);
 
-#if DEBUG
                 Console.WriteLine($"Database SetSettingValueAsync result: Success={result.Success}");
                 if (!result.Success)
                 {
                     Console.WriteLine($"[ERROR] Database error: {result.ErrorMessage}");
                 }
-#endif
 
                 if (result.Success)
                 {
                     LoggingService.Application.Information("Master password base secret updated");
-#if DEBUG
                     Console.WriteLine("Secret successfully saved to database");
-#endif
                 }
 
-#if DEBUG
                 Console.WriteLine("--- SetBaseSecretAsync END ---");
-#endif
                 return result.Success;
             }
             catch (Exception ex)
             {
-#if DEBUG
                 Console.WriteLine($"[ERROR] Exception in SetBaseSecretAsync: {ex.Message}");
                 Console.WriteLine($"Stack trace: {ex.StackTrace}");
-#endif
                 LoggingService.Application.Error($"Failed to set base secret: {ex.Message}");
-#if DEBUG
                 Console.WriteLine("--- SetBaseSecretAsync END (with error) ---");
-#endif
                 return false;
             }
         }
