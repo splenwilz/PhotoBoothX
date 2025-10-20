@@ -34,13 +34,16 @@ CREATE TABLE AdminUsers (
 -- Each password is single-use and derived from machine-specific key
 CREATE TABLE UsedMasterPasswords (
     Id INTEGER PRIMARY KEY AUTOINCREMENT,
-    PasswordHash TEXT NOT NULL UNIQUE, -- SHA256 hash of used password
-    Nonce TEXT NOT NULL, -- The 4-digit nonce used in password generation
+    PasswordHash TEXT NOT NULL UNIQUE CHECK (length(PasswordHash) = 64 AND PasswordHash GLOB '[0-9A-F]*'), -- SHA256 hash (64 hex chars)
+    Nonce TEXT NOT NULL CHECK (length(Nonce) = 4 AND Nonce GLOB '[0-9][0-9][0-9][0-9]'), -- 4-digit nonce
     MacAddress TEXT NOT NULL, -- MAC address of kiosk where password was used
     UsedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UsedByUsername TEXT NOT NULL, -- Admin username that was authenticated
-    FOREIGN KEY (UsedByUsername) REFERENCES AdminUsers(Username)
+    UsedByUserId TEXT NOT NULL, -- Admin user ID (stable, not username which can change)
+    FOREIGN KEY (UsedByUserId) REFERENCES AdminUsers(UserId) ON UPDATE CASCADE
 );
+
+-- Index for performance on time-based queries (pruning old records, usage reports, auditing)
+CREATE INDEX IF NOT EXISTS IX_UsedMasterPasswords_UsedAt ON UsedMasterPasswords(UsedAt);
 
 -- =============================================
 -- 2. PRODUCT MANAGEMENT

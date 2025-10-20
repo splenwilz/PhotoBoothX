@@ -2644,7 +2644,8 @@ namespace Photobooth
             {
                 Console.WriteLine("[SECURITY] Initializing master password config (database is now ready)...");
                 
-                var masterPasswordConfigService = new Photobooth.Services.MasterPasswordConfigService(_databaseService);
+                var masterPasswordService = new Photobooth.Services.MasterPasswordService();
+                var masterPasswordConfigService = new Photobooth.Services.MasterPasswordConfigService(_databaseService, masterPasswordService);
                 
                 // Try to get base secret - this will load from config file if needed and delete it
                 try

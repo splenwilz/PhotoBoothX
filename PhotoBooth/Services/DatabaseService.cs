@@ -31,8 +31,7 @@ namespace Photobooth.Services
         Task<DatabaseResult> UpdateUserRecoveryPINAsync(string userId, string pinHash, string pinSalt);
         
         // Master password methods
-        Task<DatabaseResult<bool>> IsMasterPasswordUsedAsync(string passwordHash);
-        Task<DatabaseResult> MarkMasterPasswordUsedAsync(string passwordHash, string nonce, string macAddress, string username);
+        Task<DatabaseResult<bool>> MarkMasterPasswordUsedAsync(string passwordHash, string nonce, string macAddress, string userId);
         
         Task<DatabaseResult> CreateAdminUserAsync(AdminUser user, string password, string? createdBy = null);
         Task<DatabaseResult> DeleteAdminUserAsync(string userId, string? deletedBy = null);
@@ -942,59 +941,47 @@ namespace Photobooth.Services
         }
 
         /// <summary>
-        /// Checks if a master password has already been used (prevents replay attacks)
+        /// Atomically marks a master password as used in the database (single-use enforcement)
+        /// Returns true if password was already used, false if successfully marked as used
+        /// This is atomic - no race condition between check and insert
+        /// Uses ON CONFLICT DO NOTHING for clean, performant enforcement without exceptions
         /// </summary>
-        public async Task<DatabaseResult<bool>> IsMasterPasswordUsedAsync(string passwordHash)
+        public async Task<DatabaseResult<bool>> MarkMasterPasswordUsedAsync(string passwordHash, string nonce, string macAddress, string userId)
         {
             try
             {
-                var query = "SELECT COUNT(*) FROM UsedMasterPasswords WHERE PasswordHash = @passwordHash";
-                
-                using var connection = await CreateConnectionAsync();
-                using var command = new SqliteCommand(query, connection);
-                command.Parameters.AddWithValue("@passwordHash", passwordHash);
-                
-                var count = Convert.ToInt32(await command.ExecuteScalarAsync());
-                var isUsed = count > 0;
-                
-                return DatabaseResult<bool>.SuccessResult(isUsed);
-            }
-            catch (Exception ex)
-            {
-                return DatabaseResult<bool>.ErrorResult($"Failed to check master password: {ex.Message}", ex);
-            }
-        }
-
-        /// <summary>
-        /// Marks a master password as used in the database (single-use enforcement)
-        /// </summary>
-        public async Task<DatabaseResult> MarkMasterPasswordUsedAsync(string passwordHash, string nonce, string macAddress, string username)
-        {
-            try
-            {
-                var query = @"INSERT INTO UsedMasterPasswords (PasswordHash, Nonce, MacAddress, UsedByUsername, UsedAt)
-                             VALUES (@passwordHash, @nonce, @macAddress, @username, @usedAt)";
+                var query = @"INSERT INTO UsedMasterPasswords (PasswordHash, Nonce, MacAddress, UsedByUserId, UsedAt)
+                             VALUES (@passwordHash, @nonce, @macAddress, @userId, @usedAt)
+                             ON CONFLICT(PasswordHash) DO NOTHING;
+                             SELECT changes();";
                 
                 using var connection = await CreateConnectionAsync();
                 using var command = new SqliteCommand(query, connection);
                 command.Parameters.AddWithValue("@passwordHash", passwordHash);
                 command.Parameters.AddWithValue("@nonce", nonce);
                 command.Parameters.AddWithValue("@macAddress", macAddress);
-                command.Parameters.AddWithValue("@username", username);
+                command.Parameters.AddWithValue("@userId", userId);
                 command.Parameters.AddWithValue("@usedAt", DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss"));
                 
-                await command.ExecuteNonQueryAsync();
+                var changes = Convert.ToInt32(await command.ExecuteScalarAsync());
                 
+                if (changes == 0)
+                {
+                    // No rows changed = conflict on PasswordHash = already used
+                    return DatabaseResult<bool>.SuccessResult(true);
+                }
+                
+                // Row inserted = password was NOT already used
                 LoggingService.Application.Information("Master password used for temporary admin access",
-                    ("Username", username),
-                    ("MacAddress", macAddress),
+                    ("UserId", userId),
+                    ("MacAddress", MaskMac(macAddress)), // Mask for privacy (GDPR/PII compliance)
                     ("Nonce", nonce));
                 
-                return DatabaseResult.SuccessResult();
+                return DatabaseResult<bool>.SuccessResult(false);
             }
             catch (Exception ex)
             {
-                return DatabaseResult.ErrorResult($"Failed to mark master password as used: {ex.Message}", ex);
+                return DatabaseResult<bool>.ErrorResult($"Failed to mark master password as used: {ex.Message}", ex);
             }
         }
 
@@ -4036,6 +4023,31 @@ Security Best Practices:
                 Console.WriteLine($"DatabaseService: Error saving camera settings - {ex.Message}");
                 return DatabaseResult.ErrorResult($"Failed to save camera settings: {ex.Message}");
             }
+        }
+
+        #endregion
+
+        #region Privacy Helpers
+
+        /// <summary>
+        /// Masks MAC address for privacy-compliant logging (GDPR/PII protection)
+        /// Shows only last 2 bytes for debugging while protecting device identity
+        /// </summary>
+        private static string MaskMac(string macAddress)
+        {
+            if (string.IsNullOrEmpty(macAddress)) return "unknown";
+            
+            // MAC format: XX:XX:XX:XX:XX:XX or XX-XX-XX-XX-XX-XX
+            var cleaned = macAddress.Replace("-", ":").ToLowerInvariant();
+            var parts = cleaned.Split(':');
+            
+            if (parts.Length >= 6)
+            {
+                // Mask first 4 bytes, show last 2 bytes
+                return $"XX:XX:XX:XX:{parts[4]}:{parts[5]}";
+            }
+            
+            return "masked";
         }
 
         #endregion

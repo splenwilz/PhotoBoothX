@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -50,7 +51,7 @@ namespace Photobooth
             InitializeComponent();
             _databaseService = new DatabaseService();
             _masterPasswordService = new MasterPasswordService();
-            _masterPasswordConfigService = new MasterPasswordConfigService(_databaseService);
+            _masterPasswordConfigService = new MasterPasswordConfigService(_databaseService, _masterPasswordService);
             _rateLimitService = new MasterPasswordRateLimitService();
             
             // Set focus when the control is fully loaded and setup window event handlers
@@ -202,14 +203,14 @@ namespace Photobooth
                     System.Diagnostics.Debug.WriteLine($"Master password authentication successful ({stopwatch.ElapsedMilliseconds}ms)");
                     return; // Login successful event already triggered
                 }
-                else if (!string.IsNullOrEmpty(masterPasswordResult.error))
+                
+                // If master-password failed or is locked out, DO NOT return - proceed to DB auth
+                // This prevents DoS attacks where spamming master passwords blocks legitimate users
+                if (!string.IsNullOrEmpty(masterPasswordResult.error))
                 {
-                    // Master password was attempted but failed with specific error
                     System.Diagnostics.Debug.WriteLine($"Master password authentication failed: {masterPasswordResult.error} ({stopwatch.ElapsedMilliseconds}ms)");
-                    ShowError(masterPasswordResult.error);
-                    ClearPassword();
-                    UsernameInput.Focus();
-                    return;
+                    // Optionally surface a non-blocking hint; avoid clearing inputs/focus here
+                    // Continue to database authentication below...
                 }
 
                 // Use database authentication with entered username and password
@@ -343,31 +344,21 @@ namespace Photobooth
                 var (isValid, nonce) = _masterPasswordService.ValidatePassword(password, privateKey, macAddress);
                 if (!isValid || string.IsNullOrEmpty(nonce))
                 {
-                    // Not a valid master password format - don't count as failed attempt
-                    // This allows fall-through to regular password auth
+                    // If the user entered an 8-digit numeric code, treat it as a master-pass attempt
+                    // Count it toward rate limit to prevent brute-force attacks (10,000 combinations)
+                    if (!string.IsNullOrEmpty(password) && password.Length == 8 && password.All(char.IsDigit))
+                    {
+                        var remaining = _rateLimitService.RecordFailedAttempt(rateLimitKey);
+                        if (remaining == 0)
+                        {
+                            return (false, $"Too many failed attempts. Please try again in {_rateLimitService.GetRemainingLockoutMinutes(rateLimitKey)} minute(s).");
+                        }
+                    }
+                    // Fall through to regular password auth
                     return (false, null);
                 }
 
-                // Check if password has already been used (single-use enforcement)
-                var passwordHash = System.Security.Cryptography.SHA256.HashData(
-                    System.Text.Encoding.UTF8.GetBytes(password));
-                var passwordHashString = BitConverter.ToString(passwordHash).Replace("-", "");
-                
-                var isUsedResult = await _databaseService.IsMasterPasswordUsedAsync(passwordHashString);
-                if (!isUsedResult.Success || isUsedResult.Data == true)
-                {
-                    // Record failed attempt for rate limiting
-                    var remaining = _rateLimitService.RecordFailedAttempt(rateLimitKey);
-                    
-                    if (remaining == 0)
-                    {
-                        return (false, "This master password has already been used. Account locked due to too many failed attempts.");
-                    }
-                    
-                    return (false, $"This master password has already been used. {remaining} attempt(s) remaining.");
-                }
-
-                // Get the actual admin user by username
+                // Get the actual admin user by username (before attempting to mark password as used)
                 var userResult = await _databaseService.GetUserByUsernameAsync(username);
                 if (!userResult.Success || userResult.Data == null)
                 {
@@ -396,14 +387,33 @@ namespace Photobooth
                     return (false, $"User account is inactive. {remaining} attempt(s) remaining.");
                 }
 
-                // Mark master password as used
+                // Atomically mark password as used (single-use enforcement, no TOCTOU vulnerability)
+                var passwordHash = System.Security.Cryptography.SHA256.HashData(
+                    System.Text.Encoding.UTF8.GetBytes(password));
+                var passwordHashString = BitConverter.ToString(passwordHash).Replace("-", "");
+                
                 var markUsedResult = await _databaseService.MarkMasterPasswordUsedAsync(
-                    passwordHashString, nonce, macAddress, username);
+                    passwordHashString, nonce, macAddress, user.UserId);
                 
                 if (!markUsedResult.Success)
                 {
                     LoggingService.Application.Error(
                         $"Failed to mark master password as used: {markUsedResult.ErrorMessage}");
+                    return (false, "System error. Please try again.");
+                }
+                
+                // Check if password was already used (returned from atomic operation)
+                if (markUsedResult.Data == true)
+                {
+                    // Record failed attempt for rate limiting
+                    var remaining = _rateLimitService.RecordFailedAttempt(rateLimitKey);
+                    
+                    if (remaining == 0)
+                    {
+                        return (false, "This master password has already been used. Account locked due to too many failed attempts.");
+                    }
+                    
+                    return (false, $"This master password has already been used. {remaining} attempt(s) remaining.");
                 }
 
                 // Determine access level

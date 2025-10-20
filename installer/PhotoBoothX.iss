@@ -39,15 +39,14 @@ Name: "desktopicon"; Description: "Create a desktop icon"; GroupDescription: "Ad
 
 [Files]
 ; Application files (exclude sensitive files for security)
-; Note: Database_Schema.sql is now embedded in DLL, *.pdb files excluded by build config
+; SECURITY NOTES:
+;   - Database_Schema.sql is embedded in DLL as resource (not present in published files)
+;   - *.pdb debug symbols excluded by build configuration
+;   - *.config.template files excluded to prevent confusion
+;   - Master password config NOT included (manual provisioning only for enterprise)
 Source: "..\PhotoBooth\bin\Release\net8.0-windows\win-x64\publish\*"; DestDir: "{app}"; Excludes: "*.config.template"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; Templates
 Source: "..\PhotoBooth\Templates\*"; DestDir: "{app}\Templates"; Flags: ignoreversion recursesubdirs createallsubdirs
-; Master password config (Enterprise builds only - auto-deleted on first use)
-; Special permissions set via [InstallDelete] and [Code] to allow app to delete it
-#ifexist "..\PhotoBooth\master-password.config"
-Source: "..\PhotoBooth\master-password.config"; DestDir: "{app}"; Flags: ignoreversion; Permissions: users-modify
-#endif
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
@@ -68,8 +67,7 @@ Root: HKLM; Subkey: "SOFTWARE\{#MyAppPublisher}\{#MyAppName}"; ValueType: string
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
-; Security: Clean up master password config file if it still exists
-Type: files; Name: "{app}\master-password.config"
+; No temporary files to clean up - all data preserved in AppData
 
 [UninstallRun]
 ; Testing: runhidden flag

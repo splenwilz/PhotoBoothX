@@ -24,11 +24,15 @@ This document outlines the security measures implemented in PhotoBoothX to prote
 **Risk**: `Database_Schema.sql` exposes table structures, relationships, and security models.
 
 **Mitigation**:
-- ✅ **Excluded from installer** via `Excludes` parameter in Inno Setup
-- ✅ Schema is embedded in `DatabaseService.cs` initialization code
-- ✅ SQL file only used during development
+- ✅ **Embedded as resource** in application DLL via `<EmbeddedResource>` in `.csproj`
+- ✅ Schema is read from assembly at runtime via `GetManifestResourceStream()`
+- ✅ Not present as separate file in published output or installer
+- ✅ SQL file only exists in source code repository
 
-**Files**: `installer/PhotoBoothX.iss`
+**Implementation**: 
+- `PhotoBooth.csproj`: Marks `Database_Schema.sql` as `EmbeddedResource`
+- `DatabaseService.cs`: Reads schema from embedded resource during initialization
+- No separate `.sql` file shipped with application
 
 ---
 

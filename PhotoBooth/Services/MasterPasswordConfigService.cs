@@ -9,18 +9,20 @@ namespace Photobooth.Services
 {
     /// <summary>
     /// Service for managing encrypted storage of master password base secret
-    /// Uses Windows DPAPI for machine-specific encryption (perfect for kiosks)
+    /// Uses Windows DPAPI CurrentUser scope - encrypts per Windows user profile (secure for kiosks running under dedicated user accounts)
     /// </summary>
     public class MasterPasswordConfigService
     {
         private readonly IDatabaseService _databaseService;
+        private readonly MasterPasswordService _masterPasswordService;
         private const string SETTINGS_CATEGORY = "Security";
         private const string BASE_SECRET_KEY = "MasterPasswordBaseSecret";
         private const string CONFIG_FILENAME = "master-password.config";
 
-        public MasterPasswordConfigService(IDatabaseService databaseService)
+        public MasterPasswordConfigService(IDatabaseService databaseService, MasterPasswordService masterPasswordService)
         {
             _databaseService = databaseService ?? throw new ArgumentNullException(nameof(databaseService));
+            _masterPasswordService = masterPasswordService ?? throw new ArgumentNullException(nameof(masterPasswordService));
         }
 
         /// <summary>
@@ -53,6 +55,10 @@ namespace Photobooth.Services
 #if DEBUG
                     Console.WriteLine($"Decrypted successfully, length={decrypted?.Length ?? 0}");
 #endif
+                    if (string.IsNullOrEmpty(decrypted))
+                    {
+                        throw new InvalidOperationException("Failed to decrypt base secret - data may be corrupted");
+                    }
                     return decrypted;
                 }
 
@@ -105,12 +111,10 @@ namespace Photobooth.Services
                     "Master password feature is not available. " +
                     "This feature is only available in enterprise installations with support contracts.");
             }
-            catch (InvalidOperationException ex)
+            catch (InvalidOperationException)
             {
-#if DEBUG
-                Console.WriteLine($"InvalidOperationException: {ex.Message}");
-#endif
-                throw; // Rethrow configuration errors
+                // Rethrow configuration errors (master password not configured)
+                throw;
             }
             catch (Exception ex)
             {
@@ -194,7 +198,7 @@ namespace Photobooth.Services
                 var json = File.ReadAllText(configPath);
 #if DEBUG
                 Console.WriteLine($"Config JSON length: {json.Length}");
-                Console.WriteLine($"Config JSON content: {json}");
+                // Avoid logging sensitive config contents (baseSecret is plaintext/encrypted secret)
 #endif
                 
                 var config = System.Text.Json.JsonDocument.Parse(json);
@@ -279,7 +283,7 @@ namespace Photobooth.Services
 #if DEBUG
                 Console.WriteLine("Encrypting secret with DPAPI...");
 #endif
-                // Encrypt using DPAPI (machine-specific)
+                // Encrypt using DPAPI CurrentUser scope (user-profile specific, secure for kiosk)
                 var encrypted = EncryptSecret(baseSecret);
 #if DEBUG
                 Console.WriteLine($"Encrypted secret length: {encrypted?.Length ?? 0}");
@@ -335,17 +339,13 @@ namespace Photobooth.Services
         public static string GenerateRandomBaseSecret()
         {
             const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-            var bytes = new byte[64];
-            
-            using (var rng = RandomNumberGenerator.Create())
-            {
-                rng.GetBytes(bytes);
-            }
-
             var result = new StringBuilder(64);
-            foreach (var b in bytes)
+            
+            // Use GetInt32 for uniform distribution (no modulo bias)
+            for (int i = 0; i < 64; i++)
             {
-                result.Append(chars[b % chars.Length]);
+                var idx = RandomNumberGenerator.GetInt32(chars.Length);
+                result.Append(chars[idx]);
             }
 
             return result.ToString();
@@ -354,17 +354,43 @@ namespace Photobooth.Services
         #region Encryption/Decryption (Windows DPAPI)
 
         /// <summary>
-        /// Encrypts data using Windows DPAPI (machine-specific)
-        /// Perfect for kiosk scenarios - encrypted data can only be decrypted on same machine
+        /// Gets entropy for DPAPI encryption (MAC address for additional security)
+        /// </summary>
+        private byte[]? GetDpapiEntropy()
+        {
+            try
+            {
+                // Use MAC address as entropy for defense-in-depth
+                var macAddress = _masterPasswordService.GetMacAddress();
+                if (!string.IsNullOrEmpty(macAddress))
+                {
+                    return Encoding.UTF8.GetBytes(macAddress);
+                }
+            }
+            catch
+            {
+                // Fall back to no entropy if MAC address unavailable
+            }
+            
+            return null;
+        }
+
+        /// <summary>
+        /// Encrypts data using Windows DPAPI with CurrentUser scope
+        /// Data can only be decrypted by the same Windows user account on this machine
+        /// MAC address used as additional entropy for defense-in-depth
         /// </summary>
         private string EncryptSecret(string plainText)
         {
             var plainBytes = Encoding.UTF8.GetBytes(plainText);
+            var entropy = GetDpapiEntropy();
             
-            // Encrypt using DPAPI with CurrentUser scope (machine-specific)
+            // Encrypt using DPAPI with CurrentUser scope
+            // CurrentUser = Only this Windows user can decrypt (not machine-wide)
+            // Entropy (MAC address) adds an additional layer of protection
             var encryptedBytes = ProtectedData.Protect(
                 plainBytes,
-                null, // No additional entropy
+                entropy,
                 DataProtectionScope.CurrentUser);
 
             // Return as Base64 string for storage
@@ -377,11 +403,12 @@ namespace Photobooth.Services
         private string DecryptSecret(string encryptedText)
         {
             var encryptedBytes = Convert.FromBase64String(encryptedText);
+            var entropy = GetDpapiEntropy();
             
-            // Decrypt using DPAPI
+            // Decrypt using DPAPI with same entropy used during encryption
             var decryptedBytes = ProtectedData.Unprotect(
                 encryptedBytes,
-                null, // No additional entropy
+                entropy,
                 DataProtectionScope.CurrentUser);
 
             return Encoding.UTF8.GetString(decryptedBytes);

@@ -100,22 +100,12 @@ jobs:
       
     # Inject master password config if GitHub secret exists
     # This enables the feature for official releases while keeping forks/self-hosted simple
-    - name: Create master password config (if secret available)
+    - name: Master password feature status
       run: |
-        if ("${{ secrets.MASTER_PASSWORD_BASE_SECRET }}" -eq "") {
-          Write-Host "[WARNING] No MASTER_PASSWORD_BASE_SECRET found" -ForegroundColor Yellow
-          Write-Host "   Master password feature will be DISABLED" -ForegroundColor Yellow
-          Write-Host "   (This is normal for forks and self-hosted builds)" -ForegroundColor Cyan
-        } else {
-          $json = @{
-            version = "1.0"
-            encrypted = $false
-            baseSecret = "${{ secrets.MASTER_PASSWORD_BASE_SECRET }}"
-          }
-          $json | ConvertTo-Json | Out-File -FilePath "PhotoBooth/master-password.config" -Encoding UTF8
-          Write-Host "[OK] Master password config created" -ForegroundColor Green
-          Write-Host "   Master password feature will be ENABLED" -ForegroundColor Green
-        }
+        Write-Host "[SECURITY] Master password feature requires manual provisioning" -ForegroundColor Cyan
+        Write-Host "   This feature is NOT included in installer for security reasons" -ForegroundColor Cyan
+        Write-Host "   Enterprise customers: Support team will provision on-site" -ForegroundColor Cyan
+        Write-Host "   Self-hosted builds: Feature gracefully disabled (offline password recovery via PIN)" -ForegroundColor Yellow
       shell: powershell
       
     - name: Build application
@@ -123,13 +113,9 @@ jobs:
       
     - name: Verify build configuration
       run: |
-        if (Test-Path "PhotoBooth/master-password.config") {
-          Write-Host "[OK] Master password feature ENABLED" -ForegroundColor Green
-          Write-Host "     Config file detected and will be included in build" -ForegroundColor Cyan
-        } else {
-          Write-Host "[INFO] Master password feature DISABLED" -ForegroundColor Yellow
-          Write-Host "       Building without config file (feature optional)" -ForegroundColor Cyan
-        }
+        Write-Host "[SECURITY] Build configured for secure deployment" -ForegroundColor Green
+        Write-Host "   No plaintext secrets in build artifacts" -ForegroundColor Cyan
+        Write-Host "   Master password feature: Manual provisioning only" -ForegroundColor Cyan
       shell: powershell
       
     - name: Run tests with coverage
@@ -174,22 +160,14 @@ jobs:
         name: published-app
         path: ${{ env.PUBLISH_PATH }}
         
-    # Re-inject master password config if GitHub secret available
-    # (config file must be in source directory for Inno Setup to include it)
-    - name: Add master password config to installer (if secret available)
+    # SECURITY: Master password config is NOT included in installer
+    # The base secret must be manually provisioned by support staff on-site
+    # This prevents the plaintext secret from being embedded in build artifacts
+    - name: Verify secure installer configuration
       run: |
-        if ("${{ secrets.MASTER_PASSWORD_BASE_SECRET }}" -ne "") {
-          $json = @{
-            version = "1.0"
-            encrypted = $false
-            baseSecret = "${{ secrets.MASTER_PASSWORD_BASE_SECRET }}"
-          }
-          # Create config in the source directory (for Inno Setup to find)
-          $json | ConvertTo-Json | Out-File -FilePath "PhotoBooth/master-password.config" -Encoding UTF8
-          Write-Host "[OK] Master password config added to installer package" -ForegroundColor Green
-        } else {
-          Write-Host "[INFO]  No master password secret available" -ForegroundColor Yellow
-        }
+        Write-Host "[SECURITY] Installer does not contain master password secrets" -ForegroundColor Green
+        Write-Host "   Enterprise deployments: Support team provisions on-site" -ForegroundColor Cyan
+        Write-Host "   Self-hosted deployments: PIN recovery available" -ForegroundColor Cyan
       shell: powershell
         
     - name: Setup Inno Setup

@@ -2471,12 +2471,8 @@ namespace Photobooth
                 Console.WriteLine("=== SaveProductConfig_Click COMPLETED SUCCESSFULLY ===");
 #endif
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-#if DEBUG
-                Console.WriteLine($"=== SaveProductConfig_Click ERROR: {ex.Message} ===");
-#endif
-
                 // Show error feedback
                 SaveButtonBorder.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#DC2626"));
                 SaveButtonText.Text = "Error!";

@@ -71,9 +71,9 @@ namespace Photobooth.Services
             using var hmac = new HMACSHA256(privateKey);
             var hash = hmac.ComputeHash(data);
 
-            // Extract 4 digits from HMAC (convert first 4 bytes to integer, then modulo)
-            var hmacInt = BitConverter.ToInt32(hash, 0);
-            var hmacDigits = (Math.Abs(hmacInt) % 10000).ToString().PadLeft(HMAC_LENGTH, '0');
+            // Extract 4 digits from HMAC (unsigned for guaranteed positive, no Math.Abs overflow)
+            var hmacUInt = BitConverter.ToUInt32(hash, 0);
+            var hmacDigits = (hmacUInt % 10000u).ToString("D4");
 
             var password = nonce + hmacDigits;
 
@@ -108,9 +108,9 @@ namespace Photobooth.Services
             using var hmac = new HMACSHA256(privateKey);
             var hash = hmac.ComputeHash(data);
 
-            // Extract expected HMAC digits
-            var hmacInt = BitConverter.ToInt32(hash, 0);
-            var expectedHmac = (Math.Abs(hmacInt) % 10000).ToString().PadLeft(HMAC_LENGTH, '0');
+            // Extract expected HMAC digits (unsigned for guaranteed positive)
+            var hmacUInt = BitConverter.ToUInt32(hash, 0);
+            var expectedHmac = (hmacUInt % 10000u).ToString("D4");
 
             // Constant-time comparison to prevent timing attacks
             var isValid = ConstantTimeCompare(providedHmac, expectedHmac);

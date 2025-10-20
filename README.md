@@ -166,11 +166,11 @@ We welcome contributions! Please see our [Contributing Guide](docs/contributing.
 
 ### Quick Contribution Guide
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+2. Create a feature branch (`git checkout -b feature/your-feature`)
 3. Write tests for your changes
 4. Ensure all tests pass
-5. Commit with descriptive messages (`git commit -m 'Add amazing feature'`)
-6. Push to your fork (`git push origin feature/amazing-feature`)
+5. Commit with descriptive messages (`git commit -m 'Add feature: short summary'`)
+6. Push to your fork (`git push origin feature/your-feature`)
 7. Open a Pull Request
 
 ## Documentation

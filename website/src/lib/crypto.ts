@@ -74,12 +74,12 @@ export function generateNonce(): string {
  * Extract 4 digits from HMAC hash (matches C# implementation)
  */
 export function extractHmacDigits(hmac: Uint8Array): string {
-  // Convert first 4 bytes to signed 32-bit integer (little-endian)
+  // Convert first 4 bytes to unsigned 32-bit integer (little-endian)
   const dataView = new DataView(hmac.buffer, hmac.byteOffset, 4);
-  const int32 = dataView.getInt32(0, true); // true = little-endian
+  const u32 = dataView.getUint32(0, true); // true = little-endian
 
-  // Take absolute value and modulo 10000
-  const hmacDigits = (Math.abs(int32) % 10000).toString().padStart(4, "0");
+  // Modulo 10000 (unsigned, guaranteed positive, no Math.abs overflow)
+  const hmacDigits = (u32 % 10000).toString().padStart(4, "0");
 
   return hmacDigits;
 }

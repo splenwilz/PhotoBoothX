@@ -50,15 +50,26 @@ DeleteConfigFile(); // Removes plain text secret within 5 seconds
 ---
 
 ### 3. **Exclude Sensitive Files from Installer**
+
+**PDB Debug Symbols**:
+- Removed at build time via `.csproj` settings (`<DebugType>none</DebugType>`)
+- Never present in published output
+
+**Database Schema**:
+- Embedded as resource in DLL via `<EmbeddedResource>` in `.csproj`
+- Read from assembly at runtime, not from separate file
+- Never exists as standalone file in published output
+
+**Config Templates**:
 ```ini
-; New in PhotoBoothX.iss
-Excludes: "*.pdb,Database_Schema.sql,*.config.template"
+; installer/PhotoBoothX.iss
+Excludes: "*.config.template"
 ```
 
 **Before**: Database schema and templates included in installer  
 **After**: Only necessary runtime files included
 
-**Files Changed**: `installer/PhotoBoothX.iss`
+**Files Changed**: `installer/PhotoBoothX.iss`, `PhotoBooth/PhotoBooth.csproj`
 
 ---
 
