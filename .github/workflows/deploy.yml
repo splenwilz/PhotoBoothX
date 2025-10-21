@@ -179,6 +179,19 @@ jobs:
     - name: Publish application
       run: dotnet publish ${{ env.PROJECT_PATH }} --configuration Release --output ${{ env.PUBLISH_PATH }} --self-contained true --runtime win-x64 /p:PublishSingleFile=true /p:PublishReadyToRun=true
       
+    - name: Copy master password config to publish directory
+      run: |
+        $configPath = "PhotoBooth/master-password.config"
+        $publishPath = "${{ env.PUBLISH_PATH }}/master-password.config"
+        
+        if (Test-Path $configPath) {
+          Copy-Item -Path $configPath -Destination $publishPath -Force
+          Write-Host "[OK] Copied master-password.config to publish directory" -ForegroundColor Green
+        } else {
+          Write-Host "[INFO] No master-password.config found - skipping copy" -ForegroundColor Yellow
+        }
+      shell: powershell
+      
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
