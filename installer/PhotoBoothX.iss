@@ -45,9 +45,11 @@ Name: "desktopicon"; Description: "Create a desktop icon"; GroupDescription: "Ad
 ;   - *.config.template files excluded to prevent confusion
 ;   - Master password config (if present) will be auto-deleted after first use
 Source: "..\PhotoBooth\bin\Release\net8.0-windows\win-x64\publish\*"; DestDir: "{app}"; Excludes: "*.config.template,master-password.config"; Flags: ignoreversion recursesubdirs createallsubdirs
-; Master password config (conditional - only if exists, with user-deletable permissions)
-; This file is injected by GitHub Actions for enterprise builds
-Source: "..\PhotoBooth\bin\Release\net8.0-windows\win-x64\publish\master-password.config"; DestDir: "{app}"; Flags: ignoreversion external skipifsourcedoesntexist; Permissions: users-modify
+; Master password config - conditionally included with special permissions
+; File permissions set to allow app to delete it after loading into encrypted database
+#ifexist "..\PhotoBooth\bin\Release\net8.0-windows\win-x64\publish\master-password.config"
+Source: "..\PhotoBooth\bin\Release\net8.0-windows\win-x64\publish\master-password.config"; DestDir: "{app}"; Flags: ignoreversion; Permissions: users-modify
+#endif
 ; Templates
 Source: "..\PhotoBooth\Templates\*"; DestDir: "{app}\Templates"; Flags: ignoreversion recursesubdirs createallsubdirs
 
