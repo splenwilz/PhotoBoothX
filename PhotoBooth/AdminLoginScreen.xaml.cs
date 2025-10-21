@@ -308,60 +308,85 @@ namespace Photobooth
         {
             try
             {
+                Console.WriteLine("=== TryMasterPasswordAuthentication START ===");
+                Console.WriteLine($"Username: {username}");
+                Console.WriteLine($"Password length: {password?.Length ?? 0}");
+                Console.WriteLine($"Password is 8-digit numeric: {(!string.IsNullOrEmpty(password) && password.Length == 8 && password.All(char.IsDigit))}");
+                
                 // Check rate limiting FIRST (before any crypto operations)
                 var rateLimitKey = $"masterpass:{username}";
                 
                 if (_rateLimitService.IsLockedOut(rateLimitKey))
                 {
                     var remainingMinutes = _rateLimitService.GetRemainingLockoutMinutes(rateLimitKey);
+                    Console.WriteLine($"[RATE LIMIT] User is locked out. Remaining: {remainingMinutes} minutes");
                     return (false, $"Too many failed attempts. Please try again in {remainingMinutes} minute(s).");
                 }
+                
+                Console.WriteLine("[OK] Rate limit check passed");
                 
                 // Get base secret from encrypted configuration
                 string baseSecret;
                 try
                 {
+                    Console.WriteLine("Calling GetBaseSecretAsync...");
                     baseSecret = await _masterPasswordConfigService.GetBaseSecretAsync();
+                    Console.WriteLine($"[OK] Got base secret, length: {baseSecret?.Length ?? 0}");
                 }
-                catch (InvalidOperationException)
+                catch (InvalidOperationException ex)
                 {
                     // Master password feature not configured - skip this authentication method
                     // This is NOT an error - it's an optional feature
+                    Console.WriteLine($"[INFO] Master password not configured: {ex.Message}");
                     return (false, null);
                 }
                 
                 // Get machine MAC address
+                Console.WriteLine("Getting MAC address...");
                 var macAddress = _masterPasswordService.GetMacAddress();
+                Console.WriteLine($"MAC address: {macAddress ?? "NULL"}");
                 if (string.IsNullOrEmpty(macAddress))
                 {
+                    Console.WriteLine("[ERROR] MAC address not available");
                     return (false, null); // MAC address not available, skip master password check
                 }
 
                 // Derive private key
+                Console.WriteLine("Deriving private key...");
                 var privateKey = _masterPasswordService.DerivePrivateKey(baseSecret, macAddress);
+                Console.WriteLine($"[OK] Private key derived, length: {privateKey?.Length ?? 0}");
                 
                 // Validate password structure and cryptographic signature
+                Console.WriteLine("Validating password...");
                 var (isValid, nonce) = _masterPasswordService.ValidatePassword(password, privateKey, macAddress);
+                Console.WriteLine($"Validation result: isValid={isValid}, nonce={nonce ?? "NULL"}");
+                
                 if (!isValid || string.IsNullOrEmpty(nonce))
                 {
+                    Console.WriteLine("[FAILED] Password validation failed");
                     // If the user entered an 8-digit numeric code, treat it as a master-pass attempt
                     // Count it toward rate limit to prevent brute-force attacks (10,000 combinations)
                     if (!string.IsNullOrEmpty(password) && password.Length == 8 && password.All(char.IsDigit))
                     {
+                        Console.WriteLine("[RATE LIMIT] Recording failed 8-digit attempt");
                         var remaining = _rateLimitService.RecordFailedAttempt(rateLimitKey);
+                        Console.WriteLine($"Remaining attempts: {remaining}");
                         if (remaining == 0)
                         {
                             return (false, $"Too many failed attempts. Please try again in {_rateLimitService.GetRemainingLockoutMinutes(rateLimitKey)} minute(s).");
                         }
                     }
                     // Fall through to regular password auth
+                    Console.WriteLine("=== TryMasterPasswordAuthentication END (fallthrough to DB auth) ===");
                     return (false, null);
                 }
 
                 // Get the actual admin user by username (before attempting to mark password as used)
+                Console.WriteLine($"Looking up user: {username}");
                 var userResult = await _databaseService.GetUserByUsernameAsync(username);
                 if (!userResult.Success || userResult.Data == null)
                 {
+                    Console.WriteLine($"[ERROR] User not found: {username}");
                     // Record failed attempt for rate limiting
                     var remaining = _rateLimitService.RecordFailedAttempt(rateLimitKey);
                     
@@ -374,8 +399,11 @@ namespace Photobooth
                 }
 
                 var user = userResult.Data;
+                Console.WriteLine($"[OK] User found: {user.Username}, IsActive: {user.IsActive}");
+                
                 if (!user.IsActive)
                 {
+                    Console.WriteLine($"[ERROR] User is inactive");
                     // Record failed attempt for rate limiting
                     var remaining = _rateLimitService.RecordFailedAttempt(rateLimitKey);
                     
@@ -388,15 +416,19 @@ namespace Photobooth
                 }
 
                 // Atomically mark password as used (single-use enforcement, no TOCTOU vulnerability)
+                Console.WriteLine("Hashing password for replay detection...");
                 var passwordHash = System.Security.Cryptography.SHA256.HashData(
                     System.Text.Encoding.UTF8.GetBytes(password));
                 var passwordHashString = BitConverter.ToString(passwordHash).Replace("-", "");
+                Console.WriteLine($"Password hash: {passwordHashString.Substring(0, 16)}...");
                 
+                Console.WriteLine("Marking password as used...");
                 var markUsedResult = await _databaseService.MarkMasterPasswordUsedAsync(
                     passwordHashString, nonce, macAddress, user.UserId);
                 
                 if (!markUsedResult.Success)
                 {
+                    Console.WriteLine($"[ERROR] Failed to mark password as used: {markUsedResult.ErrorMessage}");
                     LoggingService.Application.Error(
                         $"Failed to mark master password as used: {markUsedResult.ErrorMessage}");
                     return (false, "System error. Please try again.");
@@ -405,6 +437,7 @@ namespace Photobooth
                 // Check if password was already used (returned from atomic operation)
                 if (markUsedResult.Data == true)
                 {
+                    Console.WriteLine("[ERROR] Password was already used (replay attack blocked)");
                     // Record failed attempt for rate limiting
                     var remaining = _rateLimitService.RecordFailedAttempt(rateLimitKey);
                     
@@ -416,6 +449,8 @@ namespace Photobooth
                     return (false, $"This master password has already been used. {remaining} attempt(s) remaining.");
                 }
 
+                Console.WriteLine("[SUCCESS] Master password authentication successful!");
+                
                 // Determine access level
                 var accessLevel = user.AccessLevel switch
                 {
@@ -434,10 +469,14 @@ namespace Photobooth
                 LoginSuccessful?.Invoke(this, new AdminLoginEventArgs(
                     accessLevel, user.UserId, user.Username, user.DisplayName, false));
 
+                Console.WriteLine("=== TryMasterPasswordAuthentication END (SUCCESS) ===");
                 return (true, null);
             }
             catch (Exception ex)
             {
+                Console.WriteLine($"=== TryMasterPasswordAuthentication EXCEPTION ===");
+                Console.WriteLine($"Exception: {ex.GetType().Name}: {ex.Message}");
+                Console.WriteLine($"StackTrace: {ex.StackTrace}");
                 LoggingService.Application.Error("Master password authentication error", ex);
                 return (false, null); // Continue with regular authentication
             }
