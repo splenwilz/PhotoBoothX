@@ -101,8 +101,15 @@ jobs:
     # Inject master password config if GitHub secret exists
     # This enables the feature for official releases while keeping forks/self-hosted simple
     - name: Inject master password configuration
-      if: ${{ secrets.MASTER_PASSWORD_BASE_SECRET != '' }}
       run: |
+        # Check if secret is available (GitHub Actions doesn't support direct secret checks in 'if' conditions)
+        $secret = "$env:MASTER_PASSWORD_BASE_SECRET"
+        
+        if ([string]::IsNullOrEmpty($secret)) {
+          Write-Host "[INFO] No MASTER_PASSWORD_BASE_SECRET configured - skipping injection" -ForegroundColor Yellow
+          exit 0
+        }
+        
         $configPath = "PhotoBooth/master-password.config"
         Write-Host "[SECURITY] Injecting master password configuration..." -ForegroundColor Green
         
@@ -110,7 +117,7 @@ jobs:
         $config = @{
           version = "1.0"
           encrypted = $false
-          baseSecret = "$env:MASTER_PASSWORD_BASE_SECRET"
+          baseSecret = $secret
         }
         
         # Write to file with proper formatting
