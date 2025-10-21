@@ -182,13 +182,45 @@ jobs:
     - name: Copy master password config to publish directory
       run: |
         $configPath = "PhotoBooth/master-password.config"
-        $publishPath = "${{ env.PUBLISH_PATH }}/master-password.config"
+        $publishDir = "${{ env.PUBLISH_PATH }}"
+        $publishPath = "$publishDir/master-password.config"
         
+        Write-Host "[DEBUG] Config source path: $configPath" -ForegroundColor Cyan
+        Write-Host "[DEBUG] Publish directory: $publishDir" -ForegroundColor Cyan
+        Write-Host "[DEBUG] Config destination: $publishPath" -ForegroundColor Cyan
+        
+        # Check if source exists
         if (Test-Path $configPath) {
+          $fullPath = Resolve-Path $configPath
+          Write-Host "[OK] Source file found: $fullPath" -ForegroundColor Green
+          
+          # Ensure destination directory exists
+          if (-not (Test-Path $publishDir)) {
+            Write-Host "[ERROR] Publish directory does not exist: $publishDir" -ForegroundColor Red
+            exit 1
+          }
+          
+          # Copy the file
           Copy-Item -Path $configPath -Destination $publishPath -Force
-          Write-Host "[OK] Copied master-password.config to publish directory" -ForegroundColor Green
+          Write-Host "[OK] Copy command executed" -ForegroundColor Green
+          
+          # Verify copy succeeded
+          if (Test-Path $publishPath) {
+            $destFullPath = Resolve-Path $publishPath
+            Write-Host "[OK] File exists at destination: $destFullPath" -ForegroundColor Green
+            
+            # Show file in publish directory
+            Write-Host "`n[DEBUG] Files in publish directory:" -ForegroundColor Cyan
+            Get-ChildItem $publishDir | Select-Object -First 20 | ForEach-Object {
+              Write-Host "  - $($_.Name)" -ForegroundColor Gray
+            }
+          } else {
+            Write-Host "[ERROR] Copy failed - file not found at destination!" -ForegroundColor Red
+            exit 1
+          }
         } else {
-          Write-Host "[INFO] No master-password.config found - skipping copy" -ForegroundColor Yellow
+          Write-Host "[WARNING] Source file not found: $configPath" -ForegroundColor Yellow
+          Write-Host "[INFO] This is expected for self-hosted builds" -ForegroundColor Cyan
         }
       shell: powershell
       
@@ -214,6 +246,27 @@ jobs:
       with:
         name: published-app
         path: ${{ env.PUBLISH_PATH }}
+        
+    - name: Verify downloaded artifacts
+      run: |
+        $publishDir = "${{ env.PUBLISH_PATH }}"
+        $configPath = "$publishDir/master-password.config"
+        
+        Write-Host "[DEBUG] Publish directory: $publishDir" -ForegroundColor Cyan
+        Write-Host "`n[DEBUG] Downloaded files:" -ForegroundColor Cyan
+        Get-ChildItem $publishDir | Select-Object -First 20 | ForEach-Object {
+          Write-Host "  - $($_.Name) ($($_.Length) bytes)" -ForegroundColor Gray
+        }
+        
+        Write-Host "`n[DEBUG] Checking for master-password.config..." -ForegroundColor Cyan
+        if (Test-Path $configPath) {
+          $fileInfo = Get-Item $configPath
+          Write-Host "[OK] master-password.config found! Size: $($fileInfo.Length) bytes" -ForegroundColor Green
+        } else {
+          Write-Host "[WARNING] master-password.config NOT found in artifacts" -ForegroundColor Yellow
+          Write-Host "[INFO] This is expected for self-hosted builds without GitHub secret" -ForegroundColor Cyan
+        }
+      shell: powershell
         
     # SECURITY: Master password config (if present) will be auto-deleted after first use
     # The config is encrypted with DPAPI and stored in the database, then file is removed
