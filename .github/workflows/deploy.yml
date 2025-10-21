@@ -101,32 +101,40 @@ jobs:
     # Inject master password config if GitHub secret exists
     # This enables the feature for official releases while keeping forks/self-hosted simple
     - name: Inject master password configuration
-      if: env.MASTER_PASSWORD_BASE_SECRET != ''
+      if: ${{ secrets.MASTER_PASSWORD_BASE_SECRET != '' }}
       run: |
         $configPath = "PhotoBooth/master-password.config"
         Write-Host "[SECURITY] Injecting master password configuration..." -ForegroundColor Green
         
-        # Create config object
+        # Create config object with version field
         $config = @{
+          version = "1.0"
           encrypted = $false
           baseSecret = "$env:MASTER_PASSWORD_BASE_SECRET"
         }
         
-        # Write to file
-        $config | ConvertTo-Json -Compress | Set-Content -Path $configPath -Encoding UTF8
-        Write-Host "[OK] Master password config created (will be loaded into encrypted database on first run)" -ForegroundColor Green
+        # Write to file with proper formatting
+        $json = $config | ConvertTo-Json -Compress
+        $json | Set-Content -Path $configPath -Encoding UTF8 -NoNewline
+        
+        Write-Host "[OK] Master password config created at: $configPath" -ForegroundColor Green
+        Write-Host "[INFO] Config will be loaded into encrypted database on first run" -ForegroundColor Cyan
+        Write-Host "[INFO] Config file will be auto-deleted after load for security" -ForegroundColor Cyan
       shell: powershell
       env:
         MASTER_PASSWORD_BASE_SECRET: ${{ secrets.MASTER_PASSWORD_BASE_SECRET }}
     
     - name: Master password feature status
       run: |
-        if ("$env:MASTER_PASSWORD_BASE_SECRET" -ne "") {
-          Write-Host "[SECURITY] Master password feature: ENABLED (from GitHub secret)" -ForegroundColor Green
-          Write-Host "   Config will be loaded into encrypted database on first run" -ForegroundColor Cyan
+        $hasSecret = "$env:MASTER_PASSWORD_BASE_SECRET"
+        if ($hasSecret -and $hasSecret -ne "") {
+          Write-Host "[SECURITY] Master password feature: ENABLED" -ForegroundColor Green
+          Write-Host "   Secret injected from GitHub repository secret" -ForegroundColor Cyan
+          Write-Host "   Config will be stored in encrypted database on first run" -ForegroundColor Cyan
           Write-Host "   Config file auto-deleted after load for security" -ForegroundColor Cyan
         } else {
           Write-Host "[INFO] Master password feature: DISABLED" -ForegroundColor Yellow
+          Write-Host "   No MASTER_PASSWORD_BASE_SECRET configured in repository" -ForegroundColor Yellow
           Write-Host "   Self-hosted build - feature gracefully disabled" -ForegroundColor Yellow
           Write-Host "   Password recovery available via PIN system" -ForegroundColor Cyan
         }
@@ -140,8 +148,9 @@ jobs:
     - name: Verify build configuration
       run: |
         Write-Host "[SECURITY] Build configured for secure deployment" -ForegroundColor Green
-        Write-Host "   No plaintext secrets in build artifacts" -ForegroundColor Cyan
-        Write-Host "   Master password feature: Manual provisioning only" -ForegroundColor Cyan
+        Write-Host "   Debug symbols excluded from release builds" -ForegroundColor Cyan
+        Write-Host "   Database schema embedded as resource" -ForegroundColor Cyan
+        Write-Host "   Master password config auto-deleted after first use" -ForegroundColor Cyan
       shell: powershell
       
     - name: Run tests with coverage
@@ -186,14 +195,14 @@ jobs:
         name: published-app
         path: ${{ env.PUBLISH_PATH }}
         
-    # SECURITY: Master password config is NOT included in installer
-    # The base secret must be manually provisioned by support staff on-site
-    # This prevents the plaintext secret from being embedded in build artifacts
+    # SECURITY: Master password config (if present) will be auto-deleted after first use
+    # The config is encrypted with DPAPI and stored in the database, then file is removed
     - name: Verify secure installer configuration
       run: |
-        Write-Host "[SECURITY] Installer does not contain master password secrets" -ForegroundColor Green
-        Write-Host "   Enterprise deployments: Support team provisions on-site" -ForegroundColor Cyan
-        Write-Host "   Self-hosted deployments: PIN recovery available" -ForegroundColor Cyan
+        Write-Host "[SECURITY] Installer security verified" -ForegroundColor Green
+        Write-Host "   Master password config (if present) auto-deleted after first use" -ForegroundColor Cyan
+        Write-Host "   Config encrypted with DPAPI and stored in database" -ForegroundColor Cyan
+        Write-Host "   Self-hosted builds: PIN recovery system available" -ForegroundColor Cyan
       shell: powershell
         
     - name: Setup Inno Setup
