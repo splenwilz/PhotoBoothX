@@ -43,8 +43,11 @@ Name: "desktopicon"; Description: "Create a desktop icon"; GroupDescription: "Ad
 ;   - Database_Schema.sql is embedded in DLL as resource (not present in published files)
 ;   - *.pdb debug symbols excluded by build configuration
 ;   - *.config.template files excluded to prevent confusion
-;   - Master password config NOT included (manual provisioning only for enterprise)
-Source: "..\PhotoBooth\bin\Release\net8.0-windows\win-x64\publish\*"; DestDir: "{app}"; Excludes: "*.config.template"; Flags: ignoreversion recursesubdirs createallsubdirs
+;   - Master password config (if present) will be auto-deleted after first use
+Source: "..\PhotoBooth\bin\Release\net8.0-windows\win-x64\publish\*"; DestDir: "{app}"; Excludes: "*.config.template,master-password.config"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Master password config (conditional - only if exists, with user-deletable permissions)
+; This file is injected by GitHub Actions for enterprise builds
+Source: "..\PhotoBooth\bin\Release\net8.0-windows\win-x64\publish\master-password.config"; DestDir: "{app}"; Flags: ignoreversion external skipifsourcedoesntexist; Permissions: users-modify
 ; Templates
 Source: "..\PhotoBooth\Templates\*"; DestDir: "{app}\Templates"; Flags: ignoreversion recursesubdirs createallsubdirs
 
@@ -67,7 +70,9 @@ Root: HKLM; Subkey: "SOFTWARE\{#MyAppPublisher}\{#MyAppName}"; ValueType: string
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
-; No temporary files to clean up - all data preserved in AppData
+; Clean up master password config if app failed to delete it (security backup)
+Type: files; Name: "{app}\master-password.config"
+; No other temporary files to clean up - all user data preserved in AppData
 
 [UninstallRun]
 ; Testing: runhidden flag
