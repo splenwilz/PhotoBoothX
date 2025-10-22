@@ -332,12 +332,26 @@ namespace Photobooth
                     Console.WriteLine("Calling GetBaseSecretAsync...");
                     baseSecret = await _masterPasswordConfigService.GetBaseSecretAsync();
                     Console.WriteLine($"[OK] Got base secret, length: {baseSecret?.Length ?? 0}");
+                    
+                    // Null check for compiler (GetBaseSecretAsync should never return null on success)
+                    if (string.IsNullOrEmpty(baseSecret))
+                    {
+                        Console.WriteLine("[ERROR] Base secret was null or empty");
+                        return (false, null);
+                    }
                 }
                 catch (InvalidOperationException ex)
                 {
                     // Master password feature not configured - skip this authentication method
                     // This is NOT an error - it's an optional feature
                     Console.WriteLine($"[INFO] Master password not configured: {ex.Message}");
+                    return (false, null);
+                }
+                
+                // Null check for password parameter (defensive programming)
+                if (string.IsNullOrEmpty(password))
+                {
+                    Console.WriteLine("[ERROR] Password is null or empty");
                     return (false, null);
                 }
                 
@@ -355,6 +369,13 @@ namespace Photobooth
                 Console.WriteLine("Deriving private key...");
                 var privateKey = _masterPasswordService.DerivePrivateKey(baseSecret, macAddress);
                 Console.WriteLine($"[OK] Private key derived, length: {privateKey?.Length ?? 0}");
+                
+                // Null check for private key (defensive programming)
+                if (privateKey == null)
+                {
+                    Console.WriteLine("[ERROR] Private key derivation returned null");
+                    return (false, null);
+                }
                 
                 // Validate password structure and cryptographic signature
                 Console.WriteLine("Validating password...");

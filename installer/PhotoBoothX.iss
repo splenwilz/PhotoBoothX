@@ -61,8 +61,9 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 [Dirs]
 ; Testing: Permissions parameter
 Name: "{app}\Templates"; Permissions: everyone-modify
-; Create ProgramData directory for master password config (with write permissions)
+; Create ProgramData directory for machine-wide kiosk data (database, logs, temp config)
 Name: "{commonappdata}\PhotoBoothX"; Permissions: users-modify
+Name: "{commonappdata}\PhotoBoothX\Logs"; Permissions: users-modify
 
 [Registry]
 ; Working flags + Testing Tasks parameter
