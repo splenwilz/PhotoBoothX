@@ -119,7 +119,7 @@ dotnet publish PhotoBooth/PhotoBooth.csproj --configuration Release --output "Ph
 The installer automatically configures:
 - ✅ **Auto-launch** on Windows startup
 - ✅ **Full-screen** application mode
-- ✅ **Database** in AppData (survives reinstalls)
+- ✅ **Database** in ProgramData (machine-wide, survives user changes and reinstalls)
 - ✅ **Templates** with update permissions
 
 ## 🔧 Troubleshooting Installation

@@ -14,7 +14,7 @@
 #### Database Migration Quick Reference
 - **Current Schema Version**: 1
 - **Adding Migration**: Update `GetExpectedSchemaVersion()` → Add to `ApplyIncrementalMigrations()` → Implement `ApplyMigrationVX()`
-- **Database Location**: `%APPDATA%/PhotoboothX/photobooth.db`
+- **Database Location**: `%PROGRAMDATA%\PhotoBoothX\photobooth.db` (C:\ProgramData\PhotoBoothX\photobooth.db)
 - **Reset Database**: Delete database file, restart app
 
 #### Key Files
