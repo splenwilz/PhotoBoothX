@@ -39,9 +39,9 @@ namespace Photobooth.Services
 
                 try
                 {
-                    // Create logs directory in AppData
-                    var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                    _logDirectory = Path.Combine(appDataPath, "PhotoboothX", "Logs");
+                    // Create logs directory in ProgramData (machine-wide for kiosk mode)
+                    var programDataPath = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
+                    _logDirectory = Path.Combine(programDataPath, "PhotoBoothX", "Logs");
                     Directory.CreateDirectory(_logDirectory);
 
                     // Create base configuration template
