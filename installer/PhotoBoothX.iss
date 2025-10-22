@@ -44,11 +44,12 @@ Name: "desktopicon"; Description: "Create a desktop icon"; GroupDescription: "Ad
 ;   - *.pdb debug symbols excluded by build configuration
 ;   - *.config.template files excluded to prevent confusion
 ;   - Master password config (if present) will be auto-deleted after first use
-Source: "..\PhotoBooth\bin\Release\net8.0-windows\win-x64\publish\*"; DestDir: "{app}"; Excludes: "*.config.template,master-password.config"; Flags: ignoreversion recursesubdirs createallsubdirs
-; Master password config - conditionally included with special permissions
+Source: "..\PhotoBooth\bin\Release\net8.0-windows\win-x64\publish\*"; DestDir: "{app}"; Excludes: "*.config.template;master-password.config"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Master password config - conditionally included in ProgramData (not Program Files)
+; Placed in {commonappdata} to avoid weakening Program Files security
 ; File permissions set to allow app to delete it after loading into encrypted database
 #ifexist "..\PhotoBooth\bin\Release\net8.0-windows\win-x64\publish\master-password.config"
-Source: "..\PhotoBooth\bin\Release\net8.0-windows\win-x64\publish\master-password.config"; DestDir: "{app}"; Flags: ignoreversion; Permissions: users-modify
+Source: "..\PhotoBooth\bin\Release\net8.0-windows\win-x64\publish\master-password.config"; DestDir: "{commonappdata}\PhotoBoothX"; Flags: ignoreversion; Permissions: users-modify
 #endif
 ; Templates
 Source: "..\PhotoBooth\Templates\*"; DestDir: "{app}\Templates"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -60,6 +61,8 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 [Dirs]
 ; Testing: Permissions parameter
 Name: "{app}\Templates"; Permissions: everyone-modify
+; Create ProgramData directory for master password config (with write permissions)
+Name: "{commonappdata}\PhotoBoothX"; Permissions: users-modify
 
 [Registry]
 ; Working flags + Testing Tasks parameter
@@ -73,7 +76,9 @@ Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: no
 
 [UninstallDelete]
 ; Clean up master password config if app failed to delete it (security backup)
-Type: files; Name: "{app}\master-password.config"
+Type: files; Name: "{commonappdata}\PhotoBoothX\master-password.config"
+; Clean up ProgramData directory if empty
+Type: dirifempty; Name: "{commonappdata}\PhotoBoothX"
 ; No other temporary files to clean up - all user data preserved in AppData
 
 [UninstallRun]

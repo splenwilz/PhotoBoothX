@@ -116,8 +116,7 @@ namespace Photobooth.Services
         {
             try
             {
-                var baseDir = AppDomain.CurrentDomain.BaseDirectory;
-                var configPath = Path.Combine(baseDir, CONFIG_FILENAME);
+                var configPath = GetConfigFilePath();
                 
                 if (File.Exists(configPath))
                 {
@@ -133,6 +132,29 @@ namespace Photobooth.Services
                 Console.WriteLine($"[WARNING] Could not delete config file: {ex.Message}");
             }
         }
+        
+        /// <summary>
+        /// Gets the path to the master password config file.
+        /// Checks both ProgramData (new location) and application directory (legacy) for backwards compatibility.
+        /// </summary>
+        private string GetConfigFilePath()
+        {
+            // Primary location: ProgramData (C:\ProgramData\PhotoBoothX\master-password.config)
+            var programDataPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                "PhotoBoothX",
+                CONFIG_FILENAME);
+            
+            if (File.Exists(programDataPath))
+            {
+                return programDataPath;
+            }
+            
+            // Fallback: Application directory (for backwards compatibility with older installers)
+            var appDirPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, CONFIG_FILENAME);
+            
+            return appDirPath;
+        }
 
         /// <summary>
         /// Loads base secret from config file (if exists)
@@ -143,10 +165,7 @@ namespace Photobooth.Services
             Console.WriteLine("--- LoadFromConfigFile START ---");
             try
             {
-                var baseDir = AppDomain.CurrentDomain.BaseDirectory;
-                Console.WriteLine($"Base directory: {baseDir}");
-                
-                var configPath = Path.Combine(baseDir, CONFIG_FILENAME);
+                var configPath = GetConfigFilePath();
                 Console.WriteLine($"Looking for config at: {configPath}");
 
                 if (!File.Exists(configPath))
