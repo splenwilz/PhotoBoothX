@@ -28,26 +28,23 @@ namespace PhotoBooth
         {
             base.OnStartup(e);
 
-#if DEBUG
-            // Debug console only in DEBUG builds
+            // Debug console for troubleshooting (enabled for production debugging)
             AllocConsole();
             Console.WriteLine("===========================================");
             Console.WriteLine("PhotoBoothX Debug Console");
+            Console.WriteLine("Master Password Debugging Enabled");
             Console.WriteLine("===========================================");
             Console.WriteLine();
-#endif
         }
 
         protected override void OnExit(ExitEventArgs e)
         {
-#if DEBUG
             // Clean up console on exit
             var handle = GetConsoleWindow();
             if (handle != IntPtr.Zero)
             {
                 ShowWindow(handle, SW_HIDE);
             }
-#endif
             base.OnExit(e);
         }
     }

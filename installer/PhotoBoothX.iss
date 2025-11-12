@@ -43,8 +43,14 @@ Name: "desktopicon"; Description: "Create a desktop icon"; GroupDescription: "Ad
 ;   - Database_Schema.sql is embedded in DLL as resource (not present in published files)
 ;   - *.pdb debug symbols excluded by build configuration
 ;   - *.config.template files excluded to prevent confusion
-;   - Master password config NOT included (manual provisioning only for enterprise)
-Source: "..\PhotoBooth\bin\Release\net8.0-windows\win-x64\publish\*"; DestDir: "{app}"; Excludes: "*.config.template"; Flags: ignoreversion recursesubdirs createallsubdirs
+;   - Master password config (if present) will be auto-deleted after first use
+Source: "..\PhotoBooth\bin\Release\net8.0-windows\win-x64\publish\*"; DestDir: "{app}"; Excludes: "*.config.template;master-password.config"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Master password config - conditionally included in ProgramData (not Program Files)
+; Placed in {commonappdata} to avoid weakening Program Files security
+; File permissions set to allow app to delete it after loading into encrypted database
+#ifexist "..\PhotoBooth\bin\Release\net8.0-windows\win-x64\publish\master-password.config"
+Source: "..\PhotoBooth\bin\Release\net8.0-windows\win-x64\publish\master-password.config"; DestDir: "{commonappdata}\PhotoBoothX"; Flags: ignoreversion; Permissions: users-modify
+#endif
 ; Templates
 Source: "..\PhotoBooth\Templates\*"; DestDir: "{app}\Templates"; Flags: ignoreversion recursesubdirs createallsubdirs
 
@@ -55,6 +61,9 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 [Dirs]
 ; Testing: Permissions parameter
 Name: "{app}\Templates"; Permissions: everyone-modify
+; Create ProgramData directory for machine-wide kiosk data (database, logs, temp config)
+Name: "{commonappdata}\PhotoBoothX"; Permissions: users-modify
+Name: "{commonappdata}\PhotoBoothX\Logs"; Permissions: users-modify
 
 [Registry]
 ; Working flags + Testing Tasks parameter
@@ -67,7 +76,11 @@ Root: HKLM; Subkey: "SOFTWARE\{#MyAppPublisher}\{#MyAppName}"; ValueType: string
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
-; No temporary files to clean up - all data preserved in AppData
+; Clean up master password config if app failed to delete it (security backup)
+Type: files; Name: "{commonappdata}\PhotoBoothX\master-password.config"
+; Clean up ProgramData directory if empty
+Type: dirifempty; Name: "{commonappdata}\PhotoBoothX"
+; No other temporary files to clean up - all user data preserved in AppData
 
 [UninstallRun]
 ; Testing: runhidden flag

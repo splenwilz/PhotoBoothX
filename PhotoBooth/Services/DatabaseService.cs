@@ -108,9 +108,10 @@ namespace Photobooth.Services
 
         public DatabaseService(string? databasePath = null)
         {
-            // Use AppData for production safety - data survives application updates and follows Windows conventions
+            // Use CommonApplicationData (ProgramData) for kiosk mode - machine-wide data that survives user changes
+            // This ensures all sales data and settings are available regardless of which Windows user is logged in
             // For development, you can pass a custom path to constructor if needed
-            _databasePath = databasePath ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "PhotoboothX", "photobooth.db");
+            _databasePath = databasePath ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "PhotoBoothX", "photobooth.db");
             _connectionString = $"Data Source={_databasePath}";
         }
 

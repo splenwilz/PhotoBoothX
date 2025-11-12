@@ -568,7 +568,7 @@ If migrations fail and leave database in bad state:
    ```
 
 2. **Delete database file**:
-   - Location: `%APPDATA%/PhotoboothX/photobooth.db`
+   - Location: `%PROGRAMDATA%\PhotoBoothX\photobooth.db` (or `C:\ProgramData\PhotoBoothX\photobooth.db`)
    - This forces fresh creation on next startup
 
 3. **Restart application** - it will create clean database with latest schema
@@ -577,15 +577,16 @@ If migrations fail and leave database in bad state:
 
 ### Production Location
 ```
-%APPDATA%/PhotoboothX/photobooth.db
+%PROGRAMDATA%\PhotoBoothX\photobooth.db
 ```
-**Example**: `C:\Users\YourName\AppData\Roaming\PhotoboothX\photobooth.db`
+**Example**: `C:\ProgramData\PhotoBoothX\photobooth.db`
 
 ### Why This Location?
+- ✅ Machine-wide storage (works for all Windows users)
 - ✅ Survives application updates
-- ✅ Follows Windows conventions
-- ✅ User-specific data isolation
-- ✅ Automatic backup by Windows
+- ✅ Follows Windows kiosk best practices
+- ✅ Consistent data across user sessions
+- ✅ Ideal for shared kiosk environments
 
 ### Development Override
 ```csharp

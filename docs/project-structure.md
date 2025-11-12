@@ -245,8 +245,8 @@ CREATE TABLE Settings (
 
 ### Database Locations
 - **Development**: `PhotoBooth/bin/Debug/net8.0-windows/photobooth.db`
-- **Production**: `%APPDATA%/PhotoBoothX/photobooth.db`
-- **Rationale**: AppData survives application reinstalls
+- **Production**: `%PROGRAMDATA%\PhotoBoothX\photobooth.db` (C:\ProgramData\PhotoBoothX\photobooth.db)
+- **Rationale**: ProgramData provides machine-wide storage for kiosk mode, survives user changes and reinstalls
 
 ## 🎨 UI/UX Architecture
 
