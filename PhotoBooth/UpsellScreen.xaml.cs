@@ -435,6 +435,17 @@ namespace Photobooth
                             ("Copies", copies),
                             ("Price", _extraCopiesPrice));
 
+                        // Validate credits before proceeding to cross-sell
+                        // Calculate total cost: original product + extra copies
+                        var totalOrderCost = (_originalProduct?.Price ?? 0) + _extraCopiesPrice;
+                        if (!await ValidateCreditsForTotalOrderAsync(totalOrderCost))
+                        {
+                            // Reset selection if validation fails
+                            _selectedExtraCopies = 0;
+                            _extraCopiesPrice = 0;
+                            return; // Don't proceed to cross-sell
+                        }
+
                         await StartCrossSellStage();
                     }
                 }
@@ -483,6 +494,19 @@ namespace Photobooth
                 LoggingService.Application.Information("Extra copies quantity confirmed",
                     ("Copies", _currentQuantity),
                     ("Price", _extraCopiesPrice));
+
+                // Validate credits before proceeding to cross-sell
+                // Calculate total cost: original product + extra copies
+                var totalOrderCost = (_originalProduct?.Price ?? 0) + _extraCopiesPrice;
+                if (!await ValidateCreditsForTotalOrderAsync(totalOrderCost))
+                {
+                    // Reset selection if validation fails
+                    _selectedExtraCopies = 0;
+                    _extraCopiesPrice = 0;
+                    _currentQuantity = 3; // Reset to default
+                    UpdateQuantityDisplay(); // Update UI to reflect reset
+                    return; // Don't proceed to cross-sell
+                }
 
                 await StartCrossSellStage();
             }
@@ -597,6 +621,40 @@ namespace Photobooth
                 _selectedPhotoIndex++;
                 UpdatePhotoDisplay();
                 LoggingService.Application.Information($"Navigated to photo {_selectedPhotoIndex + 1} of {_capturedPhotos.Count}");
+            }
+        }
+
+        /// <summary>
+        /// Handle back button click to return to extra copies stage
+        /// </summary>
+        private async void BackButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                if (_currentStage == UpsellStage.CrossSell)
+                {
+                    LoggingService.Application.Information("User clicked back from cross-sell to extra copies");
+                    
+                    // Reset cross-sell state
+                    _crossSellAccepted = false;
+                    _crossSellPrice = 0;
+                    _selectedPhotoForCrossSell = null;
+                    
+                    // Reset quantity selector to default (in case they had selected 3+ copies)
+                    _currentQuantity = 3;
+                    UpdateQuantityDisplay();
+                    
+                    // Note: We preserve _selectedExtraCopies and _extraCopiesPrice 
+                    // so if they had selected 1 or 2 copies, that selection is remembered
+                    // They can change it or click "No Thanks" to proceed with 0 copies
+                    
+                    // Go back to extra copies stage
+                    await StartExtraCopiesStage();
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Back button click failed", ex);
             }
         }
 

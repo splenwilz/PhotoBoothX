@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Printing;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -28,6 +29,7 @@ namespace Photobooth
 
         #region Private Fields
         private readonly IDatabaseService _databaseService;
+        private readonly IPrinterService? _printerService; // Printer service for detecting available printers
         private readonly MainWindow? _mainWindow; // Reference to MainWindow for operation mode check
         private AdminDashboardScreen? _adminDashboardScreen; // For credit management
         private DispatcherTimer? _progressTimer;
@@ -48,11 +50,20 @@ namespace Photobooth
         #endregion
 
         #region Constructor
-        public PrintingScreen(IDatabaseService databaseService, AdminDashboardScreen? adminDashboardScreen = null, MainWindow? mainWindow = null)
+        /// <summary>
+        /// Initialize printing screen with required services
+        /// </summary>
+        /// <param name="databaseService">Database service for data operations</param>
+        /// <param name="adminDashboardScreen">Admin dashboard for credit management (optional)</param>
+        /// <param name="mainWindow">Main window for operation mode check (optional)</param>
+        /// <param name="printerService">Printer service for printer detection (optional, will create default if not provided)</param>
+        public PrintingScreen(IDatabaseService databaseService, AdminDashboardScreen? adminDashboardScreen = null, MainWindow? mainWindow = null, IPrinterService? printerService = null)
         {
             _databaseService = databaseService ?? throw new ArgumentNullException(nameof(databaseService));
             _adminDashboardScreen = adminDashboardScreen;
             _mainWindow = mainWindow;
+            // Use provided printer service or create a new one
+            _printerService = printerService ?? new PrinterService();
             InitializeComponent();
             Loaded += PrintingScreen_Loaded;
         }
@@ -66,7 +77,7 @@ namespace Photobooth
         /// <summary>
         /// Initialize the printing screen with order details
         /// </summary>
-        public async Task InitializePrintJob(Template template, ProductInfo product, string composedImagePath, 
+        public Task InitializePrintJob(Template template, ProductInfo product, string composedImagePath, 
             int extraCopies = 0, ProductInfo? crossSellProduct = null, decimal? totalOrderCostOverride = null)
         {
             try
@@ -94,8 +105,25 @@ namespace Photobooth
                 // Update UI with order details
                 UpdateOrderDisplay();
 
-                // Start the printing simulation
-                await StartPrintingProcess();
+                // Start the printing process asynchronously AFTER navigation (non-blocking)
+                // This ensures navigation is instant, then we check printer status and start printing
+                // The printer status check uses WMI queries which are slow, so we don't block navigation
+                // Fire-and-forget: start the task but don't await it
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        // Run on background thread to avoid blocking UI
+                        // StartPrintingProcess() will use Dispatcher.Invoke for UI updates
+                        await StartPrintingProcess();
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"!!! ASYNC PRINTING PROCESS ERROR: {ex.Message} !!!");
+                        LoggingService.Application.Error("Failed to start printing process asynchronously", ex);
+                        Dispatcher.Invoke(() => ShowError("Failed to start printing process. Please try again."));
+                    }
+                });
             }
             catch (Exception ex)
             {
@@ -103,6 +131,10 @@ namespace Photobooth
                 LoggingService.Application.Error("Failed to initialize print job", ex);
                 ShowError("Failed to start printing process. Please try again.");
             }
+            
+            // Return completed task immediately since we're not awaiting anything
+            // The actual printing work runs in the background Task.Run
+            return Task.CompletedTask;
         }
 
         /// <summary>
@@ -161,6 +193,9 @@ namespace Photobooth
                 // Hide completion and error cards
                 CompletionCard.Visibility = Visibility.Collapsed;
                 ErrorCard.Visibility = Visibility.Collapsed;
+                
+                // Hide back button
+                BackButton.Visibility = Visibility.Collapsed;
 
                 LoggingService.Application.Information("Printing screen state reset for new job");
             }
@@ -193,39 +228,336 @@ namespace Photobooth
                 CopiesText.Text = copiesText;
             }
 
-            // TODO: Replace with actual printer service integration
-            // - PrinterNameText.Text should come from IPrinterService.GetConnectedPrinters()
+            // Printer status will be loaded asynchronously after navigation (in PrintingScreen_Loaded)
+            // This ensures navigation is instant and doesn't block on WMI queries
+            // Set initial "checking" state so we don't show incorrect "online" status
+            if (PrinterNameText != null)
+            {
+                PrinterNameText.Text = "○ Checking printer status...";
+                PrinterNameText.Foreground = new System.Windows.Media.SolidColorBrush(
+                    (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#6B7280")); // Gray
+            }
+            
+            // TODO: Replace remaining simulation data with actual services:
             // - PrintsRemainingText.Text should come from IConsumablesService.GetRemainingSupplies()
             // - QueuePositionText.Text should come from IPrintQueueService.GetPosition()
             // - EstimatedTimeText.Text should be calculated from actual queue and printer speed
             
-            // Update printer status (simulation data)
-            PrinterNameText.Text = "DNP DS620A"; 
-            PrintsRemainingText.Text = "642"; 
-            QueuePositionText.Text = "1 of 1"; 
-            EstimatedTimeText.Text = CalculateEstimatedTime();
+            // Update remaining status - these will be updated asynchronously after navigation
+            // Show "Checking..." for all async-loaded data to provide consistent user experience
+            PrintsRemainingText.Text = "Checking..."; 
+            QueuePositionText.Text = "Checking..."; 
+            EstimatedTimeText.Text = "Calculating...";
         }
 
         /// <summary>
-        /// Calculate estimated print time based on job complexity
+        /// Update printer status display using cached PrinterDevice
+        /// This is faster than UpdatePrinterStatus() as it uses pre-cached status
+        /// Reference: Uses cached status initialized on app startup
         /// </summary>
-        private string CalculateEstimatedTime()
+        /// <param name="cachedStatus">Cached PrinterDevice with current status, or null if not available</param>
+        private void UpdatePrinterStatusDisplay(PrinterDevice? cachedStatus)
         {
-            // Simple estimation - in real implementation this would consider:
-            // - Print quality settings
-            // - Number of copies
-            // - Printer speed
-            // - Current queue length
-            int baseTimeSeconds = 30; // Base time for one print
-            int totalSeconds = baseTimeSeconds * _totalCopies;
+            try
+            {
+                if (cachedStatus == null)
+                {
+                    PrinterNameText.Text = "Printer Not Available";
+                    PrinterNameText.Foreground = new System.Windows.Media.SolidColorBrush(
+                        (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#EF4444")); // Red
+                    return;
+                }
+
+                // Display printer name with status indicator
+                // Green dot (●) for online, red circle (○) for offline
+                var statusIndicator = cachedStatus.IsOnline ? "●" : "○";
+                var statusColor = cachedStatus.IsOnline ? "#10B981" : "#EF4444"; // Green for online, red for offline
+                
+                // Build printer display text with model if available
+                var printerDisplayText = $"{statusIndicator} {cachedStatus.Name}";
+                if (!string.IsNullOrWhiteSpace(cachedStatus.Model) && 
+                    !cachedStatus.Name.Equals(cachedStatus.Model, StringComparison.OrdinalIgnoreCase))
+                {
+                    printerDisplayText += $" ({cachedStatus.Model})";
+                }
+                
+                PrinterNameText.Text = printerDisplayText;
+                PrinterNameText.Foreground = new System.Windows.Media.SolidColorBrush(
+                    (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(statusColor));
+                
+                // Update status text to show "Offline" if printer is offline
+                // This provides clear feedback to the user immediately
+                if (!cachedStatus.IsOnline)
+                {
+                    // Set status text to show "Printer Offline" for clear user feedback
+                    // This is shown in the status display before any print job starts
+                    StatusText.Text = "Printer Offline";
+                }
+                
+                LoggingService.Application.Information("Printer status display updated from cache",
+                    ("PrinterName", cachedStatus.Name),
+                    ("IsOnline", cachedStatus.IsOnline),
+                    ("Status", cachedStatus.Status));
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to update printer status display", ex);
+                PrinterNameText.Text = "Printer Status Error";
+            }
+        }
+
+        /// <summary>
+        /// Update printer status display with actual printer information
+        /// Uses IPrinterService to get available printers and display the selected/default printer
+        /// Displays detailed printer information including model, capabilities, and status
+        /// </summary>
+        private void UpdatePrinterStatus()
+        {
+            try
+            {
+                if (_printerService == null)
+                {
+                    LoggingService.Application.Warning("Printer service not available - using fallback");
+                    PrinterNameText.Text = "No Printer Service";
+                    return;
+                }
+
+                // Get available printers
+                var availablePrinters = _printerService.GetAvailablePrinters();
+                
+                if (availablePrinters.Count == 0)
+                {
+                    LoggingService.Application.Warning("No printers detected on system");
+                    PrinterNameText.Text = "No Printers Available";
+                    return;
+                }
+
+                // Try to get the selected/default printer
+                var selectedPrinterName = _printerService.SelectedPrinterName;
+                PrinterDevice? selectedPrinter = null;
+
+                if (!string.IsNullOrWhiteSpace(selectedPrinterName))
+                {
+                    selectedPrinter = availablePrinters.FirstOrDefault(p => 
+                        string.Equals(p.Name, selectedPrinterName, StringComparison.OrdinalIgnoreCase));
+                }
+
+                // If no selected printer found, use the first available printer or default
+                if (selectedPrinter == null)
+                {
+                    selectedPrinter = availablePrinters.FirstOrDefault(p => p.IsDefault) 
+                        ?? availablePrinters.FirstOrDefault();
+                }
+
+                if (selectedPrinter != null)
+                {
+                    // Display printer name with status indicator and model information
+                    var statusIndicator = selectedPrinter.IsOnline ? "●" : "○";
+                    var statusColor = selectedPrinter.IsOnline ? "#10B981" : "#EF4444";
+                    
+                    // Build printer display text with model if available
+                    var printerDisplayText = $"{statusIndicator} {selectedPrinter.Name}";
+                    if (!string.IsNullOrWhiteSpace(selectedPrinter.Model) && 
+                        !selectedPrinter.Name.Equals(selectedPrinter.Model, StringComparison.OrdinalIgnoreCase))
+                    {
+                        printerDisplayText += $" ({selectedPrinter.Model})";
+                    }
+                    
+                    PrinterNameText.Text = printerDisplayText;
+                    PrinterNameText.Foreground = new System.Windows.Media.SolidColorBrush(
+                        (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(statusColor));
+                    
+                    LoggingService.Application.Information("Printer status updated",
+                        ("PrinterName", selectedPrinter.Name),
+                        ("Model", selectedPrinter.Model ?? "Unknown"),
+                        ("IsOnline", selectedPrinter.IsOnline),
+                        ("IsDefault", selectedPrinter.IsDefault),
+                        ("Status", selectedPrinter.Status),
+                        ("SupportsColor", selectedPrinter.SupportsColor),
+                        ("MaxCopies", selectedPrinter.MaxCopies));
+                    
+                    // Try to get roll capacity information
+                    try
+                    {
+                        Console.WriteLine($"!!! ATTEMPTING TO GET ROLL CAPACITY FOR: {selectedPrinter.Name} !!!");
+                        var rollCapacity = _printerService.GetRollCapacity(selectedPrinter.Name);
+                        
+                        if (rollCapacity != null)
+                        {
+                            Console.WriteLine($"!!! ROLL CAPACITY RESULT !!!");
+                            Console.WriteLine($"!!! IsAvailable: {rollCapacity.IsAvailable} !!!");
+                            Console.WriteLine($"!!! Source: {rollCapacity.Source} !!!");
+                            Console.WriteLine($"!!! Status: {rollCapacity.Status} !!!");
+                            Console.WriteLine($"!!! RemainingPercentage: {rollCapacity.RemainingPercentage?.ToString() ?? "N/A"} !!!");
+                            Console.WriteLine($"!!! RemainingPrints: {rollCapacity.RemainingPrints?.ToString() ?? "N/A"} !!!");
+                            Console.WriteLine($"!!! MaxCapacity: {rollCapacity.MaxCapacity?.ToString() ?? "N/A"} !!!");
+                            Console.WriteLine($"!!! Details: {rollCapacity.Details ?? "N/A"} !!!");
+                            
+                            // Update PrintsRemainingText if we have useful information
+                            if (rollCapacity.IsAvailable)
+                            {
+                                if (rollCapacity.RemainingPrints.HasValue)
+                                {
+                                    PrintsRemainingText.Text = rollCapacity.RemainingPrints.Value.ToString();
+                                }
+                                else if (rollCapacity.RemainingPercentage.HasValue)
+                                {
+                                    // Estimate based on percentage (assuming max 700 for 4x6, 1400 for strips)
+                                    // This is a rough estimate - actual capacity depends on print size
+                                    var estimatedMax = 700; // Default for 4x6 prints
+                                    var estimatedRemaining = (int)(estimatedMax * (rollCapacity.RemainingPercentage.Value / 100.0));
+                                    PrintsRemainingText.Text = $"~{estimatedRemaining}";
+                                }
+                                else if (rollCapacity.Status != "Unknown")
+                                {
+                                    PrintsRemainingText.Text = rollCapacity.Status;
+                                }
+                            }
+                            
+                            LoggingService.Application.Information("Roll capacity retrieved",
+                                ("PrinterName", selectedPrinter.Name),
+                                ("IsAvailable", rollCapacity.IsAvailable),
+                                ("Source", rollCapacity.Source),
+                                ("Status", rollCapacity.Status),
+                                ("RemainingPercentage", rollCapacity.RemainingPercentage?.ToString() ?? "N/A"),
+                                ("RemainingPrints", rollCapacity.RemainingPrints?.ToString() ?? "N/A"),
+                                ("MaxCapacity", rollCapacity.MaxCapacity?.ToString() ?? "N/A"),
+                                ("Details", rollCapacity.Details ?? "N/A"));
+                        }
+                        else
+                        {
+                            Console.WriteLine($"!!! GetRollCapacity returned null !!!");
+                        }
+                    }
+                    catch (Exception rollEx)
+                    {
+                        Console.WriteLine($"!!! ERROR getting roll capacity: {rollEx.Message} !!!");
+                        Console.WriteLine($"!!! Stack trace: {rollEx.StackTrace} !!!");
+                        LoggingService.Application.Warning("Failed to get roll capacity",
+                            ("PrinterName", selectedPrinter.Name),
+                            ("Exception", rollEx.Message));
+                    }
+                }
+                else
+                {
+                    PrinterNameText.Text = "Printer Not Available";
+                    LoggingService.Application.Warning("Could not determine printer to display");
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to update printer status", ex);
+                PrinterNameText.Text = "Printer Status Error";
+            }
+        }
+
+        /// <summary>
+        /// Update queue position and estimated time from actual print queue
+        /// This performs a real-time check of the print queue
+        /// Reference: https://learn.microsoft.com/en-us/dotnet/api/system.printing.printqueue.numberofjobs
+        /// </summary>
+        private void UpdateQueuePositionAndEstimatedTime()
+        {
+            try
+            {
+                if (_printerService == null)
+                {
+                    // Fallback to simulation if no service
+                    QueuePositionText.Text = "1 of 1";
+                    EstimatedTimeText.Text = CalculateEstimatedTime();
+                    return;
+                }
+
+                var printerName = _printerService.GetDefaultPrinterName();
+                if (string.IsNullOrWhiteSpace(printerName))
+                {
+                    QueuePositionText.Text = "No printer";
+                    EstimatedTimeText.Text = "N/A";
+                    return;
+                }
+
+                // Get actual queue information from print queue
+                using var printServer = new LocalPrintServer();
+                using var printQueue = printServer.GetPrintQueue(printerName);
+                printQueue.Refresh();
+
+                int totalJobs = printQueue.NumberOfJobs;
+                
+                // Our position is total jobs + 1 (we're about to add our job)
+                int ourPosition = totalJobs + 1;
+                int totalInQueue = ourPosition;
+
+                // Update queue position display
+                QueuePositionText.Text = $"{ourPosition} of {totalInQueue}";
+
+                // Calculate estimated time with actual queue data
+                EstimatedTimeText.Text = CalculateEstimatedTime(ourPosition, totalInQueue);
+
+                LoggingService.Application.Information("Queue position updated",
+                    ("PrinterName", printerName),
+                    ("TotalJobs", totalJobs),
+                    ("OurPosition", ourPosition),
+                    ("TotalCopies", _totalCopies));
+            }
+            catch (Exception ex)
+            {
+                // Fallback to simulation on error
+                Console.WriteLine($"!!! ERROR getting queue position: {ex.Message} !!!");
+                LoggingService.Application.Warning("Failed to get queue position, using fallback",
+                    ("Exception", ex.Message));
+                QueuePositionText.Text = "1 of 1";
+                EstimatedTimeText.Text = CalculateEstimatedTime();
+            }
+        }
+
+        /// <summary>
+        /// Calculate estimated time based on queue position and print copies
+        /// Uses actual print queue data when available
+        /// Reference: Typical DNP printer speed is ~30-45 seconds per 4x6 print
+        /// </summary>
+        /// <param name="queuePosition">Position in queue (1-based), null if unknown</param>
+        /// <param name="totalJobsInQueue">Total jobs in queue, null if unknown</param>
+        /// <returns>Formatted time estimate string</returns>
+        private string CalculateEstimatedTime(int? queuePosition = null, int? totalJobsInQueue = null)
+        {
+            // Base time per print (30 seconds for typical photo print)
+            // Reference: Typical DNP printer speed is ~30-45 seconds per 4x6 print
+            int baseTimeSeconds = 30;
             
-            if (totalSeconds < 60)
-                return $"{totalSeconds} seconds";
+            // Calculate time for our copies
+            int ourCopiesTime = baseTimeSeconds * _totalCopies;
+            
+            // If we have queue info, add time for jobs ahead of us
+            if (queuePosition.HasValue && totalJobsInQueue.HasValue && queuePosition.Value > 1)
+            {
+                // Estimate 30 seconds per job ahead (conservative estimate)
+                int jobsAhead = queuePosition.Value - 1;
+                int queueWaitTime = jobsAhead * baseTimeSeconds;
+                int totalSeconds = queueWaitTime + ourCopiesTime;
+                return FormatTime(totalSeconds);
+            }
+            
+            // Fallback: just our copies time
+            return FormatTime(ourCopiesTime);
+        }
+
+        /// <summary>
+        /// Format time in seconds to a human-readable string
+        /// </summary>
+        /// <param name="seconds">Time in seconds</param>
+        /// <returns>Formatted time string (e.g., "45 seconds" or "1:23")</returns>
+        private string FormatTime(double seconds)
+        {
+            if (seconds < 60)
+            {
+                return $"{(int)seconds} second{((int)seconds == 1 ? "" : "s")}";
+            }
             else
             {
+                var totalSeconds = (int)seconds;
                 var minutes = totalSeconds / 60;
-                var seconds = totalSeconds % 60;
-                return $"{minutes}:{seconds:D2}";
+                var remainingSeconds = totalSeconds % 60;
+                return $"{minutes}:{remainingSeconds:D2}";
             }
         }
         #endregion
@@ -234,44 +566,225 @@ namespace Photobooth
         private async void PrintingScreen_Loaded(object sender, RoutedEventArgs e)
         {
             try
-        {
-                // Initialize credits display after UI is loaded
+            {
+                // Load printer status asynchronously AFTER navigation (non-blocking)
+                // Navigation happens instantly, then we update the UI with printer info
+                // Using Task.Run to avoid blocking the UI thread during WMI queries
+                await Task.Run(() =>
+                {
+                    // Do the slow WMI queries on background thread
+                    // Then update UI on UI thread
+                    Dispatcher.Invoke(() =>
+                    {
+                        UpdatePrinterStatus();
+                    });
+                });
+                
+                // Update queue position and estimated time asynchronously (non-blocking)
+                // This checks the print queue which can be slow, so we do it after navigation
+                await Task.Run(() =>
+                {
+                    // Check print queue on background thread
+                    // Then update UI on UI thread
+                    Dispatcher.Invoke(() =>
+                    {
+                        UpdateQueuePositionAndEstimatedTime();
+                    });
+                });
+                
+                // Refresh credits display asynchronously AFTER navigation (non-blocking)
+                // This is a fast database query, but keeping it async ensures no blocking
                 await RefreshCreditsFromDatabase();
             }
             catch (Exception ex)
             {
-                LoggingService.Application.Error("Failed to refresh credits on screen load", ex);
+                LoggingService.Application.Error("Failed to refresh printer status on screen load", ex);
             }
         }
 
-        private async void RetryButton_Click(object sender, RoutedEventArgs e)
+        /// <summary>
+        /// Handle retry button preview mouse down - test if button receives mouse events
+        /// </summary>
+        private void RetryButton_PreviewMouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            Console.WriteLine("!!! RETRY BUTTON PREVIEW MOUSE DOWN - Button is receiving mouse events !!!");
+            LoggingService.Application.Information("Retry button preview mouse down");
+        }
+
+        /// <summary>
+        /// Handle retry button click - step 2: validate data and check printer status (async to avoid blocking UI)
+        /// </summary>
+        private void RetryButton_Click(object sender, RoutedEventArgs e)
+        {
+            // Disable button immediately to prevent double-clicks
+            RetryButton.IsEnabled = false;
+            Console.WriteLine("!!! RETRY BUTTON CLICKED - Disabled button to prevent double-clicks !!!");
+            
+            // Run validation and printer check asynchronously to avoid blocking UI
+            // WMI queries are slow, so we do them on a background thread
+            _ = Task.Run(() =>
+            {
+                try
+                {
+                    Console.WriteLine("!!! RETRY BUTTON CLICKED - STEP 2: Validating data and checking printer (async) !!!");
+                    LoggingService.Application.Information("Retry button clicked - starting retry process");
+                    
+                    // Step 2: Validate we have the required data (fast checks, can do on UI thread)
+                    // But we're already on background thread, so we'll use Dispatcher for UI updates
+                    Console.WriteLine("!!! STEP 2A: Validating required data !!!");
+                    Console.WriteLine($"!!! _template: {(_template != null ? _template.Name : "NULL")} !!!");
+                    Console.WriteLine($"!!! _product: {(_product != null ? _product.Name : "NULL")} !!!");
+                    Console.WriteLine($"!!! _composedImagePath: {_composedImagePath ?? "NULL"} !!!");
+                    
+                    if (_template == null)
+                    {
+                        Console.WriteLine("!!! ERROR: Template is NULL - cannot retry !!!");
+                        Dispatcher.Invoke(() => ShowError("Cannot retry: Template information is missing. Please start a new order."));
+                        Dispatcher.Invoke(() => RetryButton.IsEnabled = true);
+                        return;
+                    }
+                    
+                    if (_product == null)
+                    {
+                        Console.WriteLine("!!! ERROR: Product is NULL - cannot retry !!!");
+                        Dispatcher.Invoke(() => ShowError("Cannot retry: Product information is missing. Please start a new order."));
+                        Dispatcher.Invoke(() => RetryButton.IsEnabled = true);
+                        return;
+                    }
+                    
+                    if (string.IsNullOrEmpty(_composedImagePath) || !System.IO.File.Exists(_composedImagePath))
+                    {
+                        Console.WriteLine("!!! ERROR: Image path is invalid or file not found - cannot retry !!!");
+                        Dispatcher.Invoke(() => ShowError("Cannot retry: Image file is missing. Please start a new order."));
+                        Dispatcher.Invoke(() => RetryButton.IsEnabled = true);
+                        return;
+                    }
+                    
+                    Console.WriteLine("!!! STEP 2A: All required data is present !!!");
+                    
+                    // Step 2B: Check printer status (refresh first to get latest status)
+                    // This is slow (WMI queries), so we're already on background thread
+                    Console.WriteLine("!!! STEP 2B: Refreshing printer status (async) !!!");
+                    if (_printerService == null)
+                    {
+                        Console.WriteLine("!!! ERROR: Printer service is NULL - cannot retry !!!");
+                        Dispatcher.Invoke(() => ShowError("Printer service not available. Please contact support."));
+                        Dispatcher.Invoke(() => RetryButton.IsEnabled = true);
+                        return;
+                    }
+                    
+                    // Refresh printer status to get latest information (slow WMI query)
+                    _printerService.RefreshCachedStatus();
+                    
+                    // Get printer name first
+                    var printerName = _printerService.GetDefaultPrinterName();
+                    if (string.IsNullOrWhiteSpace(printerName))
+                    {
+                        Console.WriteLine("!!! ERROR: No default printer found - cannot retry !!!");
+                        Dispatcher.Invoke(() => ShowError("No printer found. Please configure a printer and try again."));
+                        Dispatcher.Invoke(() => RetryButton.IsEnabled = true);
+                        return;
+                    }
+                    
+                    Console.WriteLine($"!!! STEP 2B: Using printer: {printerName} !!!");
+                    
+                    // Get current printer status (slow WMI query)
+                    var printerStatus = _printerService.GetPrinterStatus(printerName);
+                    if (printerStatus == null)
+                    {
+                        Console.WriteLine("!!! ERROR: Could not get printer status - cannot retry !!!");
+                        Dispatcher.Invoke(() => ShowError("Could not check printer status. Please try again."));
+                        Dispatcher.Invoke(() => RetryButton.IsEnabled = true);
+                        return;
+                    }
+                    
+                    Console.WriteLine($"!!! STEP 2B: Printer Status - Name: {printerStatus.Name}, IsOnline: {printerStatus.IsOnline}, Status: {printerStatus.Status} !!!");
+                    
+                    if (!printerStatus.IsOnline)
+                    {
+                        Console.WriteLine("!!! STEP 2B: Printer is still offline - showing error !!!");
+                        Dispatcher.Invoke(() => ShowError("Printer is still offline. Please turn on the printer and try again."));
+                        Dispatcher.Invoke(() => RetryButton.IsEnabled = true);
+                        return;
+                    }
+                    
+                    Console.WriteLine("!!! STEP 2B: Printer is online - ready to retry !!!");
+                    LoggingService.Application.Information("Retry validation passed - printer is online and data is valid");
+                    
+                    // Step 3: Reset UI and restart printing
+                    Console.WriteLine("!!! STEP 3: Resetting UI state and restarting printing process !!!");
+                    
+                    // Reset UI state on UI thread (hide error card, reset progress, etc.)
+                    Dispatcher.Invoke(() =>
+                    {
+                        // Reset printing state (hides error card, resets progress, etc.)
+                        ResetPrintingState();
+                        
+                        // Hide retry button since we're starting a new print attempt
+                        RetryButton.Visibility = Visibility.Collapsed;
+                        RetryButton.IsEnabled = false;
+                    });
+                    
+                    Console.WriteLine("!!! STEP 3: UI reset complete, starting printing process (async) !!!");
+                    
+                    // Restart printing process asynchronously (same pattern as InitializePrintJob)
+                    // This runs on background thread, so StartPrintingProcess() will use Dispatcher.Invoke for UI updates
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            Console.WriteLine("!!! STEP 3: Calling StartPrintingProcess() to retry printing !!!");
+                            await StartPrintingProcess();
+                            Console.WriteLine("!!! STEP 3: StartPrintingProcess() completed !!!");
+                        }
+                        catch (Exception printEx)
+                        {
+                            Console.WriteLine($"!!! STEP 3: ERROR in StartPrintingProcess(): {printEx.Message} !!!");
+                            Console.WriteLine($"!!! StackTrace: {printEx.StackTrace} !!!");
+                            LoggingService.Application.Error("Retry printing process failed", printEx);
+                            Dispatcher.Invoke(() => ShowError($"Retry printing failed: {printEx.Message}"));
+                        }
+                    });
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"!!! RETRY BUTTON CLICK HANDLER ERROR: {ex.Message} !!!");
+                    Console.WriteLine($"!!! StackTrace: {ex.StackTrace} !!!");
+                    LoggingService.Application.Error("Retry button click handler failed", ex);
+                    Dispatcher.Invoke(() => ShowError($"Retry failed: {ex.Message}"));
+                    Dispatcher.Invoke(() => RetryButton.IsEnabled = true);
+                }
+            });
+        }
+
+        /// <summary>
+        /// Handle back button click - navigate to welcome screen
+        /// </summary>
+        private void BackButton_Click(object sender, RoutedEventArgs e)
         {
             try
             {
-                // Validate required state
-                if (_template == null || _product == null || string.IsNullOrEmpty(_composedImagePath))
-                {
-                    LoggingService.Application.Error("Cannot retry - missing required print job data", null,
-                        ("HasTemplate", _template != null),
-                        ("HasProduct", _product != null),
-                        ("HasComposedImage", !string.IsNullOrEmpty(_composedImagePath)));
-                    ShowError("Cannot retry print job. Please start a new session.");
-                    return;
-                }
-
-                // Reset UI state and restart printing
-                ResetPrintingState();
+                LoggingService.Application.Information("User clicked back button from printing screen");
                 
-                // Set retry status
-                StatusText.Text = "Retrying...";
-
-                // Restart printing process
-                await StartPrintingProcess();
+                // Stop any running timers
+                StopProgressTimer();
+                StopCountdownTimer();
+                
+                // Navigate back to welcome screen
+                _mainWindow?.NavigateToWelcome();
             }
             catch (Exception ex)
             {
-                LoggingService.Application.Error("Print retry failed", ex);
-                ShowError("Retry failed. Please contact support.");
+                LoggingService.Application.Error("Back navigation failed", ex);
+                // Fallback: try to navigate anyway
+                try
+                {
+                    _mainWindow?.NavigateToWelcome();
+                }
+                catch
+                {
+                    // If navigation fails, at least we tried
+                }
             }
         }
         #endregion
@@ -289,57 +802,335 @@ namespace Photobooth
                     ("ProductType", _product?.Type ?? "Unknown"),
                     ("TotalCopies", _totalCopies));
 
+                // CRITICAL: Check actual printer status BEFORE starting any progress
+                // Get real-time printer status (not cached) to ensure accuracy
+                // This prevents starting progress bar when printer is actually offline
+                // Reference: https://learn.microsoft.com/en-us/dotnet/api/system.printing.printqueue.isoffline
+                if (_printerService != null)
+                {
+                    // Get printer name to check
+                    var printerName = _printerService.SelectedPrinterName ?? _printerService.GetDefaultPrinterName();
+                    
+                    if (string.IsNullOrWhiteSpace(printerName))
+                    {
+                        Console.WriteLine($"!!! NO PRINTER SELECTED - Aborting !!!");
+                        ShowError("No printer is selected. Please select a printer and try again.");
+                        return;
+                    }
+                    
+                    // Get actual current printer status (not cached) for accurate check
+                    var currentStatus = _printerService.GetPrinterStatus(printerName);
+                    
+                    Console.WriteLine($"!!! PRINTER STATUS CHECK (ACTUAL) BEFORE STARTING PROGRESS !!!");
+                    Console.WriteLine($"!!! PrinterName: {printerName} !!!");
+                    Console.WriteLine($"!!! CurrentStatus: {currentStatus?.Name ?? "NULL"}, IsOnline: {currentStatus?.IsOnline ?? false}, Status: {currentStatus?.Status ?? "N/A"} !!!");
+                    
+                    // Check if printer is offline or not available
+                    if (currentStatus == null || !currentStatus.IsOnline)
+                    {
+                        // Printer is offline or not available - show error immediately
+                        // Don't start progress bar, timer, or attempt printing
+                        var statusMessage = currentStatus?.Status ?? "Not Available";
+                        
+                        Console.WriteLine($"!!! PRINTER OFFLINE DETECTED (ACTUAL) - Aborting before starting progress !!!");
+                        Console.WriteLine($"!!! Printer: {printerName}, Status: {statusMessage}, IsOnline: {currentStatus?.IsOnline ?? false} !!!");
+                        
+                        LoggingService.Application.Warning("Print job aborted - printer offline (actual status)",
+                            ("PrinterName", printerName),
+                            ("Status", statusMessage),
+                            ("IsOnline", currentStatus?.IsOnline ?? false));
+                        
+                        // Update UI to show offline status immediately (on UI thread)
+                        Dispatcher.Invoke(() =>
+                        {
+                            UpdatePrinterStatusDisplay(currentStatus);
+                            ShowError("Printer is offline. Please power on the printer and try again.");
+                        });
+                        return; // Exit early - do NOT start progress timer or continue
+                    }
+                    
+                    // Printer is online - update status display (on UI thread)
+                    Console.WriteLine($"!!! PRINTER IS ONLINE (ACTUAL) - Proceeding with print job !!!");
+                    Dispatcher.Invoke(() => UpdatePrinterStatusDisplay(currentStatus));
+                }
+                else
+                {
+                    // No printer service available - show error (on UI thread)
+                    Console.WriteLine($"!!! NO PRINTER SERVICE AVAILABLE - Aborting !!!");
+                    Dispatcher.Invoke(() => ShowError("Printer service not available. Please contact support."));
+                    return;
+                }
+
                 // Initialize progress
                 _currentProgress = 0;
                 
-                // Update status
-                StatusText.Text = "Preparing print job...";
-                HeaderText.Text = "Now Printing...";
-                SubHeaderText.Text = "Your photos are being prepared";
+                // Update status on UI thread (we're in Task.Run, so need Dispatcher)
+                Dispatcher.Invoke(() =>
+                {
+                    StatusText.Text = "Preparing print job...";
+                    HeaderText.Text = "Now Printing...";
+                    SubHeaderText.Text = "Your photos are being prepared";
+                    
+                    // Start progress timer
+                    StartProgressTimer();
+                });
 
-                // Start progress timer
-                StartProgressTimer();
-
+                Console.WriteLine($"!!! ABOUT TO CALL SimulatePrintingStages() !!!");
+                
                 // Simulate the actual printing process
                 await SimulatePrintingStages();
+                
+                Console.WriteLine($"!!! SimulatePrintingStages() COMPLETED !!!");
             }
             catch (Exception ex)
             {
+                Console.WriteLine($"!!! EXCEPTION in StartPrintingProcess(): {ex.Message} !!!");
+                Console.WriteLine($"!!! StackTrace: {ex.StackTrace} !!!");
                 LoggingService.Application.Error("Printing process failed", ex);
-                ShowError($"Printing failed: {ex.Message}");
+                Dispatcher.Invoke(() => ShowError($"Printing failed: {ex.Message}"));
             }
         }
 
         /// <summary>
-        /// Simulate different stages of printing
+        /// Execute actual printing stages using printer service
         /// </summary>
         private async Task SimulatePrintingStages()
         {
             try
             {
+                Console.WriteLine($"!!! SimulatePrintingStages() STARTED !!!");
+                Console.WriteLine($"!!! _composedImagePath: {_composedImagePath ?? "NULL"} !!!");
+                Console.WriteLine($"!!! _printerService: {(_printerService != null ? "NOT NULL" : "NULL")} !!!");
+                
+                // Validate we have the required data
+                if (string.IsNullOrEmpty(_composedImagePath) || !System.IO.File.Exists(_composedImagePath))
+                {
+                    Console.WriteLine($"!!! ERROR: Image path invalid or file not found: {_composedImagePath ?? "NULL"} !!!");
+                    LoggingService.Application.Error("Cannot print - composed image path is invalid", null,
+                        ("ImagePath", _composedImagePath ?? "null"));
+                    Dispatcher.Invoke(() => ShowError("Print image file not found. Please try again."));
+                    return;
+                }
+
+                if (_printerService == null)
+                {
+                    Console.WriteLine($"!!! ERROR: Printer service is NULL !!!");
+                    LoggingService.Application.Error("Cannot print - printer service not available", null);
+                    Dispatcher.Invoke(() => ShowError("Printer service not available. Please contact support."));
+                    return;
+                }
+
                 // Stage 1: Processing (0-20%)
-                StatusText.Text = "Processing images...";
-                await UpdateProgressTo(20, TimeSpan.FromSeconds(2));
+                Dispatcher.Invoke(() => StatusText.Text = "Processing images...");
+                await UpdateProgressTo(20, TimeSpan.FromSeconds(1));
 
                 // Stage 2: Preparing printer (20-40%)
-                StatusText.Text = "Preparing printer...";
+                Dispatcher.Invoke(() => StatusText.Text = "Preparing printer...");
+                
+                // Ensure printer is selected
+                if (string.IsNullOrWhiteSpace(_printerService.SelectedPrinterName))
+                {
+                    var defaultPrinter = _printerService.GetDefaultPrinterName();
+                    if (!string.IsNullOrWhiteSpace(defaultPrinter))
+                    {
+                        _printerService.SelectPrinter(defaultPrinter);
+                    }
+                }
+
                 await UpdateProgressTo(40, TimeSpan.FromSeconds(1));
 
                 // Stage 3: Printing (40-90%)
-                StatusText.Text = $"Printing {_totalCopies} set{(_totalCopies == 1 ? "" : "s")}...";
-                await UpdateProgressTo(90, TimeSpan.FromSeconds(4));
+                Dispatcher.Invoke(() => StatusText.Text = $"Printing {_totalCopies} set{(_totalCopies == 1 ? "" : "s")}...");
+                await UpdateProgressTo(40, TimeSpan.FromMilliseconds(100));
+                
+                // Print the image(s) - single call handles all copies
+                // Paper is always 6x4 inches (landscape) for DNP printer
+                // Strips: Print 2 copies side-by-side on one 6x4 paper
+                // 4x6 Photos: Print 1 copy full size on one 6x4 paper
+                (float width, float height) paperSize = (6.0f, 4.0f); // Always 6x4 inches
+                int imagesPerPage = 1;
+                
+                var productType = _product?.Type?.ToLowerInvariant() ?? "";
+                if (productType.Contains("strip") || productType == "strips" || productType == "photostrips")
+                {
+                    // Strips: Print 2 copies side-by-side on one 6x4 paper
+                    imagesPerPage = 2;
+                }
+                else if (productType.Contains("4x6") || productType == "photo4x6")
+                {
+                    // 4x6 Photos: Print 1 copy full size on one 6x4 paper
+                    imagesPerPage = 1;
+                }
+                else
+                {
+                    // Default: 1 image per page
+                    imagesPerPage = 1;
+                }
+                
+                // Calculate how many pages we need
+                // For strips: if we need 2 copies, that's 1 page (2 images per page)
+                // For 4x6: if we need 1 copy, that's 1 page (1 image per page)
+                int totalPagesNeeded = (int)Math.Ceiling((double)_totalCopies / imagesPerPage);
+                
+                Console.WriteLine($"!!! CALLING PrintImageAsync !!!");
+                Console.WriteLine($"!!! ImagePath: {_composedImagePath} !!!");
+                Console.WriteLine($"!!! PrinterName: {_printerService?.SelectedPrinterName ?? "None"} !!!");
+                Console.WriteLine($"!!! TotalCopies: {_totalCopies}, ImagesPerPage: {imagesPerPage} !!!");
+                
+                LoggingService.Application.Information("Calling PrintImageAsync",
+                    ("ImagePath", _composedImagePath),
+                    ("PrinterName", _printerService?.SelectedPrinterName ?? "None"),
+                    ("ProductType", productType),
+                    ("PaperSize", $"{paperSize.width}x{paperSize.height}"),
+                    ("ImagesPerPage", imagesPerPage),
+                    ("TotalCopies", _totalCopies));
+                
+                // Print all copies at once - the PrintPage handler will handle multiple images per page
+                // Set progress to 50% before starting print job
+                await UpdateProgressTo(50, TimeSpan.FromMilliseconds(100));
+                
+                // Calculate estimated physical printing time BEFORE sending job
+                // This ensures we can display the correct total time estimate
+                // IMPORTANT: totalPagesNeeded accounts for imagesPerPage (strips: 2 per page, 4x6: 1 per page)
+                // Note: System.Drawing.Printing doesn't provide estimated print times from the printer,
+                // so we use adaptive estimates based on actual observed print times.
+                // As the number of pages increases, printers slow down due to:
+                // - Heating up (thermal/photo printers)
+                // - Paper feeding mechanisms taking longer
+                // - Printer buffer/processing overhead
+                // We use progressive scaling to account for this slowdown.
+                double estimatedPhysicalPrintTimeSeconds;
+                if (totalPagesNeeded == 1)
+                {
+                    // Single page prints faster (18 seconds based on actual printer performance)
+                    estimatedPhysicalPrintTimeSeconds = 18.0;
+                }
+                else
+                {
+                    // Progressive scaling: time per page increases as total pages increase
+                    // This accounts for printer slowdown with longer print jobs
+                    double totalTime = 0.0;
+                    for (int page = 1; page <= totalPagesNeeded; page++)
+                    {
+                        double timeForThisPage;
+                        if (page <= 2)
+                        {
+                            // First 2 pages: 25 seconds per page
+                            timeForThisPage = 25.0;
+                        }
+                        else if (page <= 4)
+                        {
+                            // Pages 3-4: 28 seconds per page (slight slowdown)
+                            timeForThisPage = 28.0;
+                        }
+                        else
+                        {
+                            // Pages 5+: 32 seconds per page (more significant slowdown)
+                            timeForThisPage = 32.0;
+                        }
+                        totalTime += timeForThisPage;
+                    }
+                    
+                    // Add buffer for page transitions (2 seconds per transition)
+                    estimatedPhysicalPrintTimeSeconds = totalTime + ((totalPagesNeeded - 1) * 2.0);
+                }
+                
+                Console.WriteLine($"!!! TIMER CALCULATION DEBUG !!!");
+                Console.WriteLine($"!!! TotalCopies: {_totalCopies}, ImagesPerPage: {imagesPerPage}, TotalPagesNeeded: {totalPagesNeeded}, EstimatedTime: {estimatedPhysicalPrintTimeSeconds} seconds !!!");
+                
+                LoggingService.Application.Information("Calculating estimated print time",
+                    ("TotalCopies", _totalCopies),
+                    ("ImagesPerPage", imagesPerPage),
+                    ("TotalPagesNeeded", totalPagesNeeded),
+                    ("EstimatedPhysicalPrintTimeSeconds", estimatedPhysicalPrintTimeSeconds));
+                
+                // Call PrintImageAsync with waitForCompletion=true to wait for actual print completion
+                // This uses Windows print queue monitoring to detect when printing actually finishes
+                // Note: This will block until the printer physically completes the job
+                Dispatcher.Invoke(() => StatusText.Text = $"Printing {_totalCopies} set{(_totalCopies == 1 ? "" : "s")}...");
+                
+                // Start progress animation in parallel with print job (using estimated time as fallback)
+                // If completion monitoring works, the actual time will be used; otherwise estimate is shown
+                var progressTask = UpdateProgressTo(85, TimeSpan.FromSeconds(estimatedPhysicalPrintTimeSeconds));
+                
+                // Call PrintImageAsync with completion monitoring enabled
+                // _printerService is guaranteed to be non-null here due to earlier null check and early return
+                if (_printerService == null)
+                {
+                    ShowError("Printer service not available. Please contact support.");
+                    return;
+                }
+                
+                Console.WriteLine($"!!! ABOUT TO CALL PrintImageAsync - waitForCompletion=true !!!");
+                
+                (bool printSuccess, double actualPrintTimeSeconds, string? errorMessage) = await _printerService.PrintImageAsync(
+                    _composedImagePath, 
+                    copies: _totalCopies, 
+                    paperSize, 
+                    imagesPerPage, 
+                    waitForCompletion: true);
+                
+                Console.WriteLine($"!!! PrintImageAsync RETURNED !!!");
+                Console.WriteLine($"!!! printSuccess: {printSuccess} !!!");
+                Console.WriteLine($"!!! actualPrintTimeSeconds: {actualPrintTimeSeconds} !!!");
+                Console.WriteLine($"!!! errorMessage: {errorMessage ?? "None"} !!!");
+                
+                // Update estimated time display with actual print time (on UI thread)
+                Dispatcher.Invoke(() => EstimatedTimeText.Text = FormatTime(actualPrintTimeSeconds));
+                
+                if (!printSuccess)
+                {
+                    LoggingService.Application.Error("Print job failed", null,
+                        ("TotalCopies", _totalCopies),
+                        ("ImagePath", _composedImagePath),
+                        ("ActualPrintTimeSeconds", actualPrintTimeSeconds),
+                        ("ErrorMessage", errorMessage ?? "Unknown"));
 
-                // Stage 4: Finishing (90-100%)
-                StatusText.Text = "Finishing...";
-                await UpdateProgressTo(100, TimeSpan.FromSeconds(1));
+                    // Fast-forward progress animation and show error state
+                    await Task.WhenAny(progressTask, Task.Delay(TimeSpan.FromMilliseconds(500)));
+                    var userMessage = string.IsNullOrWhiteSpace(errorMessage)
+                        ? "Printing could not start. Please check the printer and try again."
+                        : errorMessage!;
+                    Dispatcher.Invoke(() => ShowError(userMessage));
+                    return;
+                }
+                else
+                {
+                    LoggingService.Application.Information("Print job completed",
+                        ("TotalCopies", _totalCopies),
+                        ("ImagesPerPage", imagesPerPage),
+                        ("TotalPages", totalPagesNeeded),
+                        ("ActualPrintTimeSeconds", actualPrintTimeSeconds));
+                }
+
+                // Wait for progress animation to complete (if it hasn't already)
+                await progressTask;
+
+                // Stage 4: Finishing (85-100%)
+                Dispatcher.Invoke(() =>
+                {
+                    if (printSuccess)
+                    {
+                        StatusText.Text = "Finishing...";
+                    }
+                    else
+                    {
+                        StatusText.Text = "Some prints may have failed...";
+                    }
+                });
+                
+                // Final delay before completing (minimum 2 seconds)
+                await UpdateProgressTo(100, TimeSpan.FromSeconds(2));
 
                 // Complete
                 await CompletePrinting();
             }
             catch (Exception ex)
             {
-                LoggingService.Application.Error("Print simulation failed", ex);
-                ShowError("Printing process encountered an error.");
+                Console.WriteLine($"!!! EXCEPTION in SimulatePrintingStages(): {ex.Message} !!!");
+                Console.WriteLine($"!!! StackTrace: {ex.StackTrace} !!!");
+                LoggingService.Application.Error("Printing process failed", ex);
+                Dispatcher.Invoke(() => ShowError($"Printing process encountered an error: {ex.Message}"));
             }
         }
 
@@ -352,7 +1143,7 @@ namespace Photobooth
             var progressDelta = targetProgress - startProgress;
             
             // TODO: Make animation parameters configurable for customization
-            var steps = 50; // 20ms per step for smooth animation
+            var steps = 10; // Fewer steps for faster animation updates
             var stepDuration = duration.TotalMilliseconds / steps;
             var progressPerStep = progressDelta / steps;
 
@@ -399,20 +1190,79 @@ namespace Photobooth
                 Console.WriteLine("=== CALLING PAYMENT PROCESSING ===");
                 bool creditDeductionSuccess = await ProcessPaymentAndSalesTransaction();
 
-                // Update header based on credit deduction result
+                // Update header based on credit deduction result (on UI thread)
+                Dispatcher.Invoke(() =>
+                {
+                    if (creditDeductionSuccess)
+                    {
+                        HeaderText.Text = "Printing Complete!";
+                        SubHeaderText.Text = "Your photos are ready";
+                        StatusText.Text = "Complete";
+
+                        // Show completion card
+                        CompletionCard.Visibility = Visibility.Visible;
+                        
+                        // Show back button
+                        BackButton.Visibility = Visibility.Visible;
+
+                        // Start countdown timer
+                        StartCountdownTimer();
+                    }
+                    else
+                    {
+                        // Credit deduction failed - show error state
+                        if (_mainWindow?.IsFreePlayMode == true)
+                        {
+                            // In free play mode, this shouldn't happen, but if it does, show a generic error
+                            HeaderText.Text = "Printing Error";
+                            SubHeaderText.Text = "Please contact staff for assistance";
+                            StatusText.Text = "Error";
+                            
+                            ErrorMessageText.Text = "An unexpected error occurred during printing. Please contact staff for assistance.";
+                            ErrorCard.Visibility = Visibility.Visible;
+                            
+                            // Show back button
+                            BackButton.Visibility = Visibility.Visible;
+                            
+                            // Show retry button
+                            Console.WriteLine("!!! SETTING RETRY BUTTON VISIBLE (error case 1) !!!");
+                            RetryButton.Visibility = Visibility.Visible;
+                            RetryButton.IsEnabled = true;
+                            Console.WriteLine($"!!! RetryButton.Visibility set to: {RetryButton.Visibility} !!!");
+                            Console.WriteLine($"!!! RetryButton.IsEnabled set to: {RetryButton.IsEnabled} !!!");
+                        }
+                        else
+                        {
+                            // Credit deduction failed in coin mode - show payment error
+                            HeaderText.Text = "Payment Required";
+                            SubHeaderText.Text = "Please contact staff to add credits";
+                            StatusText.Text = "Payment Failed";
+                            
+                            ErrorMessageText.Text = "Your photos were printed but payment could not be processed. Please contact staff to resolve the payment issue.";
+                            ErrorCard.Visibility = Visibility.Visible;
+                            
+                            // Show back button
+                            BackButton.Visibility = Visibility.Visible;
+                            
+                            // Show retry button (though retry won't help with payment issues, but user can still try)
+                            Console.WriteLine("!!! SETTING RETRY BUTTON VISIBLE (error case 2) !!!");
+                            RetryButton.Visibility = Visibility.Visible;
+                            RetryButton.IsEnabled = true;
+                            Console.WriteLine($"!!! RetryButton.Visibility set to: {RetryButton.Visibility} !!!");
+                            Console.WriteLine($"!!! RetryButton.IsEnabled set to: {RetryButton.IsEnabled} !!!");
+                        }
+                        
+                        // Start countdown timer to return to welcome screen
+                        StartCountdownTimer();
+                    }
+                });
+
+                // Immediately refresh credits display to show updated balance
+                _ = RefreshCreditsFromDatabase();
+                
+                // Show appropriate notification based on operation mode
                 if (creditDeductionSuccess)
                 {
-                HeaderText.Text = "Printing Complete!";
-                SubHeaderText.Text = "Your photos are ready";
-                StatusText.Text = "Complete";
-
-                // Show completion card
-                CompletionCard.Visibility = Visibility.Visible;
-
-                    // Immediately refresh credits display to show updated balance
-                    _ = RefreshCreditsFromDatabase();
-                    
-                    // Show appropriate notification based on operation mode
                     if (_mainWindow?.IsFreePlayMode == true)
                     {
                         NotificationService.Instance.ShowSuccess("Printing Complete", 
@@ -425,36 +1275,6 @@ namespace Photobooth
                         NotificationService.Instance.ShowSuccess("Payment Processed", 
                             $"${_totalOrderCost:F2} deducted successfully.\nRemaining credits: ${newBalance:F2}", 5);
                     }
-
-                // Start countdown timer
-                StartCountdownTimer();
-                }
-                else
-                {
-                    // Credit deduction failed - show error state
-                    if (_mainWindow?.IsFreePlayMode == true)
-                    {
-                        // In free play mode, this shouldn't happen, but if it does, show a generic error
-                        HeaderText.Text = "Printing Error";
-                        SubHeaderText.Text = "Please contact staff for assistance";
-                        StatusText.Text = "Error";
-                        
-                        ErrorMessageText.Text = "An unexpected error occurred during printing. Please contact staff for assistance.";
-                        ErrorCard.Visibility = Visibility.Visible;
-                    }
-                    else
-                    {
-                        // Credit deduction failed in coin mode - show payment error
-                        HeaderText.Text = "Payment Required";
-                        SubHeaderText.Text = "Please contact staff to add credits";
-                        StatusText.Text = "Payment Failed";
-                        
-                        ErrorMessageText.Text = "Your photos were printed but payment could not be processed. Please contact staff to resolve the payment issue.";
-                        ErrorCard.Visibility = Visibility.Visible;
-                    }
-                    
-                    // Start countdown timer to return to welcome screen
-                    StartCountdownTimer();
                 }
 
                 // Update consumables (simulation)
@@ -469,7 +1289,7 @@ namespace Photobooth
             {
                 Console.WriteLine($"=== PRINTING COMPLETION ERROR: {ex.Message} ===");
                 LoggingService.Application.Error("Print completion failed", ex);
-                ShowError("Print completion encountered an error.");
+                Dispatcher.Invoke(() => ShowError("Print completion encountered an error."));
             }
         }
 
@@ -857,8 +1677,14 @@ namespace Photobooth
         {
             try
             {
+                // Stop all timers and reset progress to 0
                 StopProgressTimer();
                 StopCountdownTimer();
+                
+                // Reset progress bar to 0 to ensure no progress is displayed
+                _currentProgress = 0;
+                PrintProgress.Value = 0;
+                ProgressText.Text = "0%";
 
                 HeaderText.Text = "Printing Error";
                 SubHeaderText.Text = "Something went wrong";
@@ -866,7 +1692,27 @@ namespace Photobooth
                 
                 ErrorMessageText.Text = errorMessage;
                 ErrorCard.Visibility = Visibility.Visible;
-
+                
+                // Show back button
+                BackButton.Visibility = Visibility.Visible;
+                
+                // Ensure retry button is visible and enabled
+                Console.WriteLine("!!! SETTING RETRY BUTTON VISIBLE (ShowError method) !!!");
+                if (RetryButton == null)
+                {
+                    Console.WriteLine("!!! ERROR: RetryButton is NULL !!!");
+                }
+                else
+                {
+                    RetryButton.Visibility = Visibility.Visible;
+                    RetryButton.IsEnabled = true;
+                    Console.WriteLine($"!!! RetryButton.Visibility set to: {RetryButton.Visibility} !!!");
+                    Console.WriteLine($"!!! RetryButton.IsEnabled set to: {RetryButton.IsEnabled} !!!");
+                    Console.WriteLine($"!!! RetryButton.IsVisible: {RetryButton.IsVisible} !!!");
+                    Console.WriteLine($"!!! ErrorCard.Visibility: {ErrorCard.Visibility} !!!");
+                    Console.WriteLine($"!!! ErrorCard.IsVisible: {ErrorCard.IsVisible} !!!");
+                }
+                
                 LoggingService.Application.Error("Printing error displayed", null, ("ErrorMessage", errorMessage));
             }
             catch (Exception ex)

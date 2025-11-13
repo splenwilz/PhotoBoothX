@@ -215,6 +215,7 @@ namespace Photobooth
         private Dictionary<string, Button> _tabButtons = new();
         private readonly IDatabaseService _databaseService;
         private readonly MainWindow? _mainWindow; // Reference to MainWindow for operation mode refresh
+        private readonly IPrinterService? _printerService; // Shared printer service for cached status
 
         // Sample sales data - in real implementation, this would come from database
         private SalesData _salesData = new();
@@ -254,7 +255,10 @@ namespace Photobooth
         /// <summary>
         /// Initialize the admin dashboard screen
         /// </summary>
-        public AdminDashboardScreen(IDatabaseService databaseService, MainWindow? mainWindow = null)
+        /// <param name="databaseService">Database service for data operations</param>
+        /// <param name="mainWindow">Main window reference (optional)</param>
+        /// <param name="printerService">Printer service for cached status (optional, will create default if not provided)</param>
+        public AdminDashboardScreen(IDatabaseService databaseService, MainWindow? mainWindow = null, IPrinterService? printerService = null)
         {
 
             try
@@ -266,6 +270,7 @@ namespace Photobooth
 
                 _databaseService = databaseService;
                 _mainWindow = mainWindow;
+                _printerService = printerService;
 
 
                 InitializeTabMapping();
@@ -498,7 +503,7 @@ namespace Photobooth
         }
 
         /// <summary>
-        /// Handle the Loaded event to set up data binding
+        /// Handle the Loaded event to set up data binding and initialize printer status
         /// </summary>
         private void AdminDashboardScreen_Loaded(object sender, RoutedEventArgs e)
         {
@@ -506,6 +511,95 @@ namespace Photobooth
             if (ProductsItemsControl != null)
             {
                 ProductsItemsControl.ItemsSource = ProductViewModels;
+            }
+            
+            // Initialize printer status display using cached status for immediate display
+            // Cache is initialized on app startup, so this is fast and doesn't cause lag
+            InitializePrinterStatusDisplay();
+        }
+        
+        /// <summary>
+        /// Initialize printer status display using cached status
+        /// Uses cached status for fast, immediate display without expensive printer queries
+        /// Reference: PrinterService.GetCachedPrinterStatus() for cached status access
+        /// </summary>
+        private void InitializePrinterStatusDisplay()
+        {
+            try
+            {
+                if (_printerService != null)
+                {
+                    // Get cached status - this is fast and avoids expensive printer queries
+                    var cachedStatus = _printerService.GetCachedPrinterStatus();
+                    
+                    if (cachedStatus != null)
+                    {
+                        var statusText = cachedStatus.IsOnline ? "Online" : "Offline";
+                        var statusMessage = cachedStatus.IsOnline 
+                            ? $"{cachedStatus.Name ?? "Printer"} - Online" 
+                            : "Printer Offline";
+                        
+                        // Update hardware status indicator
+                        UpdateHardwareStatus("printer", cachedStatus.IsOnline, statusMessage, statusText);
+                        
+                        // Update printer details
+                        if (PrinterStatusDetailsText != null) PrinterStatusDetailsText.Text = statusText;
+                        if (PrinterLastErrorText != null) PrinterLastErrorText.Text = cachedStatus.IsOnline ? "None" : "Printer is offline";
+                        
+                        // Try to get roll capacity information
+                        if (!string.IsNullOrWhiteSpace(cachedStatus.Name) && cachedStatus.IsOnline)
+                        {
+                            var rollCapacity = _printerService.GetRollCapacity(cachedStatus.Name);
+                            if (rollCapacity != null && rollCapacity.IsAvailable)
+                            {
+                                if (rollCapacity.RemainingPrints.HasValue)
+                                {
+                                    if (PrinterPaperLevelText != null) 
+                                        PrinterPaperLevelText.Text = $"{rollCapacity.RemainingPrints.Value} prints remaining";
+                                }
+                                else if (rollCapacity.RemainingPercentage.HasValue)
+                                {
+                                    if (PrinterPaperLevelText != null) 
+                                        PrinterPaperLevelText.Text = $"{rollCapacity.RemainingPercentage.Value}% remaining";
+                                }
+                                else
+                                {
+                                    if (PrinterPaperLevelText != null) 
+                                        PrinterPaperLevelText.Text = rollCapacity.Status ?? "Unknown";
+                                }
+                            }
+                            else
+                            {
+                                if (PrinterPaperLevelText != null) PrinterPaperLevelText.Text = "Level unknown";
+                            }
+                        }
+                        else
+                        {
+                            if (PrinterPaperLevelText != null) PrinterPaperLevelText.Text = "Unknown";
+                        }
+                    }
+                    else
+                    {
+                        // No printer status available
+                        UpdateHardwareStatus("printer", false, "No printer detected", "Not Available");
+                        if (PrinterStatusDetailsText != null) PrinterStatusDetailsText.Text = "Not Available";
+                        if (PrinterPaperLevelText != null) PrinterPaperLevelText.Text = "Unknown";
+                        if (PrinterLastErrorText != null) PrinterLastErrorText.Text = "No printer detected";
+                    }
+                }
+                else
+                {
+                    // No printer service available
+                    UpdateHardwareStatus("printer", false, "Printer service not available", "Error");
+                    if (PrinterStatusDetailsText != null) PrinterStatusDetailsText.Text = "Service Unavailable";
+                    if (PrinterPaperLevelText != null) PrinterPaperLevelText.Text = "Unknown";
+                    if (PrinterLastErrorText != null) PrinterLastErrorText.Text = "Printer service not initialized";
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to initialize printer status display", ex);
+                UpdateHardwareStatus("printer", false, "Status check failed", "Error");
             }
         }
 
@@ -4744,52 +4838,89 @@ namespace Photobooth
         }
 
         // Printer Testing Event Handlers
-        private async void TestPrinterButton_Click(object sender, RoutedEventArgs e)
+        /// <summary>
+        /// Test printer connection using cached printer status
+        /// Uses cached status for fast response without expensive printer queries
+        /// Reference: PrinterService.GetCachedPrinterStatus() for cached status access
+        /// </summary>
+        private void TestPrinterButton_Click(object sender, RoutedEventArgs e)
         {
             try
             {
                 LogToDiagnostics("Testing printer connection...");
                 
-                // TODO: Implement actual printer service when available
-                // For now, simulate printer detection
-                await Task.Delay(1000);
-                
-                // Simulate printer detection logic with robust error handling
-                bool printerFound = false;
-                try
+                // Use cached printer status for fast, immediate response
+                // Cache is initialized on app startup and refreshed periodically
+                if (_printerService != null)
                 {
-                    printerFound = System.IO.Ports.SerialPort.GetPortNames().Length > 0;
-                }
-                catch (Exception ex)
-                {
-                    LoggingService.Application.Warning("Failed to enumerate serial ports for printer detection", ("Error", ex.Message));
-                    printerFound = false; // Assume no printer if serial port access fails
-                }
-                
-                if (printerFound)
-                {
-                    UpdateHardwareStatus("printer", true, "DNP RX1hs detected and ready");
-                    LogToDiagnostics("Printer connection successful");
+                    // Get cached status - this is fast and avoids expensive printer queries
+                    var cachedStatus = _printerService.GetCachedPrinterStatus();
                     
-                    // Update printer details
-                    if (PrinterStatusDetailsText != null) PrinterStatusDetailsText.Text = "Ready";
-                    if (PrinterPaperLevelText != null) PrinterPaperLevelText.Text = "Good (estimated)";
-                    if (PrinterLastErrorText != null) PrinterLastErrorText.Text = "None";
+                    if (cachedStatus != null && cachedStatus.IsOnline)
+                    {
+                        // Printer is online according to cache
+                        var printerName = cachedStatus.Name ?? "Unknown Printer";
+                        var statusMessage = cachedStatus.IsOnline ? "Online" : "Offline";
+                        
+                        UpdateHardwareStatus("printer", true, $"{printerName} - {statusMessage}", statusMessage);
+                        LogToDiagnostics($"Printer connection successful: {printerName}");
+                        
+                        // Update printer details from cached status
+                        if (PrinterStatusDetailsText != null) PrinterStatusDetailsText.Text = cachedStatus.Status ?? "Ready";
+                        if (PrinterPaperLevelText != null) PrinterPaperLevelText.Text = "Checking...";
+                        if (PrinterLastErrorText != null) PrinterLastErrorText.Text = "None";
+                        
+                        // Try to get roll capacity information
+                        if (!string.IsNullOrWhiteSpace(cachedStatus.Name))
+                        {
+                            var rollCapacity = _printerService.GetRollCapacity(cachedStatus.Name);
+                            if (rollCapacity != null && rollCapacity.IsAvailable)
+                            {
+                                if (rollCapacity.RemainingPrints.HasValue)
+                                {
+                                    if (PrinterPaperLevelText != null) 
+                                        PrinterPaperLevelText.Text = $"{rollCapacity.RemainingPrints.Value} prints remaining";
+                                }
+                                else if (rollCapacity.RemainingPercentage.HasValue)
+                                {
+                                    if (PrinterPaperLevelText != null) 
+                                        PrinterPaperLevelText.Text = $"{rollCapacity.RemainingPercentage.Value}% remaining";
+                                }
+                                else
+                                {
+                                    if (PrinterPaperLevelText != null) 
+                                        PrinterPaperLevelText.Text = rollCapacity.Status ?? "Unknown";
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // Printer is offline or not available
+                        var statusMessage = cachedStatus?.Status ?? "Not Available";
+                        UpdateHardwareStatus("printer", false, "Printer Offline", "Offline");
+                        LogToDiagnostics($"ERROR: Printer offline - {statusMessage}");
+                        
+                        if (PrinterStatusDetailsText != null) PrinterStatusDetailsText.Text = statusMessage;
+                        if (PrinterPaperLevelText != null) PrinterPaperLevelText.Text = "Unknown";
+                        if (PrinterLastErrorText != null) PrinterLastErrorText.Text = "Printer is offline";
+                    }
                 }
                 else
                 {
-                    UpdateHardwareStatus("printer", false, "No printer detected");
-                    LogToDiagnostics("ERROR: No printer found");
+                    // No printer service available
+                    UpdateHardwareStatus("printer", false, "Printer service not available", "Error");
+                    LogToDiagnostics("ERROR: Printer service not available");
                     
-                    if (PrinterStatusDetailsText != null) PrinterStatusDetailsText.Text = "Not Found";
+                    if (PrinterStatusDetailsText != null) PrinterStatusDetailsText.Text = "Service Unavailable";
                     if (PrinterPaperLevelText != null) PrinterPaperLevelText.Text = "Unknown";
-                    if (PrinterLastErrorText != null) PrinterLastErrorText.Text = "Printer not detected";
+                    if (PrinterLastErrorText != null) PrinterLastErrorText.Text = "Printer service not initialized";
                 }
             }
             catch (Exception ex)
             {
                 LoggingService.Application.Error("Printer test failed", ex);
-                UpdateHardwareStatus("printer", false, $"Test failed: {ex.Message}");
+                UpdateHardwareStatus("printer", false, $"Test failed: {ex.Message}", "Error");
                 LogToDiagnostics($"ERROR: Printer test failed - {ex.Message}");
             }
         }
@@ -4834,21 +4965,92 @@ namespace Photobooth
             }
         }
 
-        private async void CheckPrinterStatusButton_Click(object sender, RoutedEventArgs e)
+        /// <summary>
+        /// Check printer status using cached status and refresh cache if needed
+        /// Uses cached status for fast response, then refreshes cache in background
+        /// Reference: PrinterService.GetCachedPrinterStatus() and RefreshCachedStatus()
+        /// </summary>
+        private void CheckPrinterStatusButton_Click(object sender, RoutedEventArgs e)
         {
             try
             {
                 LogToDiagnostics("Checking printer status...");
                 
-                // TODO: Implement actual printer status check when printer service is available
-                await Task.Delay(500);
-                
-                // Simulate status update
-                if (PrinterStatusDetailsText != null) PrinterStatusDetailsText.Text = "Online";
-                if (PrinterPaperLevelText != null) PrinterPaperLevelText.Text = "85% (595 prints remaining)";
-                if (PrinterLastErrorText != null) PrinterLastErrorText.Text = "None";
-                
-                LogToDiagnostics("Printer status updated");
+                // Use cached status for immediate display, then refresh in background
+                if (_printerService != null)
+                {
+                    // Get cached status first for immediate display
+                    var cachedStatus = _printerService.GetCachedPrinterStatus();
+                    
+                    // Refresh cache in background to get latest status
+                    // This ensures we have current status while still showing cached status immediately
+                    _printerService.RefreshCachedStatus();
+                    var refreshedStatus = _printerService.GetCachedPrinterStatus();
+                    
+                    // Use refreshed status if available, otherwise use cached
+                    var status = refreshedStatus ?? cachedStatus;
+                    
+                    if (status != null)
+                    {
+                        var statusText = status.IsOnline ? "Online" : "Offline";
+                        if (PrinterStatusDetailsText != null) PrinterStatusDetailsText.Text = statusText;
+                        
+                        // Try to get roll capacity information
+                        if (!string.IsNullOrWhiteSpace(status.Name))
+                        {
+                            var rollCapacity = _printerService.GetRollCapacity(status.Name);
+                            if (rollCapacity != null && rollCapacity.IsAvailable)
+                            {
+                                if (rollCapacity.RemainingPrints.HasValue)
+                                {
+                                    if (PrinterPaperLevelText != null) 
+                                        PrinterPaperLevelText.Text = $"{rollCapacity.RemainingPrints.Value} prints remaining";
+                                }
+                                else if (rollCapacity.RemainingPercentage.HasValue)
+                                {
+                                    if (PrinterPaperLevelText != null) 
+                                        PrinterPaperLevelText.Text = $"{rollCapacity.RemainingPercentage.Value}% remaining";
+                                }
+                                else
+                                {
+                                    if (PrinterPaperLevelText != null) 
+                                        PrinterPaperLevelText.Text = rollCapacity.Status ?? "Unknown";
+                                }
+                            }
+                            else
+                            {
+                                if (PrinterPaperLevelText != null) PrinterPaperLevelText.Text = "Level unknown";
+                            }
+                        }
+                        
+                        if (PrinterLastErrorText != null) PrinterLastErrorText.Text = status.IsOnline ? "None" : "Printer is offline";
+                        
+                        // Update hardware status indicator
+                        UpdateHardwareStatus("printer", status.IsOnline, 
+                            status.IsOnline ? $"{status.Name} - Online" : $"{status.Name} - Offline", 
+                            statusText);
+                        
+                        LogToDiagnostics($"Printer status updated: {statusText}");
+                    }
+                    else
+                    {
+                        if (PrinterStatusDetailsText != null) PrinterStatusDetailsText.Text = "Not Available";
+                        if (PrinterPaperLevelText != null) PrinterPaperLevelText.Text = "Unknown";
+                        if (PrinterLastErrorText != null) PrinterLastErrorText.Text = "No printer detected";
+                        
+                        UpdateHardwareStatus("printer", false, "No printer detected", "Not Available");
+                        LogToDiagnostics("ERROR: No printer status available");
+                    }
+                }
+                else
+                {
+                    if (PrinterStatusDetailsText != null) PrinterStatusDetailsText.Text = "Service Unavailable";
+                    if (PrinterPaperLevelText != null) PrinterPaperLevelText.Text = "Unknown";
+                    if (PrinterLastErrorText != null) PrinterLastErrorText.Text = "Printer service not initialized";
+                    
+                    UpdateHardwareStatus("printer", false, "Printer service not available", "Error");
+                    LogToDiagnostics("ERROR: Printer service not available");
+                }
             }
             catch (Exception ex)
             {
