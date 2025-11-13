@@ -1039,10 +1039,10 @@ namespace Photobooth.Services
 
             return await Task.Run(async () =>
             {
+                Image? imageToPrint = null; // Declare outside try so it can be disposed in catch
                 try
                 {
                     // Load the image from file
-                    Image? imageToPrint = null;
                     try
                     {
                         imageToPrint = Image.FromFile(imagePath);
@@ -1061,6 +1061,7 @@ namespace Photobooth.Services
                         LoggingService.Hardware.Error("Printer", "Image loaded as null", null,
                             ("ImagePath", imagePath));
                         var elapsed = (DateTime.UtcNow - startTime).TotalSeconds;
+                        // imageToPrint is null, nothing to dispose
                         return (false, elapsed, "Print image was empty.");
                     }
 
@@ -1076,6 +1077,7 @@ namespace Photobooth.Services
                             ("CancelledQueuedJobs", cancelledJobs));
                         Console.WriteLine($"!!! PRINTER OFFLINE: Aborting print job before sending to spooler. Cancelled {cancelledJobs} queued job(s). !!!");
                         var offlineElapsed = (DateTime.UtcNow - startTime).TotalSeconds;
+                        imageToPrint.Dispose(); // Dispose image before returning to prevent GDI handle leak
                         return (false, offlineElapsed, "Printer appears to be offline. Please power on the printer and try again.");
                     }
 
@@ -1502,6 +1504,8 @@ namespace Photobooth.Services
                         ("PrinterName", _selectedPrinterName),
                         ("Copies", copies),
                         ("PrintTimeSeconds", elapsed));
+                    // Dispose image if it was loaded to prevent GDI handle leak
+                    imageToPrint?.Dispose();
                     return (false, elapsed, $"Printing failed: {ex.Message}");
                 }
             });

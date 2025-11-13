@@ -550,27 +550,214 @@ namespace Photobooth
             {
                 // Load printer status asynchronously AFTER navigation (non-blocking)
                 // Navigation happens instantly, then we update the UI with printer info
-                // Using Task.Run to avoid blocking the UI thread during WMI queries
+                // Do expensive WMI queries on background thread, then update UI with results
                 await Task.Run(() =>
                 {
-                    // Do the slow WMI queries on background thread
-                    // Then update UI on UI thread
-                    Dispatcher.Invoke(() =>
+                    try
                     {
-                        UpdatePrinterStatus();
-                    });
+                        if (_printerService == null)
+                        {
+                            Dispatcher.Invoke(() =>
+                            {
+                                PrinterNameText.Text = "No Printer Service";
+                            });
+                            return;
+                        }
+
+                        // Do expensive operations on background thread
+                        var availablePrinters = _printerService.GetAvailablePrinters();
+                        
+                        if (availablePrinters.Count == 0)
+                        {
+                            Dispatcher.Invoke(() =>
+                            {
+                                PrinterNameText.Text = "No Printers Available";
+                            });
+                            return;
+                        }
+
+                        // Get selected/default printer
+                        var selectedPrinterName = _printerService.SelectedPrinterName;
+                        PrinterDevice? selectedPrinter = null;
+
+                        if (!string.IsNullOrWhiteSpace(selectedPrinterName))
+                        {
+                            selectedPrinter = availablePrinters.FirstOrDefault(p => 
+                                string.Equals(p.Name, selectedPrinterName, StringComparison.OrdinalIgnoreCase));
+                        }
+
+                        if (selectedPrinter == null)
+                        {
+                            selectedPrinter = availablePrinters.FirstOrDefault(p => p.IsDefault) 
+                                ?? availablePrinters.FirstOrDefault();
+                        }
+
+                        if (selectedPrinter == null)
+                        {
+                            Dispatcher.Invoke(() =>
+                            {
+                                PrinterNameText.Text = "Printer Not Available";
+                            });
+                            return;
+                        }
+
+                        // Get roll capacity on background thread (expensive WMI query)
+                        RollCapacityInfo? rollCapacity = null;
+                        try
+                        {
+                            rollCapacity = _printerService.GetRollCapacity(selectedPrinter.Name);
+                        }
+                        catch (Exception rollEx)
+                        {
+                            LoggingService.Application.Warning("Failed to get roll capacity",
+                                ("PrinterName", selectedPrinter.Name),
+                                ("Exception", rollEx.Message));
+                        }
+
+                        // Now update UI on UI thread with pre-fetched data
+                        var printer = selectedPrinter; // Capture for closure
+                        var capacity = rollCapacity; // Capture for closure
+                        Dispatcher.Invoke(() =>
+                        {
+                            // Update printer name and status
+                            var statusIndicator = printer.IsOnline ? "●" : "○";
+                            var statusColor = printer.IsOnline ? "#10B981" : "#EF4444";
+                            
+                            var printerDisplayText = $"{statusIndicator} {printer.Name}";
+                            if (!string.IsNullOrWhiteSpace(printer.Model) && 
+                                !printer.Name.Equals(printer.Model, StringComparison.OrdinalIgnoreCase))
+                            {
+                                printerDisplayText += $" ({printer.Model})";
+                            }
+                            
+                            PrinterNameText.Text = printerDisplayText;
+                            PrinterNameText.Foreground = new System.Windows.Media.SolidColorBrush(
+                                (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(statusColor));
+                            
+                            // Update roll capacity if available
+                            if (capacity != null && capacity.IsAvailable)
+                            {
+                                if (capacity.RemainingPrints.HasValue)
+                                {
+                                    PrintsRemainingText.Text = capacity.RemainingPrints.Value.ToString();
+                                }
+                                else if (capacity.RemainingPercentage.HasValue)
+                                {
+                                    var estimatedMax = 700; // Default for 4x6 prints
+                                    var estimatedRemaining = (int)(estimatedMax * (capacity.RemainingPercentage.Value / 100.0));
+                                    PrintsRemainingText.Text = $"~{estimatedRemaining}";
+                                }
+                                else if (capacity.Status != "Unknown")
+                                {
+                                    PrintsRemainingText.Text = capacity.Status;
+                                }
+                            }
+                            
+                            LoggingService.Application.Information("Printer status updated",
+                                ("PrinterName", printer.Name),
+                                ("Model", printer.Model ?? "Unknown"),
+                                ("IsOnline", printer.IsOnline),
+                                ("IsDefault", printer.IsDefault),
+                                ("Status", printer.Status));
+                            
+                            if (capacity != null)
+                            {
+                                LoggingService.Application.Information("Roll capacity retrieved",
+                                    ("PrinterName", printer.Name),
+                                    ("IsAvailable", capacity.IsAvailable),
+                                    ("Source", capacity.Source),
+                                    ("Status", capacity.Status));
+                            }
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        LoggingService.Application.Error("Failed to update printer status", ex);
+                        Dispatcher.Invoke(() =>
+                        {
+                            PrinterNameText.Text = "Printer Status Error";
+                        });
+                    }
                 });
                 
                 // Update queue position and estimated time asynchronously (non-blocking)
                 // This checks the print queue which can be slow, so we do it after navigation
+                // Do expensive print queue operations on background thread, then update UI
                 await Task.Run(() =>
                 {
-                    // Check print queue on background thread
-                    // Then update UI on UI thread
-                    Dispatcher.Invoke(() =>
+                    try
                     {
-                        UpdateQueuePositionAndEstimatedTime();
-                    });
+                        if (_printerService == null)
+                        {
+                            Dispatcher.Invoke(() =>
+                            {
+                                QueuePositionText.Text = "1 of 1";
+                                EstimatedTimeText.Text = CalculateEstimatedTime();
+                            });
+                            return;
+                        }
+
+                        var printerName = _printerService.GetDefaultPrinterName();
+                        if (string.IsNullOrWhiteSpace(printerName))
+                        {
+                            Dispatcher.Invoke(() =>
+                            {
+                                QueuePositionText.Text = "No printer";
+                                EstimatedTimeText.Text = "N/A";
+                            });
+                            return;
+                        }
+
+                        // Do expensive print queue operations on background thread
+                        int totalJobs = 0;
+                        try
+                        {
+                            using var printServer = new LocalPrintServer();
+                            using var printQueue = printServer.GetPrintQueue(printerName);
+                            printQueue.Refresh();
+                            totalJobs = printQueue.NumberOfJobs;
+                        }
+                        catch (Exception ex)
+                        {
+                            LoggingService.Application.Warning("Failed to get queue position, using fallback",
+                                ("Exception", ex.Message));
+                            Dispatcher.Invoke(() =>
+                            {
+                                QueuePositionText.Text = "1 of 1";
+                                EstimatedTimeText.Text = CalculateEstimatedTime();
+                            });
+                            return;
+                        }
+
+                        // Calculate queue position
+                        int ourPosition = totalJobs + 1; // Our position is total jobs + 1 (we're about to add our job)
+                        int totalInQueue = ourPosition;
+                        
+                        // Now update UI on UI thread with pre-fetched data
+                        var position = ourPosition; // Capture for closure
+                        var total = totalInQueue; // Capture for closure
+                        Dispatcher.Invoke(() =>
+                        {
+                            QueuePositionText.Text = $"{position} of {total}";
+                            EstimatedTimeText.Text = CalculateEstimatedTime(position, total);
+                            
+                            LoggingService.Application.Information("Queue position updated",
+                                ("PrinterName", printerName),
+                                ("TotalJobs", totalJobs),
+                                ("OurPosition", position),
+                                ("TotalCopies", _totalCopies));
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        LoggingService.Application.Warning("Failed to get queue position, using fallback",
+                            ("Exception", ex.Message));
+                        Dispatcher.Invoke(() =>
+                        {
+                            QueuePositionText.Text = "1 of 1";
+                            EstimatedTimeText.Text = CalculateEstimatedTime();
+                        });
+                    }
                 });
                 
                 // Refresh credits display asynchronously AFTER navigation (non-blocking)
@@ -760,8 +947,7 @@ namespace Photobooth
                     
                     if (string.IsNullOrWhiteSpace(printerName))
                     {
-                        Console.WriteLine($"!!! NO PRINTER SELECTED - Aborting !!!");
-                        ShowError("No printer is selected. Please select a printer and try again.");
+                        Dispatcher.Invoke(() => ShowError("No printer is selected. Please select a printer and try again."));
                         return;
                     }
                     
@@ -997,7 +1183,7 @@ namespace Photobooth
                 // _printerService is guaranteed to be non-null here due to earlier null check and early return
                 if (_printerService == null)
                 {
-                    ShowError("Printer service not available. Please contact support.");
+                    Dispatcher.Invoke(() => ShowError("Printer service not available. Please contact support."));
                     return;
                 }
                 
