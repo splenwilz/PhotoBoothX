@@ -3,6 +3,8 @@ using System.Data;
 using System.Windows;
 using System.Runtime.InteropServices;
 using System;
+using System.Threading.Tasks;
+using Photobooth.Services;
 
 namespace PhotoBooth
 {
@@ -27,6 +29,37 @@ namespace PhotoBooth
         protected override void OnStartup(StartupEventArgs e)
         {
             base.OnStartup(e);
+
+            // Register global handler for unobserved task exceptions
+            // This catches exceptions from fire-and-forget tasks that aren't properly awaited
+            // Reference: https://learn.microsoft.com/en-us/dotnet/api/system.threading.tasks.taskscheduler.unobservedtaskexception
+            TaskScheduler.UnobservedTaskException += (sender, args) =>
+            {
+                // Log the exception
+                try
+                {
+                    Console.WriteLine($"!!! UNOBSERVED TASK EXCEPTION: {args.Exception?.GetBaseException()?.Message ?? "Unknown"} !!!");
+                    Console.WriteLine($"!!! StackTrace: {args.Exception?.GetBaseException()?.StackTrace ?? "N/A"} !!!");
+                    
+                    // Use logging service if available (may not be initialized yet during startup)
+                    try
+                    {
+                        LoggingService.Application.Error("Unobserved task exception caught by global handler", args.Exception);
+                    }
+                    catch
+                    {
+                        // Logging service not available yet, console output is sufficient
+                    }
+                }
+                catch
+                {
+                    // Even logging failed, but at least we tried
+                }
+                
+                // Mark exception as observed to prevent application crash
+                // In production, you might want to set args.SetObserved() to prevent crashes
+                args.SetObserved();
+            };
 
             // Debug console for troubleshooting (enabled for production debugging)
             AllocConsole();

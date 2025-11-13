@@ -119,7 +119,6 @@ namespace Photobooth
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"!!! ASYNC PRINTING PROCESS ERROR: {ex.Message} !!!");
                         LoggingService.Application.Error("Failed to start printing process asynchronously", ex);
                         Dispatcher.Invoke(() => ShowError("Failed to start printing process. Please try again."));
                     }
@@ -127,7 +126,6 @@ namespace Photobooth
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"!!! PRINT JOB INITIALIZATION ERROR: {ex.Message} !!!");
                 LoggingService.Application.Error("Failed to initialize print job", ex);
                 ShowError("Failed to start printing process. Please try again.");
             }
@@ -379,20 +377,10 @@ namespace Photobooth
                     // Try to get roll capacity information
                     try
                     {
-                        Console.WriteLine($"!!! ATTEMPTING TO GET ROLL CAPACITY FOR: {selectedPrinter.Name} !!!");
                         var rollCapacity = _printerService.GetRollCapacity(selectedPrinter.Name);
                         
                         if (rollCapacity != null)
                         {
-                            Console.WriteLine($"!!! ROLL CAPACITY RESULT !!!");
-                            Console.WriteLine($"!!! IsAvailable: {rollCapacity.IsAvailable} !!!");
-                            Console.WriteLine($"!!! Source: {rollCapacity.Source} !!!");
-                            Console.WriteLine($"!!! Status: {rollCapacity.Status} !!!");
-                            Console.WriteLine($"!!! RemainingPercentage: {rollCapacity.RemainingPercentage?.ToString() ?? "N/A"} !!!");
-                            Console.WriteLine($"!!! RemainingPrints: {rollCapacity.RemainingPrints?.ToString() ?? "N/A"} !!!");
-                            Console.WriteLine($"!!! MaxCapacity: {rollCapacity.MaxCapacity?.ToString() ?? "N/A"} !!!");
-                            Console.WriteLine($"!!! Details: {rollCapacity.Details ?? "N/A"} !!!");
-                            
                             // Update PrintsRemainingText if we have useful information
                             if (rollCapacity.IsAvailable)
                             {
@@ -424,15 +412,9 @@ namespace Photobooth
                                 ("MaxCapacity", rollCapacity.MaxCapacity?.ToString() ?? "N/A"),
                                 ("Details", rollCapacity.Details ?? "N/A"));
                         }
-                        else
-                        {
-                            Console.WriteLine($"!!! GetRollCapacity returned null !!!");
-                        }
                     }
                     catch (Exception rollEx)
                     {
-                        Console.WriteLine($"!!! ERROR getting roll capacity: {rollEx.Message} !!!");
-                        Console.WriteLine($"!!! Stack trace: {rollEx.StackTrace} !!!");
                         LoggingService.Application.Warning("Failed to get roll capacity",
                             ("PrinterName", selectedPrinter.Name),
                             ("Exception", rollEx.Message));
@@ -502,7 +484,6 @@ namespace Photobooth
             catch (Exception ex)
             {
                 // Fallback to simulation on error
-                Console.WriteLine($"!!! ERROR getting queue position: {ex.Message} !!!");
                 LoggingService.Application.Warning("Failed to get queue position, using fallback",
                     ("Exception", ex.Message));
                 QueuePositionText.Text = "1 of 1";
@@ -607,7 +588,6 @@ namespace Photobooth
         /// </summary>
         private void RetryButton_PreviewMouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
         {
-            Console.WriteLine("!!! RETRY BUTTON PREVIEW MOUSE DOWN - Button is receiving mouse events !!!");
             LoggingService.Application.Information("Retry button preview mouse down");
         }
 
@@ -618,7 +598,6 @@ namespace Photobooth
         {
             // Disable button immediately to prevent double-clicks
             RetryButton.IsEnabled = false;
-            Console.WriteLine("!!! RETRY BUTTON CLICKED - Disabled button to prevent double-clicks !!!");
             
             // Run validation and printer check asynchronously to avoid blocking UI
             // WMI queries are slow, so we do them on a background thread
@@ -626,19 +605,11 @@ namespace Photobooth
             {
                 try
                 {
-                    Console.WriteLine("!!! RETRY BUTTON CLICKED - STEP 2: Validating data and checking printer (async) !!!");
                     LoggingService.Application.Information("Retry button clicked - starting retry process");
                     
-                    // Step 2: Validate we have the required data (fast checks, can do on UI thread)
-                    // But we're already on background thread, so we'll use Dispatcher for UI updates
-                    Console.WriteLine("!!! STEP 2A: Validating required data !!!");
-                    Console.WriteLine($"!!! _template: {(_template != null ? _template.Name : "NULL")} !!!");
-                    Console.WriteLine($"!!! _product: {(_product != null ? _product.Name : "NULL")} !!!");
-                    Console.WriteLine($"!!! _composedImagePath: {_composedImagePath ?? "NULL"} !!!");
-                    
+                    // Step 2: Validate we have the required data
                     if (_template == null)
                     {
-                        Console.WriteLine("!!! ERROR: Template is NULL - cannot retry !!!");
                         Dispatcher.Invoke(() => ShowError("Cannot retry: Template information is missing. Please start a new order."));
                         Dispatcher.Invoke(() => RetryButton.IsEnabled = true);
                         return;
@@ -646,7 +617,6 @@ namespace Photobooth
                     
                     if (_product == null)
                     {
-                        Console.WriteLine("!!! ERROR: Product is NULL - cannot retry !!!");
                         Dispatcher.Invoke(() => ShowError("Cannot retry: Product information is missing. Please start a new order."));
                         Dispatcher.Invoke(() => RetryButton.IsEnabled = true);
                         return;
@@ -654,20 +624,15 @@ namespace Photobooth
                     
                     if (string.IsNullOrEmpty(_composedImagePath) || !System.IO.File.Exists(_composedImagePath))
                     {
-                        Console.WriteLine("!!! ERROR: Image path is invalid or file not found - cannot retry !!!");
                         Dispatcher.Invoke(() => ShowError("Cannot retry: Image file is missing. Please start a new order."));
                         Dispatcher.Invoke(() => RetryButton.IsEnabled = true);
                         return;
                     }
                     
-                    Console.WriteLine("!!! STEP 2A: All required data is present !!!");
-                    
                     // Step 2B: Check printer status (refresh first to get latest status)
                     // This is slow (WMI queries), so we're already on background thread
-                    Console.WriteLine("!!! STEP 2B: Refreshing printer status (async) !!!");
                     if (_printerService == null)
                     {
-                        Console.WriteLine("!!! ERROR: Printer service is NULL - cannot retry !!!");
                         Dispatcher.Invoke(() => ShowError("Printer service not available. Please contact support."));
                         Dispatcher.Invoke(() => RetryButton.IsEnabled = true);
                         return;
@@ -680,40 +645,30 @@ namespace Photobooth
                     var printerName = _printerService.GetDefaultPrinterName();
                     if (string.IsNullOrWhiteSpace(printerName))
                     {
-                        Console.WriteLine("!!! ERROR: No default printer found - cannot retry !!!");
                         Dispatcher.Invoke(() => ShowError("No printer found. Please configure a printer and try again."));
                         Dispatcher.Invoke(() => RetryButton.IsEnabled = true);
                         return;
                     }
                     
-                    Console.WriteLine($"!!! STEP 2B: Using printer: {printerName} !!!");
-                    
                     // Get current printer status (slow WMI query)
                     var printerStatus = _printerService.GetPrinterStatus(printerName);
                     if (printerStatus == null)
                     {
-                        Console.WriteLine("!!! ERROR: Could not get printer status - cannot retry !!!");
                         Dispatcher.Invoke(() => ShowError("Could not check printer status. Please try again."));
                         Dispatcher.Invoke(() => RetryButton.IsEnabled = true);
                         return;
                     }
                     
-                    Console.WriteLine($"!!! STEP 2B: Printer Status - Name: {printerStatus.Name}, IsOnline: {printerStatus.IsOnline}, Status: {printerStatus.Status} !!!");
-                    
                     if (!printerStatus.IsOnline)
                     {
-                        Console.WriteLine("!!! STEP 2B: Printer is still offline - showing error !!!");
                         Dispatcher.Invoke(() => ShowError("Printer is still offline. Please turn on the printer and try again."));
                         Dispatcher.Invoke(() => RetryButton.IsEnabled = true);
                         return;
                     }
                     
-                    Console.WriteLine("!!! STEP 2B: Printer is online - ready to retry !!!");
                     LoggingService.Application.Information("Retry validation passed - printer is online and data is valid");
                     
                     // Step 3: Reset UI and restart printing
-                    Console.WriteLine("!!! STEP 3: Resetting UI state and restarting printing process !!!");
-                    
                     // Reset UI state on UI thread (hide error card, reset progress, etc.)
                     Dispatcher.Invoke(() =>
                     {
@@ -725,22 +680,16 @@ namespace Photobooth
                         RetryButton.IsEnabled = false;
                     });
                     
-                    Console.WriteLine("!!! STEP 3: UI reset complete, starting printing process (async) !!!");
-                    
                     // Restart printing process asynchronously (same pattern as InitializePrintJob)
                     // This runs on background thread, so StartPrintingProcess() will use Dispatcher.Invoke for UI updates
                     _ = Task.Run(async () =>
                     {
                         try
                         {
-                            Console.WriteLine("!!! STEP 3: Calling StartPrintingProcess() to retry printing !!!");
                             await StartPrintingProcess();
-                            Console.WriteLine("!!! STEP 3: StartPrintingProcess() completed !!!");
                         }
                         catch (Exception printEx)
                         {
-                            Console.WriteLine($"!!! STEP 3: ERROR in StartPrintingProcess(): {printEx.Message} !!!");
-                            Console.WriteLine($"!!! StackTrace: {printEx.StackTrace} !!!");
                             LoggingService.Application.Error("Retry printing process failed", printEx);
                             Dispatcher.Invoke(() => ShowError($"Retry printing failed: {printEx.Message}"));
                         }
@@ -748,8 +697,6 @@ namespace Photobooth
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"!!! RETRY BUTTON CLICK HANDLER ERROR: {ex.Message} !!!");
-                    Console.WriteLine($"!!! StackTrace: {ex.StackTrace} !!!");
                     LoggingService.Application.Error("Retry button click handler failed", ex);
                     Dispatcher.Invoke(() => ShowError($"Retry failed: {ex.Message}"));
                     Dispatcher.Invoke(() => RetryButton.IsEnabled = true);
@@ -821,19 +768,12 @@ namespace Photobooth
                     // Get actual current printer status (not cached) for accurate check
                     var currentStatus = _printerService.GetPrinterStatus(printerName);
                     
-                    Console.WriteLine($"!!! PRINTER STATUS CHECK (ACTUAL) BEFORE STARTING PROGRESS !!!");
-                    Console.WriteLine($"!!! PrinterName: {printerName} !!!");
-                    Console.WriteLine($"!!! CurrentStatus: {currentStatus?.Name ?? "NULL"}, IsOnline: {currentStatus?.IsOnline ?? false}, Status: {currentStatus?.Status ?? "N/A"} !!!");
-                    
                     // Check if printer is offline or not available
                     if (currentStatus == null || !currentStatus.IsOnline)
                     {
                         // Printer is offline or not available - show error immediately
                         // Don't start progress bar, timer, or attempt printing
                         var statusMessage = currentStatus?.Status ?? "Not Available";
-                        
-                        Console.WriteLine($"!!! PRINTER OFFLINE DETECTED (ACTUAL) - Aborting before starting progress !!!");
-                        Console.WriteLine($"!!! Printer: {printerName}, Status: {statusMessage}, IsOnline: {currentStatus?.IsOnline ?? false} !!!");
                         
                         LoggingService.Application.Warning("Print job aborted - printer offline (actual status)",
                             ("PrinterName", printerName),

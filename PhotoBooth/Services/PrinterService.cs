@@ -728,22 +728,6 @@ namespace Photobooth.Services
 
                 foreach (ManagementObject printer in collection)
                 {
-                    // Log ALL available properties to see what the printer exposes
-                    Console.WriteLine($"!!! WMI PRINTER PROPERTIES FOR: {printerName} !!!");
-                    var allProperties = new System.Text.StringBuilder();
-                    foreach (PropertyData prop in printer.Properties)
-                    {
-                        var propValue = prop.Value?.ToString() ?? "null";
-                        // Truncate very long values for readability
-                        if (propValue.Length > 100)
-                        {
-                            propValue = propValue.Substring(0, 100) + "...";
-                        }
-                        Console.WriteLine($"!!!   {prop.Name} = {propValue} !!!");
-                        allProperties.Append($"{prop.Name}={propValue}; ");
-                    }
-                    Console.WriteLine($"!!! END WMI PROPERTIES !!!");
-                    
                     // Check for paper-related properties
                     var status = printer["Status"]?.ToString() ?? "Unknown";
                     var printerStatus = printer["PrinterStatus"]?.ToString() ?? "Unknown";
@@ -794,18 +778,12 @@ namespace Photobooth.Services
                         using var configSearcher = new ManagementObjectSearcher(configQuery);
                         using var configCollection = configSearcher.Get();
                         
-                        Console.WriteLine($"!!! WMI PRINTER CONFIGURATION PROPERTIES FOR: {printerName} !!!");
                         foreach (ManagementObject config in configCollection)
                         {
-                            // Log ALL configuration properties to see what's available
+                            // Check all properties for paper-related values
                             foreach (PropertyData prop in config.Properties)
                             {
                                 var propValue = prop.Value?.ToString() ?? "null";
-                                if (propValue.Length > 100)
-                                {
-                                    propValue = propValue.Substring(0, 100) + "...";
-                                }
-                                Console.WriteLine($"!!!   Config.{prop.Name} = {propValue} !!!");
                                 
                                 // Some printer drivers expose custom properties here
                                 // Check all properties for paper-related values
@@ -815,7 +793,6 @@ namespace Photobooth.Services
                                     propName.Contains("media") || propName.Contains("supply") || propName.Contains("roll") || propName.Contains("dnp"))
                                 {
                                     result.Details += $", {prop.Name}: {propValue}";
-                                    Console.WriteLine($"!!!   FOUND POTENTIAL PAPER PROPERTY: {prop.Name} = {propValue} !!!");
                                     
                                     // Try to extract numeric values
                                     if (propValue != null && int.TryParse(Regex.Match(propValue, @"\d+").Value, out int value))
@@ -824,19 +801,16 @@ namespace Photobooth.Services
                                         {
                                             result.RemainingPrints = value;
                                             result.IsAvailable = true;
-                                            Console.WriteLine($"!!!   EXTRACTED RemainingPrints: {value} !!!");
                                         }
                                         else if (propName.Contains("max") || propName.Contains("capacity"))
                                         {
                                             result.MaxCapacity = value;
                                             result.IsAvailable = true;
-                                            Console.WriteLine($"!!!   EXTRACTED MaxCapacity: {value} !!!");
                                         }
                                     }
                                 }
                             }
                         }
-                        Console.WriteLine($"!!! END WMI CONFIGURATION PROPERTIES !!!");
                     }
                     catch (Exception ex)
                     {
@@ -1407,21 +1381,12 @@ namespace Photobooth.Services
                     }
 
                     // Print the document - measure actual print time
-                    Console.WriteLine($"!!! ABOUT TO CALL printDocument.Print() !!!");
-                    Console.WriteLine($"!!! PrinterName: {_selectedPrinterName} !!!");
-                    Console.WriteLine($"!!! PaperSize: {printDocument.DefaultPageSettings.PaperSize?.PaperName ?? "NULL"} !!!");
-                    Console.WriteLine($"!!! Landscape: {printDocument.DefaultPageSettings.Landscape} !!!");
-                    Console.WriteLine($"!!! TotalImagesNeeded: {totalImagesNeeded} !!!");
-                    
                     try
                     {
                         printDocument.Print();
-                        Console.WriteLine($"!!! printDocument.Print() CALLED SUCCESSFULLY - Job should be in queue now !!!");
                     }
                     catch (Exception printEx)
                     {
-                        Console.WriteLine($"!!! EXCEPTION during printDocument.Print(): {printEx.Message} !!!");
-                        Console.WriteLine($"!!! StackTrace: {printEx.StackTrace} !!!");
                         LoggingService.Hardware.Error("Printer", "Exception during Print() call", printEx);
                         imageToPrint.Dispose();
                         var elapsed = (DateTime.UtcNow - startTime).TotalSeconds;
@@ -1559,9 +1524,6 @@ namespace Photobooth.Services
             {
                 try
                 {
-                    Console.WriteLine($"!!! PRINT QUEUE MONITORING STARTED !!!");
-                    Console.WriteLine($"!!! PrinterName: {printerName}, JobCountBefore: {jobCountBefore}, TotalPages: {totalPagesNeeded}, EstimatedTime: {estimatedPrintTimeSeconds}s !!!");
-                    
                     LoggingService.Hardware.Information("Printer", "Starting print queue monitoring",
                         ("PrinterName", printerName),
                         ("JobCountBefore", jobCountBefore),
@@ -1570,8 +1532,6 @@ namespace Photobooth.Services
                     
                     using var printServer = new LocalPrintServer();
                     using var printQueue = printServer.GetPrintQueue(printerName);
-                    
-                    Console.WriteLine($"!!! Print queue retrieved successfully !!!");
                     
                     // Wait a moment for the job to appear in the queue
                     Thread.Sleep(500);
@@ -1599,7 +1559,6 @@ namespace Photobooth.Services
                     // Maximum wait is estimated time + small buffer (safety ceiling)
                     int maximumWaitSeconds = (int)Math.Ceiling(estimatedPrintTimeSeconds) + 10;
                     
-                    Console.WriteLine($"!!! Wait time strategy: Minimum={minimumWaitSeconds}s (before WMI checks), Maximum={maximumWaitSeconds}s (estimated: {estimatedPrintTimeSeconds}s) !!!");
                     int elapsedSeconds = 0;
                     int? trackedJobId = null;
                     string? trackedJobName = null;
@@ -1630,7 +1589,6 @@ namespace Photobooth.Services
                                // Cancel all queued jobs to prevent them from printing when printer comes back online
                                int cancelledJobs = CancelAllPrintJobs(printerName);
                                
-                               Console.WriteLine($"!!! PRINTER OFFLINE DURING MONITORING - aborting wait. Cancelled {cancelledJobs} queued job(s). !!!");
                                LoggingService.Hardware.Warning("Printer", "Printer reported offline during job monitoring, cancelled queued jobs",
                                    ("PrinterName", printerName),
                                    ("ElapsedSeconds", elapsedSeconds),
@@ -1642,12 +1600,6 @@ namespace Photobooth.Services
                        {
                            offlineDetectionCounter = 0;
                        }
-                        
-                        // Log every 5 seconds to track progress
-                        if (elapsedSeconds % 5 == 0)
-                        {
-                            Console.WriteLine($"!!! Monitoring: Elapsed={elapsedSeconds}s, JobsBefore={jobCountBefore}, CurrentJobs={currentJobCount}, TrackedJobId={trackedJobId} !!!");
-                        }
                         
                         // Get all jobs in the queue
                         var jobs = printQueue.GetPrintJobInfoCollection();
@@ -1674,7 +1626,10 @@ namespace Photobooth.Services
                                 ourJob = job;
                                 foundOurJob = true;
                                 jobWasFound = true;
-                                Console.WriteLine($"!!! Tracking print job: ID={trackedJobId}, Name={trackedJobName} !!!");
+                                LoggingService.Hardware.Information("Printer", "Tracking print job",
+                                    ("PrinterName", printerName),
+                                    ("JobId", trackedJobId),
+                                    ("JobName", trackedJobName));
                                 break;
                             }
                         }
@@ -1684,7 +1639,6 @@ namespace Photobooth.Services
                         {
                             if (ourJob.IsCompleted)
                             {
-                                Console.WriteLine($"!!! PRINT JOB COMPLETED (IsCompleted=true) !!!");
                                 LoggingService.Hardware.Information("Printer", "Print job completed",
                                     ("PrinterName", printerName),
                                     ("JobId", ourJob.JobIdentifier),
@@ -1694,7 +1648,6 @@ namespace Photobooth.Services
                             }
                             if (ourJob.IsInError)
                             {
-                                Console.WriteLine($"!!! PRINT JOB ERROR !!!");
                                 LoggingService.Hardware.Warning("Printer", "Print job encountered an error",
                                     ("PrinterName", printerName),
                                     ("JobId", ourJob.JobIdentifier),
@@ -1715,7 +1668,6 @@ namespace Photobooth.Services
                             {
                                 consecutiveIdleChecks = 0;
                                 lastIdleCheckSecond = -1;
-                                Console.WriteLine($"!!! Job {trackedJobId} disappeared from queue, will start hardware status monitoring after brief delay !!!");
                             }
                             
                             // Wait for minimum time before checking hardware status
@@ -1724,10 +1676,6 @@ namespace Photobooth.Services
                             if (elapsedSeconds < minimumWaitSeconds)
                             {
                                 // Still waiting for minimum time - don't check WMI yet
-                                if (elapsedSeconds % 5 == 0)
-                                {
-                                    Console.WriteLine($"!!! Job {trackedJobId} disappeared, waiting minimum time: {elapsedSeconds}/{minimumWaitSeconds}s before WMI checks !!!");
-                                }
                             }
                             else
                             {
@@ -1745,14 +1693,11 @@ namespace Photobooth.Services
                                     {
                                         consecutiveIdleChecks++;
                                         lastIdleCheckSecond = elapsedSeconds;
-                                        Console.WriteLine($"!!! Printer idle check #{consecutiveIdleChecks}/{requiredConsecutiveIdleChecks} at {elapsedSeconds}s !!!");
                                     }
                                     
                                     // Only return if we have enough consecutive idle checks
                                     if (consecutiveIdleChecks >= requiredConsecutiveIdleChecks)
                                     {
-                                        Console.WriteLine($"!!! PRINT JOB COMPLETED (printer hardware idle for {consecutiveIdleChecks} consecutive checks) !!!");
-                                        Console.WriteLine($"!!! Elapsed: {elapsedSeconds}s, Disappeared: {secondsSinceJobDisappeared}s ago !!!");
                                         LoggingService.Hardware.Information("Printer", "Print job completed (printer hardware idle)",
                                             ("PrinterName", printerName),
                                             ("JobId", trackedJobId),
@@ -1762,29 +1707,14 @@ namespace Photobooth.Services
                                             ("ConsecutiveIdleChecks", consecutiveIdleChecks));
                                         return;
                                     }
-                                    else
-                                    {
-                                        // Printer is idle but need more consecutive checks
-                                        if (elapsedSeconds % 5 == 0)
-                                        {
-                                            Console.WriteLine($"!!! Job {trackedJobId} disappeared, printer idle but need {requiredConsecutiveIdleChecks - consecutiveIdleChecks} more consecutive checks: {elapsedSeconds}s elapsed !!!");
-                                        }
-                                    }
                                 }
                                 else
                                 {
                                     // Printer is still busy, reset consecutive idle counter
                                     if (consecutiveIdleChecks > 0)
                                     {
-                                        Console.WriteLine($"!!! Printer became busy again, resetting idle counter (was at {consecutiveIdleChecks}/{requiredConsecutiveIdleChecks}) !!!");
                                         consecutiveIdleChecks = 0;
                                         lastIdleCheckSecond = -1;
-                                    }
-                                    
-                                    // Log every 5 seconds to track progress
-                                    if (elapsedSeconds % 5 == 0)
-                                    {
-                                        Console.WriteLine($"!!! Job {trackedJobId} disappeared, printer still busy: {elapsedSeconds}s elapsed (max: {maximumWaitSeconds}s) !!!");
                                     }
                                 }
                             }
@@ -1792,8 +1722,6 @@ namespace Photobooth.Services
                             // Safety check: if we've exceeded maximum wait time, return anyway
                             if (elapsedSeconds >= maximumWaitSeconds)
                             {
-                                Console.WriteLine($"!!! PRINT JOB COMPLETED (maximum wait time reached) !!!");
-                                Console.WriteLine($"!!! Elapsed: {elapsedSeconds}s, Maximum: {maximumWaitSeconds}s !!!");
                                 LoggingService.Hardware.Warning("Printer", "Print job monitoring reached maximum wait time",
                                     ("PrinterName", printerName),
                                     ("JobId", trackedJobId),

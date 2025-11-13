@@ -53,9 +53,11 @@ namespace Photobooth.Tests.Services
             }
             else
             {
-                // Fallback: Try to select non-existent printer (will fail, but at least won't use default)
-                _printerService.SelectPrinter(fakePrinterName);
-                TestContext?.WriteLine("[TEST] WARNING: Could not set invalid printer via reflection, using SelectPrinter fallback");
+                // CRITICAL: If we can't set the invalid printer via reflection, we cannot guarantee test safety.
+                // PrintImageAsync will fall back to the default printer if _selectedPrinterName is null,
+                // which could cause actual printing during tests. Fail fast instead of risking real printing.
+                Assert.Inconclusive("Test safety failed: unable to set _selectedPrinterName via reflection. " +
+                    "This prevents guaranteeing no real printer will be used. PrinterService internals may have changed.");
             }
             
             TestContext?.WriteLine($"[TEST] PrinterService initialized. IsInitialized: {_printerService.IsInitialized}, " +
