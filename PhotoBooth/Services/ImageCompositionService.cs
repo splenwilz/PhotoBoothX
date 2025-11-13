@@ -149,6 +149,24 @@ namespace Photobooth.Services
                 {
                     var area = photoAreas[i];
                     Console.WriteLine($"Photo Area {i + 1}: X={area.X}, Y={area.Y}, Width={area.Width}, Height={area.Height}, Rotation={area.Rotation}");
+                    
+                    // Validate and clamp photo area to template boundaries
+                    // This prevents photos from extending beyond the template canvas
+                    var maxWidth = templateImage.Width - area.X;
+                    var maxHeight = templateImage.Height - area.Y;
+                    
+                    if (area.Width > maxWidth || area.Height > maxHeight)
+                    {
+                        Console.WriteLine($"⚠️  Photo Area {i + 1} exceeds template boundaries! Clamping dimensions.");
+                        Console.WriteLine($"   Original: Width={area.Width}, Height={area.Height}");
+                        Console.WriteLine($"   Max allowed: Width={maxWidth}, Height={maxHeight}");
+                        
+                        // Clamp width and height to fit within template
+                        area.Width = Math.Min(area.Width, maxWidth);
+                        area.Height = Math.Min(area.Height, maxHeight);
+                        
+                        Console.WriteLine($"   Clamped to: Width={area.Width}, Height={area.Height}");
+                    }
                 }
                 Console.WriteLine($"Total Photo Areas: {photoAreas.Count}");
 

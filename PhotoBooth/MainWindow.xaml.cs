@@ -67,6 +67,10 @@ namespace Photobooth
         
         // Pricing service
         private readonly IPricingService _pricingService;
+        
+        // Printer service - shared instance for caching printer status across the application
+        // This ensures all screens (admin and user-facing) use the same cached status
+        private readonly IPrinterService _printerService;
 
         #endregion
 
@@ -104,6 +108,10 @@ namespace Photobooth
             // Initialize pricing service
             _pricingService = new PricingService(_databaseService);
             
+            // Initialize printer service - shared instance for status caching
+            // This allows all screens to use cached printer status for better performance
+            _printerService = new PrinterService();
+
             InitializeComponent();
             
             // Initialize notification service with the notification container
@@ -220,6 +228,21 @@ namespace Photobooth
             // Initialize admin dashboard screen for credit management (even for regular users)
             await InitializeAdminDashboardForCreditsAsync();
             
+            // Initialize printer status cache on app startup
+            // This ensures printer status is available immediately without lag when navigating to printing screen
+            // Reference: https://learn.microsoft.com/en-us/dotnet/api/system.printing.printqueue
+            try
+            {
+                _printerService.RefreshCachedStatus();
+                LoggingService.Application.Information("Printer status cache initialized on startup");
+            }
+            catch (Exception ex)
+            {
+                // Don't block app startup if printer status check fails
+                LoggingService.Application.Warning("Failed to initialize printer status cache on startup",
+                    ("Exception", ex.Message));
+            }
+            
             // Start with the welcome screen
             NavigateToWelcome();
         }
@@ -292,7 +315,8 @@ namespace Photobooth
                 LoggingService.Application.Debug("Initializing admin dashboard for credit management");
                 if (adminDashboardScreen == null)
                 {
-                    adminDashboardScreen = new AdminDashboardScreen(_databaseService, this);
+                    // Pass shared printer service to admin dashboard for cached status access
+                    adminDashboardScreen = new AdminDashboardScreen(_databaseService, this, _printerService);
                     LoggingService.Application.Debug("Admin Dashboard created for credit management");
                     
                     // Defensive check after construction
@@ -1027,7 +1051,9 @@ namespace Photobooth
                     // Pass admin dashboard screen for credit management and MainWindow for operation mode check
                     Console.WriteLine($"=== CREATING PRINTING SCREEN ===");
                     Console.WriteLine($"Admin Dashboard Available: {adminDashboardScreen != null}");
-                    printingScreen = new PrintingScreen(_databaseService, adminDashboardScreen, this);
+                    // Pass shared printer service instance to enable status caching
+                    // This ensures PrintingScreen uses the same cached status initialized on app startup
+                    printingScreen = new PrintingScreen(_databaseService, adminDashboardScreen, this, _printerService);
                     // Subscribe to printing completion events
                     printingScreen.PrintingCompleted += PrintingScreen_PrintingCompleted;
                     printingScreen.PrintingCancelled += PrintingScreen_PrintingCancelled;
