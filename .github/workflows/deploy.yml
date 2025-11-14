@@ -539,21 +539,19 @@ jobs:
         
         ### Notable Changes
         
-        #### Master Password System (Enterprise Feature)
-        - Offline master password generation and validation using HMAC-SHA256
-        - Machine-specific key derivation with PBKDF2 (100,000 iterations)
-        - Single-use passwords with cryptographic nonce for replay attack prevention
-        - Windows DPAPI encryption for secure key storage
-        - Rate limiting (5 attempts, 1-minute lockout) to prevent brute force attacks
-        - Automatic config file deletion after first use for enhanced security
-        - Full audit logging of all master password usage and failed attempts
-        - TypeScript/Next.js support tool for password generation by support teams
+        #### Printer Service Integration (NEW)
+        - Complete printer service implementation with DNP RX1hs support
+        - Printer status and queue management with enhanced error handling and logging
+        - Real-time printer status monitoring across application screens (Admin, Printing, Upsell)
+        - Global handler for unobserved task exceptions in printing process
+        - Comprehensive printer device model with status tracking
+        - Enhanced error logging and recovery mechanisms for print jobs
+        - Printer service integration in AdminDashboardScreen for diagnostics
+        - Improved print job completion detection and status updates
+        - Extensive unit tests for printer service functionality
+        - Image composition service integration for print-ready output
         
         #### Security Enhancements
-        - PIN-based password recovery system for offline admin access
-        - Mandatory PIN setup after first login for all admin accounts
-        - Enhanced password policy enforcement (8+ characters, mixed case, numbers)
-        - PBKDF2-SHA256 encryption for PIN storage with constant-time comparison
         - Embedded database schema as resource to prevent tampering
         - Debug symbols removed from release builds
         - Virtual keyboard integration for kiosk touch-screen environments
@@ -563,6 +561,10 @@ jobs:
         - Improved error handling and logging throughout the application
         - Template synchronization on startup for immediate availability
         - Professional installer with automatic cleanup and uninstall support
+        - **NEW**: Enhanced error handling and logging in printing workflow
+        - **NEW**: Improved printer status management and queue handling
+        - **NEW**: Better integration between printer service and UI components
+        - **NEW**: Enhanced diagnostics and monitoring capabilities
         
         ### Installation
         
@@ -571,7 +573,6 @@ jobs:
         3. Follow the installation wizard
         4. Launch the application (auto-starts on Windows startup in kiosk mode)
         5. Login with default credentials: \`admin\` / \`admin123\`
-        6. Set your recovery PIN when prompted (required)
         
         ### System Requirements
         
@@ -583,16 +584,12 @@ jobs:
         
         ### Security Notes
         
-        - Change default password immediately after first login
-        - Set up recovery PIN (mandatory for password recovery)
-        - Master password feature available in enterprise installations only
         - Database stored in AppData, survives reinstalls
         - All security events logged for audit purposes
         
         ### Documentation
         
         - [Security Hardening Guide](https://github.com/${{ github.repository }}/blob/master/docs/SECURITY_HARDENING.md)
-        - [Master Password Setup](https://github.com/${{ github.repository }}/blob/master/PhotoBooth/docs/MasterPasswordSetup.md)
         - [Deployment Guide](https://github.com/${{ github.repository }}/blob/master/docs/deployment.md)
         
         ---

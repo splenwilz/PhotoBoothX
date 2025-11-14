@@ -130,6 +130,120 @@ namespace Photobooth.Services
             return connection;
         }
 
+        /// <summary>
+        /// Split SQL script into individual statements while respecting string literals.
+        /// Handles cases like 'text; inside string' so semicolons within strings do not split commands.
+        /// Reference: https://www.sqlite.org/lang.html (string literals and quoting rules)
+        /// </summary>
+        private List<string> SplitSqlCommands(string sqlScript)
+        {
+            var commands = new List<string>();
+            if (string.IsNullOrWhiteSpace(sqlScript))
+            {
+                return commands;
+            }
+
+            var builder = new System.Text.StringBuilder();
+            bool inSingleQuote = false;
+            bool inDoubleQuote = false;
+            bool inLineComment = false;
+            bool inBlockComment = false;
+
+            for (int i = 0; i < sqlScript.Length; i++)
+            {
+                char current = sqlScript[i];
+                char? next = i + 1 < sqlScript.Length ? sqlScript[i + 1] : null;
+
+                // Handle end of line comment
+                if (inLineComment && (current == '\n' || current == '\r'))
+                {
+                    inLineComment = false;
+                }
+
+                // Handle end of block comment
+                if (inBlockComment && current == '*' && next == '/')
+                {
+                    inBlockComment = false;
+                    builder.Append(current);
+                    builder.Append(next.Value);
+                    i++; // Skip the '/'
+                    continue;
+                }
+
+                if (!inSingleQuote && !inDoubleQuote)
+                {
+                    // Detect start of line comment
+                    if (!inBlockComment && current == '-' && next == '-')
+                    {
+                        inLineComment = true;
+                    }
+                    // Detect start of block comment
+                    else if (!inLineComment && current == '/' && next == '*')
+                    {
+                        inBlockComment = true;
+                    }
+                }
+
+                if (!inLineComment && !inBlockComment)
+                {
+                    if (current == '\'' && !inDoubleQuote)
+                    {
+                        // Escaped single quote inside single-quoted literals is represented by ''
+                        if (next == '\'')
+                        {
+                            builder.Append(current);
+                            builder.Append(next.Value);
+                            i++; // Skip the escaped quote
+                            continue;
+                        }
+
+                        inSingleQuote = !inSingleQuote;
+                        builder.Append(current);
+                        continue;
+                    }
+
+                    if (current == '"' && !inSingleQuote)
+                    {
+                        // Escaped double quote inside double-quoted identifiers is represented by ""
+                        if (next == '"')
+                        {
+                            builder.Append(current);
+                            builder.Append(next.Value);
+                            i++; // Skip the escaped quote
+                            continue;
+                        }
+
+                        inDoubleQuote = !inDoubleQuote;
+                        builder.Append(current);
+                        continue;
+                    }
+
+                    // Only split on semicolon when not inside any quoted string or comment
+                    if (current == ';' && !inSingleQuote && !inDoubleQuote)
+                    {
+                        var command = builder.ToString().Trim();
+                        if (!string.IsNullOrWhiteSpace(command))
+                        {
+                            commands.Add(command);
+                        }
+                        builder.Clear();
+                        continue;
+                    }
+                }
+
+                builder.Append(current);
+            }
+
+            // Add any trailing command (without semicolon)
+            var finalCommand = builder.ToString().Trim();
+            if (!string.IsNullOrWhiteSpace(finalCommand))
+            {
+                commands.Add(finalCommand);
+            }
+
+            return commands;
+        }
+
         public async Task<DatabaseResult> InitializeAsync()
         {
             try
@@ -146,6 +260,54 @@ namespace Photobooth.Services
                 {
                     Directory.CreateDirectory(directory);
                 }
+
+                // ====================================================================
+                // ⚠️ TEMPORARY DEVELOPMENT CODE - DELETE BEFORE PRODUCTION RELEASE ⚠️
+                // ====================================================================
+                // Delete existing database file only once after new installation during development
+                // This ensures users testing in production get a clean database without
+                // schema conflicts or migration issues while we're still in active development.
+                // This runs in production builds so testers don't need to manually delete the DB.
+                // Uses a flag file to ensure deletion only happens once per installation.
+                // TODO: REMOVE THIS ENTIRE BLOCK BEFORE FINAL PRODUCTION RELEASE
+                // ====================================================================
+                if (File.Exists(_databasePath))
+                {
+                    // Check if this is a new installation by looking for a flag file
+                    var flagFilePath = Path.Combine(directory ?? "", ".photoboothx_db_deleted");
+                    var appVersion = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "0.0.0";
+                    var versionFlagPath = Path.Combine(directory ?? "", $".photoboothx_db_deleted_v{appVersion}");
+                    
+                    // Only delete if flag doesn't exist for this version (first run after installation)
+                    if (!File.Exists(versionFlagPath))
+                    {
+                        try
+                        {
+                            LoggingService.Application.Warning("Deleting existing database for fresh installation (development mode)",
+                                ("DatabasePath", _databasePath),
+                                ("AppVersion", appVersion));
+                            File.Delete(_databasePath);
+                            
+                            // Create flag file to prevent deletion on subsequent runs
+                            File.WriteAllText(versionFlagPath, $"Database deleted for version {appVersion} on {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC");
+                            LoggingService.Application.Information("Existing database deleted successfully and flag file created");
+                        }
+                        catch (Exception ex)
+                        {
+                            LoggingService.Application.Error("Failed to delete existing database", ex,
+                                ("DatabasePath", _databasePath));
+                            // Continue anyway - the initialization will handle existing database
+                        }
+                    }
+                    else
+                    {
+                        LoggingService.Application.Information("Database deletion skipped - already deleted for this version",
+                            ("AppVersion", appVersion));
+                    }
+                }
+                // ====================================================================
+                // END OF TEMPORARY DEVELOPMENT CODE
+                // ====================================================================
 
                 using var connection = await CreateConnectionAsync();
 
@@ -216,10 +378,11 @@ namespace Photobooth.Services
                 Console.WriteLine($"Schema script length: {schemaScript.Length} characters");
 #endif
 
-                // Split and execute commands
-                var commands = schemaScript.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
+                // Split SQL commands properly, respecting string literals
+                // This prevents splitting on semicolons inside string literals (e.g., 'text; here')
+                var commands = SplitSqlCommands(schemaScript);
 #if DEBUG
-                Console.WriteLine($"Found {commands.Length} SQL commands to execute");
+                Console.WriteLine($"Found {commands.Count} SQL commands to execute");
 #endif
 
                 using var transaction = connection.BeginTransaction();
@@ -234,7 +397,7 @@ namespace Photobooth.Services
                         commandIndex++;
                         LoggingService.Application.Information("Executing database command",
                             ("CommandIndex", commandIndex),
-                            ("CommandLength", commands.Length));
+                            ("CommandLength", commands.Count));
 
                         // Clean up the command - remove comments and whitespace
                         var lines = commandText.Split('\n');

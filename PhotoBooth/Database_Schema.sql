@@ -488,7 +488,7 @@ INSERT INTO TemplateLayouts (Id, LayoutKey, Name, Description, Width, Height, Ph
 
 -- Photo area definitions for 4x6-1864x1228 templates
 INSERT INTO TemplatePhotoAreas (LayoutId, PhotoIndex, X, Y, Width, Height, Rotation, BorderRadius, ShapeType) VALUES
-    ('4x6-550e8400-e29b-41d4-a716-446655440001', 1, 100, 100, 1664, 1028, 0, 0, 'Rectangle');
+    ('4x6-550e8400-e29b-41d4-a716-446655440001', 1, 433, 200, 953, 713, 0, 0, 'Rectangle');
 
 -- Photo area definitions for strip-614x1864 templates only
 

@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Runtime.Versioning;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -20,6 +21,7 @@ using Microsoft.Win32;
 using Photobooth.Controls;
 using Photobooth.Models;
 using Photobooth.Services;
+// Note: System.Drawing types are used with fully qualified names to avoid conflicts with System.Windows.Media
 
 namespace Photobooth
 {
@@ -215,6 +217,7 @@ namespace Photobooth
         private Dictionary<string, Button> _tabButtons = new();
         private readonly IDatabaseService _databaseService;
         private readonly MainWindow? _mainWindow; // Reference to MainWindow for operation mode refresh
+        private readonly IPrinterService? _printerService; // Shared printer service for cached status
 
         // Sample sales data - in real implementation, this would come from database
         private SalesData _salesData = new();
@@ -254,7 +257,10 @@ namespace Photobooth
         /// <summary>
         /// Initialize the admin dashboard screen
         /// </summary>
-        public AdminDashboardScreen(IDatabaseService databaseService, MainWindow? mainWindow = null)
+        /// <param name="databaseService">Database service for data operations</param>
+        /// <param name="mainWindow">Main window reference (optional)</param>
+        /// <param name="printerService">Printer service for cached status (optional, will create default if not provided)</param>
+        public AdminDashboardScreen(IDatabaseService databaseService, MainWindow? mainWindow = null, IPrinterService? printerService = null)
         {
 
             try
@@ -266,6 +272,7 @@ namespace Photobooth
 
                 _databaseService = databaseService;
                 _mainWindow = mainWindow;
+                _printerService = printerService;
 
 
                 InitializeTabMapping();
@@ -498,7 +505,7 @@ namespace Photobooth
         }
 
         /// <summary>
-        /// Handle the Loaded event to set up data binding
+        /// Handle the Loaded event to set up data binding and initialize printer status
         /// </summary>
         private void AdminDashboardScreen_Loaded(object sender, RoutedEventArgs e)
         {
@@ -506,6 +513,95 @@ namespace Photobooth
             if (ProductsItemsControl != null)
             {
                 ProductsItemsControl.ItemsSource = ProductViewModels;
+            }
+            
+            // Initialize printer status display using cached status for immediate display
+            // Cache is initialized on app startup, so this is fast and doesn't cause lag
+            InitializePrinterStatusDisplay();
+        }
+        
+        /// <summary>
+        /// Initialize printer status display using cached status
+        /// Uses cached status for fast, immediate display without expensive printer queries
+        /// Reference: PrinterService.GetCachedPrinterStatus() for cached status access
+        /// </summary>
+        private void InitializePrinterStatusDisplay()
+        {
+            try
+            {
+                if (_printerService != null)
+                {
+                    // Get cached status - this is fast and avoids expensive printer queries
+                    var cachedStatus = _printerService.GetCachedPrinterStatus();
+                    
+                    if (cachedStatus != null)
+                    {
+                        var statusText = cachedStatus.IsOnline ? "Online" : "Offline";
+                        var statusMessage = cachedStatus.IsOnline 
+                            ? $"{cachedStatus.Name ?? "Printer"} - Online" 
+                            : "Printer Offline";
+                        
+                        // Update hardware status indicator
+                        UpdateHardwareStatus("printer", cachedStatus.IsOnline, statusMessage, statusText);
+                        
+                        // Update printer details
+                        if (PrinterStatusDetailsText != null) PrinterStatusDetailsText.Text = statusText;
+                        if (PrinterLastErrorText != null) PrinterLastErrorText.Text = cachedStatus.IsOnline ? "None" : "Printer is offline";
+                        
+                        // Try to get roll capacity information
+                        if (!string.IsNullOrWhiteSpace(cachedStatus.Name) && cachedStatus.IsOnline)
+                        {
+                            var rollCapacity = _printerService.GetRollCapacity(cachedStatus.Name);
+                            if (rollCapacity != null && rollCapacity.IsAvailable)
+                            {
+                                if (rollCapacity.RemainingPrints.HasValue)
+                                {
+                                    if (PrinterPaperLevelText != null) 
+                                        PrinterPaperLevelText.Text = $"{rollCapacity.RemainingPrints.Value} prints remaining";
+                                }
+                                else if (rollCapacity.RemainingPercentage.HasValue)
+                                {
+                                    if (PrinterPaperLevelText != null) 
+                                        PrinterPaperLevelText.Text = $"{rollCapacity.RemainingPercentage.Value}% remaining";
+                                }
+                                else
+                                {
+                                    if (PrinterPaperLevelText != null) 
+                                        PrinterPaperLevelText.Text = rollCapacity.Status ?? "Unknown";
+                                }
+                            }
+                            else
+                            {
+                                if (PrinterPaperLevelText != null) PrinterPaperLevelText.Text = "Level unknown";
+                            }
+                        }
+                        else
+                        {
+                            if (PrinterPaperLevelText != null) PrinterPaperLevelText.Text = "Unknown";
+                        }
+                    }
+                    else
+                    {
+                        // No printer status available
+                        UpdateHardwareStatus("printer", false, "No printer detected", "Not Available");
+                        if (PrinterStatusDetailsText != null) PrinterStatusDetailsText.Text = "Not Available";
+                        if (PrinterPaperLevelText != null) PrinterPaperLevelText.Text = "Unknown";
+                        if (PrinterLastErrorText != null) PrinterLastErrorText.Text = "No printer detected";
+                    }
+                }
+                else
+                {
+                    // No printer service available
+                    UpdateHardwareStatus("printer", false, "Printer service not available", "Error");
+                    if (PrinterStatusDetailsText != null) PrinterStatusDetailsText.Text = "Service Unavailable";
+                    if (PrinterPaperLevelText != null) PrinterPaperLevelText.Text = "Unknown";
+                    if (PrinterLastErrorText != null) PrinterLastErrorText.Text = "Printer service not initialized";
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to initialize printer status display", ex);
+                UpdateHardwareStatus("printer", false, "Status check failed", "Error");
             }
         }
 
@@ -4744,53 +4840,152 @@ namespace Photobooth
         }
 
         // Printer Testing Event Handlers
-        private async void TestPrinterButton_Click(object sender, RoutedEventArgs e)
+        /// <summary>
+        /// Test printer connection with detailed diagnostics
+        /// Uses cached status for fast response and provides comprehensive diagnostic information
+        /// Reference: PrinterService.GetCachedPrinterStatus() and GetAvailablePrinters() for diagnostics
+        /// </summary>
+        private void TestPrinterButton_Click(object sender, RoutedEventArgs e)
         {
             try
             {
+                LogToDiagnostics("=== PRINTER CONNECTION TEST ===");
                 LogToDiagnostics("Testing printer connection...");
                 
-                // TODO: Implement actual printer service when available
-                // For now, simulate printer detection
-                await Task.Delay(1000);
-                
-                // Simulate printer detection logic with robust error handling
-                bool printerFound = false;
-                try
+                if (_printerService == null)
                 {
-                    printerFound = System.IO.Ports.SerialPort.GetPortNames().Length > 0;
-                }
-                catch (Exception ex)
-                {
-                    LoggingService.Application.Warning("Failed to enumerate serial ports for printer detection", ("Error", ex.Message));
-                    printerFound = false; // Assume no printer if serial port access fails
-                }
-                
-                if (printerFound)
-                {
-                    UpdateHardwareStatus("printer", true, "DNP RX1hs detected and ready");
-                    LogToDiagnostics("Printer connection successful");
+                    UpdateHardwareStatus("printer", false, "Printer service not available", "Error");
+                    LogToDiagnostics("❌ ERROR: Printer service not available");
                     
-                    // Update printer details
-                    if (PrinterStatusDetailsText != null) PrinterStatusDetailsText.Text = "Ready";
-                    if (PrinterPaperLevelText != null) PrinterPaperLevelText.Text = "Good (estimated)";
-                    if (PrinterLastErrorText != null) PrinterLastErrorText.Text = "None";
+                    if (PrinterStatusDetailsText != null) PrinterStatusDetailsText.Text = "Service Unavailable";
+                    if (PrinterPaperLevelText != null) PrinterPaperLevelText.Text = "Unknown";
+                    if (PrinterLastErrorText != null) PrinterLastErrorText.Text = "Printer service not initialized";
+                    
+                    // Show error notification
+                    NotificationService.Instance.ShowError("Printer Test", 
+                        "Printer service is not available. Please restart the application.", 
+                        autoCloseSeconds: 6);
+                    return;
+                }
+                
+                // Get cached status for fast response
+                var cachedStatus = _printerService.GetCachedPrinterStatus();
+                
+                // Get available printers for diagnostics
+                var availablePrinters = _printerService.GetAvailablePrinters();
+                LogToDiagnostics($"Found {availablePrinters.Count} printer(s) installed on system");
+                
+                if (availablePrinters.Count > 0)
+                {
+                    foreach (var printer in availablePrinters)
+                    {
+                        LogToDiagnostics($"  - {printer.Name} ({(printer.IsDefault ? "Default" : "Available")}, {(printer.IsOnline ? "Online" : "Offline")})");
+                    }
+                }
+                
+                // Get selected/default printer
+                var selectedPrinterName = _printerService.SelectedPrinterName ?? _printerService.GetDefaultPrinterName();
+                LogToDiagnostics($"Selected/Default Printer: {selectedPrinterName ?? "None"}");
+                
+                if (cachedStatus != null)
+                {
+                    var printerName = cachedStatus.Name ?? "Unknown Printer";
+                    var statusMessage = cachedStatus.IsOnline ? "Online" : "Offline";
+                    
+                    LogToDiagnostics($"✅ Printer Status: {statusMessage}");
+                    LogToDiagnostics($"   Name: {printerName}");
+                    LogToDiagnostics($"   Model: {cachedStatus.Model ?? "Unknown"}");
+                    LogToDiagnostics($"   Status: {cachedStatus.Status ?? "Unknown"}");
+                    LogToDiagnostics($"   Is Default: {cachedStatus.IsDefault}");
+                    
+                    UpdateHardwareStatus("printer", cachedStatus.IsOnline, $"{printerName} - {statusMessage}", statusMessage);
+                    
+                    // Update printer details from cached status
+                    if (PrinterStatusDetailsText != null) PrinterStatusDetailsText.Text = cachedStatus.Status ?? "Ready";
+                    if (PrinterPaperLevelText != null) PrinterPaperLevelText.Text = "Checking...";
+                    if (PrinterLastErrorText != null) PrinterLastErrorText.Text = cachedStatus.IsOnline ? "None" : "Printer is offline";
+                    
+                    // Try to get roll capacity information
+                    if (!string.IsNullOrWhiteSpace(cachedStatus.Name))
+                    {
+                        LogToDiagnostics("Checking roll capacity...");
+                        try
+                        {
+                            var rollCapacity = _printerService.GetRollCapacity(cachedStatus.Name);
+                            if (rollCapacity != null && rollCapacity.IsAvailable)
+                            {
+                                LogToDiagnostics($"   Roll Capacity Source: {rollCapacity.Source}");
+                                LogToDiagnostics($"   Roll Capacity Status: {rollCapacity.Status ?? "Unknown"}");
+                                
+                                if (rollCapacity.RemainingPrints.HasValue)
+                                {
+                                    var capacityText = $"{rollCapacity.RemainingPrints.Value} prints remaining";
+                                    if (PrinterPaperLevelText != null) PrinterPaperLevelText.Text = capacityText;
+                                    LogToDiagnostics($"   Remaining Prints: {rollCapacity.RemainingPrints.Value}");
+                                }
+                                else if (rollCapacity.RemainingPercentage.HasValue)
+                                {
+                                    var capacityText = $"{rollCapacity.RemainingPercentage.Value}% remaining";
+                                    if (PrinterPaperLevelText != null) PrinterPaperLevelText.Text = capacityText;
+                                    LogToDiagnostics($"   Remaining Percentage: {rollCapacity.RemainingPercentage.Value}%");
+                                }
+                                else
+                                {
+                                    var capacityText = rollCapacity.Status ?? "Unknown";
+                                    if (PrinterPaperLevelText != null) PrinterPaperLevelText.Text = capacityText;
+                                    LogToDiagnostics($"   Status: {capacityText}");
+                                }
+                            }
+                            else
+                            {
+                                if (PrinterPaperLevelText != null) PrinterPaperLevelText.Text = "Level unknown";
+                                LogToDiagnostics("   Roll capacity information not available");
+                            }
+                        }
+                        catch (Exception rollEx)
+                        {
+                            LogToDiagnostics($"   ⚠️ Failed to get roll capacity: {rollEx.Message}");
+                            if (PrinterPaperLevelText != null) PrinterPaperLevelText.Text = "Check failed";
+                        }
+                    }
+                    
+                    LogToDiagnostics("=== TEST COMPLETE ===");
+                    
+                    // Show success notification
+                    NotificationService.Instance.ShowSuccess("Printer Test", 
+                        $"Printer connection successful: {printerName} is online", 
+                        autoCloseSeconds: 4);
                 }
                 else
                 {
-                    UpdateHardwareStatus("printer", false, "No printer detected");
-                    LogToDiagnostics("ERROR: No printer found");
+                    // Printer is offline or not available
+                    var statusMessage = "Not Available";
+                    UpdateHardwareStatus("printer", false, "Printer Offline", "Offline");
+                    LogToDiagnostics($"❌ ERROR: Printer offline - {statusMessage}");
+                    LogToDiagnostics("=== TEST FAILED ===");
                     
-                    if (PrinterStatusDetailsText != null) PrinterStatusDetailsText.Text = "Not Found";
+                    if (PrinterStatusDetailsText != null) PrinterStatusDetailsText.Text = statusMessage;
                     if (PrinterPaperLevelText != null) PrinterPaperLevelText.Text = "Unknown";
-                    if (PrinterLastErrorText != null) PrinterLastErrorText.Text = "Printer not detected";
+                    if (PrinterLastErrorText != null) PrinterLastErrorText.Text = "Printer is offline";
+                    
+                    // Show error notification
+                    NotificationService.Instance.ShowError("Printer Test", 
+                        "Printer is offline or not available. Please check the printer connection and power.", 
+                        autoCloseSeconds: 6);
                 }
             }
             catch (Exception ex)
             {
                 LoggingService.Application.Error("Printer test failed", ex);
-                UpdateHardwareStatus("printer", false, $"Test failed: {ex.Message}");
-                LogToDiagnostics($"ERROR: Printer test failed - {ex.Message}");
+                UpdateHardwareStatus("printer", false, $"Test failed: {ex.Message}", "Error");
+                LogToDiagnostics($"❌ ERROR: Printer test failed - {ex.Message}");
+                LogToDiagnostics($"   Stack Trace: {ex.StackTrace}");
+                LogToDiagnostics("=== TEST FAILED ===");
+                
+                // Show error notification
+                NotificationService.Instance.ShowError("Printer Test", 
+                    $"Printer test failed: {ex.Message}", 
+                    autoCloseSeconds: 6);
             }
         }
 
@@ -4814,46 +5009,687 @@ namespace Photobooth
             }
         }
 
-        private async void PrintTestPageButton_Click(object sender, RoutedEventArgs e)
+        /// <summary>
+        /// Test camera button handler for Settings tab Quick Actions
+        /// Performs a quick camera availability test and shows notification
+        /// </summary>
+        private async void SettingsTestCameraButton_Click(object sender, RoutedEventArgs e)
+        {
+            await TestCameraAvailabilityAsync();
+        }
+
+        /// <summary>
+        /// Test camera availability for Quick Actions (Settings tab)
+        /// Checks if cameras are available and can be started, then shows notification
+        /// This is a simpler test than the Diagnostics tab which shows a preview
+        /// Reference: CameraService for camera operations
+        /// </summary>
+        private async Task TestCameraAvailabilityAsync()
+        {
+            CameraService? cameraService = null;
+            bool cameraStarted = false;
+            try
+            {
+                // Check if cameras are available
+                cameraService = new CameraService();
+                var cameras = cameraService.GetAvailableCameras();
+                
+                if (cameras.Count == 0)
+                {
+                    NotificationService.Instance.ShowError("Camera Test", 
+                        "No cameras detected. Please ensure a camera is connected and try again.", 
+                        autoCloseSeconds: 6);
+                    return;
+                }
+                
+                // Try to start the camera to verify it works
+                bool started = await cameraService.StartCameraAsync();
+                cameraStarted = started; // Track if camera was started for cleanup
+                
+                if (started)
+                {
+                    // Camera started successfully - verify it's working by waiting a moment
+                    await Task.Delay(500);
+                    
+                    // Stop the camera immediately (we just wanted to verify it works)
+                    cameraService.StopCamera();
+                    cameraStarted = false; // Camera is now stopped
+                    
+                    // Show success notification with camera details
+                    var cameraNames = string.Join(", ", cameras.Select(c => c.Name));
+                    var message = cameras.Count == 1 
+                        ? $"Camera '{cameraNames}' is working correctly" 
+                        : $"Found {cameras.Count} camera(s): {cameraNames}. All cameras are working correctly";
+                    
+                    NotificationService.Instance.ShowSuccess("Camera Test", 
+                        message, 
+                        autoCloseSeconds: 5);
+                }
+                else
+                {
+                    // Camera service exists but couldn't start
+                    NotificationService.Instance.ShowError("Camera Test", 
+                        "Camera detected but failed to start. The camera may be in use by another application.", 
+                        autoCloseSeconds: 6);
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Camera availability test failed", ex);
+                NotificationService.Instance.ShowError("Camera Test", 
+                    $"Camera test failed: {ex.Message}", 
+                    autoCloseSeconds: 6);
+            }
+            finally
+            {
+                // CRITICAL: Always clean up camera resources, regardless of success or failure
+                // This ensures the camera is properly released even if exceptions occur
+                // Reference: https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/keywords/try-finally
+                try
+                {
+                    if (cameraService != null)
+                    {
+                        // Stop camera if it was started
+                        if (cameraStarted)
+                        {
+                            cameraService.StopCamera();
+                        }
+                        // Dispose the camera service to release all resources
+                        cameraService.Dispose();
+                    }
+                }
+                catch (Exception cleanupEx)
+                {
+                    // Log cleanup errors but don't throw - we're in a finally block
+                    LoggingService.Application.Warning("Error during camera service cleanup",
+                        ("Exception", cleanupEx.Message));
+                }
+            }
+        }
+
+        /// <summary>
+        /// Add free credit button handler for Settings tab Quick Actions
+        /// Prompts user for credit amount and adds it to the system
+        /// </summary>
+        private async void SettingsAddFreeCreditButton_Click(object sender, RoutedEventArgs e)
         {
             try
             {
-                LogToDiagnostics("Printing test page...");
+                // Prompt user for credit amount
+                var input = InputDialog.ShowInputDialog(
+                    "Add Free Credit",
+                    "Enter the amount of credit to add:",
+                    "1.00",
+                    Window.GetWindow(this));
                 
-                // TODO: Implement actual test page printing when printer service is available
-                await Task.Delay(3000); // Simulate printing
+                if (string.IsNullOrWhiteSpace(input))
+                {
+                    // User cancelled
+                    return;
+                }
                 
-                LogToDiagnostics("Test page printed successfully (simulated)");
-                NotificationService.Instance.ShowSuccess("Print Test", "Test page printed successfully");
+                // Parse the input as decimal
+                // Use InvariantCulture to ensure '.' is used as decimal separator
+                if (decimal.TryParse(input, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out decimal amount))
+                {
+                    if (amount <= 0)
+                    {
+                        NotificationService.Instance.ShowWarning("Invalid Amount", 
+                            "Credit amount must be greater than $0.00", 
+                            autoCloseSeconds: 5);
+                        return;
+                    }
+                    
+                    if (amount > 1000)
+                    {
+                        NotificationService.Instance.ShowWarning("Amount Too Large", 
+                            "Credit amount cannot exceed $1,000.00. Please enter a smaller amount.", 
+                            autoCloseSeconds: 6);
+                        return;
+                    }
+                    
+                    // Add the credits
+                    await AddCreditsAsync(amount, $"Free Credit (Quick Action)");
+                    
+                    // Refresh credit display if we're on the Credits tab
+                    if (CreditsTabContent?.Visibility == Visibility.Visible)
+                    {
+                        await LoadCreditsAsync();
+                    }
+                    
+                    NotificationService.Instance.ShowSuccess("Credits Added", 
+                        $"Successfully added ${amount:F2} to credit balance!", 
+                        autoCloseSeconds: 4);
+                }
+                else
+                {
+                    NotificationService.Instance.ShowWarning("Invalid Amount", 
+                        "Please enter a valid decimal amount (e.g., 1.00 or 5.50)", 
+                        autoCloseSeconds: 5);
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Add free credit failed", ex);
+                NotificationService.Instance.ShowError("Add Credit", 
+                    $"Failed to add credit: {ex.Message}", 
+                    autoCloseSeconds: 6);
+            }
+        }
+
+        /// <summary>
+        /// Test print button handler for Settings tab Quick Actions
+        /// Calls the same test print functionality as the Diagnostics tab
+        /// </summary>
+        private async void SettingsTestPrintButton_Click(object sender, RoutedEventArgs e)
+        {
+            // Reuse the existing test print functionality
+            await PrintTestPageAsync();
+        }
+
+        /// <summary>
+        /// Print a test page to verify printer functionality
+        /// Creates a test image with diagnostic information and prints it
+        /// Reference: PrinterService.PrintImageAsync() for printing functionality
+        /// </summary>
+        private async void PrintTestPageButton_Click(object sender, RoutedEventArgs e)
+        {
+            await PrintTestPageAsync();
+        }
+
+        /// <summary>
+        /// Shared test print functionality used by both Diagnostics and Settings tabs
+        /// Creates a test image with diagnostic information and prints it
+        /// Reference: PrinterService.PrintImageAsync() for printing functionality
+        /// </summary>
+        private async Task PrintTestPageAsync()
+        {
+            // CRITICAL: Declare testImagePath outside try block so it's accessible in finally
+            // This ensures the temporary file is always cleaned up, even if exceptions occur
+            string? testImagePath = null;
+            bool isDiagnosticsTab = DiagnosticsTabContent?.Visibility == Visibility.Visible;
+            
+            try
+            {
+                // Only log to diagnostics if we're in the Diagnostics tab
+                if (isDiagnosticsTab)
+                {
+                    LogToDiagnostics("Printing test page...");
+                }
+                
+                if (_printerService == null)
+                {
+                    if (isDiagnosticsTab)
+                    {
+                        LogToDiagnostics("ERROR: Printer service not available");
+                    }
+                    NotificationService.Instance.ShowError("Print Test", "Printer service not available");
+                    return;
+                }
+                
+                // Check printer status before attempting to print
+                var printerName = _printerService.SelectedPrinterName ?? _printerService.GetDefaultPrinterName();
+                if (string.IsNullOrWhiteSpace(printerName))
+                {
+                    if (isDiagnosticsTab)
+                    {
+                        LogToDiagnostics("ERROR: No printer selected or available");
+                    }
+                    NotificationService.Instance.ShowError("Print Test", "No printer is selected. Please select a printer first.");
+                    return;
+                }
+                
+                var printerStatus = _printerService.GetPrinterStatus(printerName);
+                if (printerStatus == null || !printerStatus.IsOnline)
+                {
+                    if (isDiagnosticsTab)
+                    {
+                        LogToDiagnostics($"ERROR: Printer is offline - {printerStatus?.Status ?? "Not Available"}");
+                    }
+                    NotificationService.Instance.ShowError("Print Test", "Printer is offline. Please power on the printer and try again.");
+                    return;
+                }
+                
+                if (isDiagnosticsTab)
+                {
+                    LogToDiagnostics($"Creating test page image for printer: {printerName}");
+                }
+                
+                // Create test page image
+                testImagePath = CreateTestPageImage(printerName, printerStatus);
+                
+                if (string.IsNullOrWhiteSpace(testImagePath) || !File.Exists(testImagePath))
+                {
+                    if (isDiagnosticsTab)
+                    {
+                        LogToDiagnostics("ERROR: Failed to create test page image");
+                    }
+                    NotificationService.Instance.ShowError("Print Test", "Failed to create test page image");
+                    return;
+                }
+                
+                if (isDiagnosticsTab)
+                {
+                    LogToDiagnostics($"Test page image created: {testImagePath}");
+                    LogToDiagnostics("Sending test page to printer...");
+                }
+                
+                // Print the test page (single copy, 4x6 size, wait for completion)
+                var (success, printTime, errorMessage) = await _printerService.PrintImageAsync(
+                    testImagePath,
+                    copies: 1,
+                    paperSizeInches: (6.0f, 4.0f), // 6x4 inches (landscape)
+                    imagesPerPage: 1,
+                    waitForCompletion: true); // Wait for actual completion
+                
+                if (success)
+                {
+                    if (isDiagnosticsTab)
+                    {
+                        LogToDiagnostics($"✅ Test page printed successfully in {printTime:F1} seconds");
+                    }
+                    NotificationService.Instance.ShowSuccess("Print Test", $"Test page printed successfully in {printTime:F1} seconds");
+                }
+                else
+                {
+                    var errorMsg = errorMessage ?? "Unknown error";
+                    if (isDiagnosticsTab)
+                    {
+                        LogToDiagnostics($"❌ Test page print failed: {errorMsg}");
+                    }
+                    NotificationService.Instance.ShowError("Print Test", $"Failed to print test page: {errorMsg}");
+                }
             }
             catch (Exception ex)
             {
                 LoggingService.Application.Error("Print test page failed", ex);
-                LogToDiagnostics($"ERROR: Print test page failed - {ex.Message}");
-                NotificationService.Instance.ShowError("Print Test", "Failed to print test page");
+                if (isDiagnosticsTab)
+                {
+                    LogToDiagnostics($"ERROR: Print test page failed - {ex.Message}");
+                }
+                NotificationService.Instance.ShowError("Print Test", $"Failed to print test page: {ex.Message}");
+            }
+            finally
+            {
+                // CRITICAL: Always clean up test image file, regardless of success or failure
+                // This prevents temporary files from accumulating on disk if exceptions occur
+                // Reference: https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/keywords/try-finally
+                if (!string.IsNullOrWhiteSpace(testImagePath) && File.Exists(testImagePath))
+                {
+                    try
+                    {
+                        File.Delete(testImagePath);
+                        if (isDiagnosticsTab)
+                        {
+                            LogToDiagnostics("Test page image file cleaned up");
+                        }
+                    }
+                    catch (Exception cleanupEx)
+                    {
+                        // Log cleanup errors but don't throw - we're in a finally block
+                        LoggingService.Application.Warning("Failed to delete test page image file",
+                            ("FilePath", testImagePath),
+                            ("Exception", cleanupEx.Message));
+                    }
+                }
             }
         }
-
-        private async void CheckPrinterStatusButton_Click(object sender, RoutedEventArgs e)
+        
+        /// <summary>
+        /// Create a test page image with diagnostic information
+        /// Reference: System.Drawing for image creation
+        /// Note: System.Drawing is Windows-only, so this method is platform-specific
+        /// </summary>
+        /// <param name="printerName">Name of the printer being tested</param>
+        /// <param name="printerStatus">Current printer status information</param>
+        /// <returns>Path to the created test image file, or null if creation failed</returns>
+        [SupportedOSPlatform("windows")]
+        private string? CreateTestPageImage(string printerName, PrinterDevice? printerStatus)
         {
             try
             {
+                // Create a 4x6 inch test image at 300 DPI (standard photo print resolution)
+                // 4 inches * 300 DPI = 1200 pixels height
+                // 6 inches * 300 DPI = 1800 pixels width
+                int width = 1800;
+                int height = 1200;
+                
+                using (var bitmap = new System.Drawing.Bitmap(width, height))
+                using (var graphics = System.Drawing.Graphics.FromImage(bitmap))
+                {
+                    // Set high-quality rendering
+                    graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                    graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+                    graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                    
+                    // Fill background with white
+                    graphics.Clear(System.Drawing.Color.White);
+                    
+                    // Create fonts with fallback if Arial is not available
+                    // Reference: https://learn.microsoft.com/en-us/dotnet/api/system.drawing.fontfamily
+                    System.Drawing.FontFamily fontFamily;
+                    try
+                    {
+                        fontFamily = new System.Drawing.FontFamily("Arial");
+                    }
+                    catch
+                    {
+                        // Fallback to generic sans-serif if Arial is not available
+                        fontFamily = System.Drawing.FontFamily.GenericSansSerif;
+                    }
+                    
+                    // CRITICAL: Ensure FontFamily is disposed AFTER all dependent Font objects
+                    // Font objects depend on FontFamily, so FontFamily must outlive them
+                    // Reference: https://learn.microsoft.com/en-us/dotnet/api/system.drawing.fontfamily
+                    using var fontFamilyLifetime = fontFamily;
+                    
+                    // Use using var for automatic disposal - prevents resource leaks on exceptions
+                    // Reference: https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/keywords/using-statement
+                    using var titleFont = new System.Drawing.Font(fontFamily, 72, System.Drawing.FontStyle.Bold);
+                    using var headerFont = new System.Drawing.Font(fontFamily, 48, System.Drawing.FontStyle.Bold);
+                    using var bodyFont = new System.Drawing.Font(fontFamily, 36, System.Drawing.FontStyle.Regular);
+                    using var smallFont = new System.Drawing.Font(fontFamily, 24, System.Drawing.FontStyle.Regular);
+                    
+                    // Create brushes with using var for automatic disposal
+                    using var blackBrush = new System.Drawing.SolidBrush(System.Drawing.Color.Black);
+                    using var grayBrush = new System.Drawing.SolidBrush(System.Drawing.Color.Gray);
+                    using var blueBrush = new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(0, 120, 215));
+                    
+                    // Draw title
+                    string title = "PRINTER TEST PAGE";
+                    var titleSize = graphics.MeasureString(title, titleFont);
+                    float titleX = (width - titleSize.Width) / 2;
+                    graphics.DrawString(title, titleFont, blueBrush, titleX, 50);
+                    
+                    // Draw separator line
+                    using (var separatorPen = new System.Drawing.Pen(System.Drawing.Color.Black, 4))
+                    {
+                        graphics.DrawLine(separatorPen, 100, 200, width - 100, 200);
+                    }
+                    
+                    // Draw printer information
+                    float yPos = 250;
+                    float lineHeight = 80;
+                    
+                    graphics.DrawString("Printer Information:", headerFont, blackBrush, 100, yPos);
+                    yPos += lineHeight + 20;
+                    
+                    graphics.DrawString($"Name: {printerName}", bodyFont, blackBrush, 120, yPos);
+                    yPos += lineHeight;
+                    
+                    string statusText = printerStatus?.IsOnline == true ? "Online" : "Offline";
+                    graphics.DrawString($"Status: {statusText}", bodyFont, blackBrush, 120, yPos);
+                    yPos += lineHeight;
+                    
+                    if (printerStatus != null)
+                    {
+                        graphics.DrawString($"Model: {printerStatus.Model ?? "Unknown"}", bodyFont, blackBrush, 120, yPos);
+                        yPos += lineHeight;
+                    }
+                    
+                    // Draw test patterns
+                    yPos += 40;
+                    graphics.DrawString("Test Patterns:", headerFont, blackBrush, 100, yPos);
+                    yPos += lineHeight + 20;
+                    
+                    // Draw color squares
+                    int squareSize = 150;
+                    int squareSpacing = 200;
+                    int startX = 120;
+                    
+                    // Draw color squares with proper resource management
+                    using (var redBrush = new System.Drawing.SolidBrush(System.Drawing.Color.Red))
+                    using (var greenBrush = new System.Drawing.SolidBrush(System.Drawing.Color.Green))
+                    using (var blueSquareBrush = new System.Drawing.SolidBrush(System.Drawing.Color.Blue))
+                    using (var blackSquareBrush = new System.Drawing.SolidBrush(System.Drawing.Color.Black))
+                    using (var squarePen = new System.Drawing.Pen(System.Drawing.Color.Black, 2))
+                    {
+                        graphics.FillRectangle(redBrush, startX, yPos, squareSize, squareSize);
+                        graphics.DrawRectangle(squarePen, startX, yPos, squareSize, squareSize);
+                        
+                        graphics.FillRectangle(greenBrush, startX + squareSpacing, yPos, squareSize, squareSize);
+                        graphics.DrawRectangle(squarePen, startX + squareSpacing, yPos, squareSize, squareSize);
+                        
+                        graphics.FillRectangle(blueSquareBrush, startX + squareSpacing * 2, yPos, squareSize, squareSize);
+                        graphics.DrawRectangle(squarePen, startX + squareSpacing * 2, yPos, squareSize, squareSize);
+                        
+                        graphics.FillRectangle(blackSquareBrush, startX + squareSpacing * 3, yPos, squareSize, squareSize);
+                        graphics.DrawRectangle(squarePen, startX + squareSpacing * 3, yPos, squareSize, squareSize);
+                    }
+                    
+                    yPos += squareSize + 40;
+                    
+                    // Draw resolution test
+                    graphics.DrawString("Resolution Test (300 DPI):", bodyFont, blackBrush, 100, yPos);
+                    yPos += lineHeight;
+                    
+                    // Draw grid pattern
+                    int gridSpacing = 100;
+                    using var gridPen = new System.Drawing.Pen(System.Drawing.Color.LightGray, 1);
+                    for (int x = 100; x < width - 100; x += gridSpacing)
+                    {
+                        graphics.DrawLine(gridPen, x, (int)yPos, x, (int)(yPos + 200));
+                    }
+                    for (int y = (int)yPos; y < (int)(yPos + 200); y += gridSpacing)
+                    {
+                        graphics.DrawLine(gridPen, 100, y, width - 100, y);
+                    }
+                    
+                    yPos += 250;
+                    
+                    // Draw timestamp
+                    string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+                    graphics.DrawString($"Generated: {timestamp}", smallFont, grayBrush, 100, yPos);
+                    
+                    // Draw footer
+                    string footer = "PhotoBoothX Printer Diagnostic Test";
+                    var footerSize = graphics.MeasureString(footer, smallFont);
+                    float footerX = (width - footerSize.Width) / 2;
+                    graphics.DrawString(footer, smallFont, grayBrush, footerX, height - 80);
+                    
+                    // Save the image to a temporary file
+                    string tempDir = Path.Combine(Path.GetTempPath(), "PhotoBoothX");
+                    if (!Directory.Exists(tempDir))
+                    {
+                        Directory.CreateDirectory(tempDir);
+                    }
+                    
+                    string testImagePath = Path.Combine(tempDir, $"test_page_{DateTime.Now:yyyyMMddHHmmss}.jpg");
+                    
+                    // Save with higher JPEG quality (92%) for better print output
+                    // Reference: https://learn.microsoft.com/en-us/dotnet/api/system.drawing.imaging.imagecodecinfo
+                    var jpegEncoder = System.Drawing.Imaging.ImageCodecInfo.GetImageEncoders()
+                        .FirstOrDefault(c => c.FormatID == System.Drawing.Imaging.ImageFormat.Jpeg.Guid);
+                    
+                    if (jpegEncoder != null)
+                    {
+                        // Use encoder with quality parameter (92% quality)
+                        using var encoderParams = new System.Drawing.Imaging.EncoderParameters(1);
+                        encoderParams.Param[0] = new System.Drawing.Imaging.EncoderParameter(
+                            System.Drawing.Imaging.Encoder.Quality, 92L);
+                        bitmap.Save(testImagePath, jpegEncoder, encoderParams);
+                    }
+                    else
+                    {
+                        // Fallback to default save if encoder not found
+                        bitmap.Save(testImagePath, System.Drawing.Imaging.ImageFormat.Jpeg);
+                    }
+                    
+                    // FontFamily disposed by fontFamilyLifetime at scope end (after Fonts)
+                    // This ensures proper disposal order: Fonts first, then FontFamily
+                    // All other resources (brushes, pens) are auto-disposed via using var
+                    
+                    return testImagePath;
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to create test page image", ex);
+                LogToDiagnostics($"ERROR: Failed to create test page image - {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Check printer status with detailed information and refresh cache
+        /// Uses cached status for fast response, then refreshes cache to get latest status
+        /// Reference: PrinterService.GetCachedPrinterStatus() and RefreshCachedStatus()
+        /// </summary>
+        private void CheckPrinterStatusButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                LogToDiagnostics("=== PRINTER STATUS CHECK ===");
                 LogToDiagnostics("Checking printer status...");
                 
-                // TODO: Implement actual printer status check when printer service is available
-                await Task.Delay(500);
+                if (_printerService == null)
+                {
+                    if (PrinterStatusDetailsText != null) PrinterStatusDetailsText.Text = "Service Unavailable";
+                    if (PrinterPaperLevelText != null) PrinterPaperLevelText.Text = "Unknown";
+                    if (PrinterLastErrorText != null) PrinterLastErrorText.Text = "Printer service not initialized";
+                    
+                    UpdateHardwareStatus("printer", false, "Printer service not available", "Error");
+                    LogToDiagnostics("❌ ERROR: Printer service not available");
+                    LogToDiagnostics("=== STATUS CHECK FAILED ===");
+                    return;
+                }
                 
-                // Simulate status update
-                if (PrinterStatusDetailsText != null) PrinterStatusDetailsText.Text = "Online";
-                if (PrinterPaperLevelText != null) PrinterPaperLevelText.Text = "85% (595 prints remaining)";
-                if (PrinterLastErrorText != null) PrinterLastErrorText.Text = "None";
+                // Get cached status first for immediate display
+                var cachedStatus = _printerService.GetCachedPrinterStatus();
+                LogToDiagnostics($"Cached status: {(cachedStatus != null ? "Available" : "Not Available")}");
                 
-                LogToDiagnostics("Printer status updated");
+                // Refresh cache to get latest status
+                LogToDiagnostics("Refreshing printer status cache...");
+                bool refreshSuccess = _printerService.RefreshCachedStatus();
+                LogToDiagnostics($"Cache refresh: {(refreshSuccess ? "Success" : "Failed")}");
+                
+                var refreshedStatus = _printerService.GetCachedPrinterStatus();
+                
+                // Use refreshed status if available, otherwise use cached
+                var status = refreshedStatus ?? cachedStatus;
+                
+                if (status != null)
+                {
+                    var statusText = status.IsOnline ? "Online" : "Offline";
+                    var printerName = status.Name ?? "Unknown Printer";
+                    
+                    LogToDiagnostics($"✅ Printer Status: {statusText}");
+                    LogToDiagnostics($"   Name: {printerName}");
+                    LogToDiagnostics($"   Model: {status.Model ?? "Unknown"}");
+                    LogToDiagnostics($"   Status: {status.Status ?? "Unknown"}");
+                    LogToDiagnostics($"   Is Default: {status.IsDefault}");
+                    LogToDiagnostics($"   Supports Color: {status.SupportsColor}");
+                    LogToDiagnostics($"   Max Copies: {status.MaxCopies}");
+                    LogToDiagnostics($"   Supports Duplex: {status.SupportsDuplex}");
+                    
+                    if (PrinterStatusDetailsText != null) PrinterStatusDetailsText.Text = statusText;
+                    
+                    // Try to get roll capacity information
+                    if (!string.IsNullOrWhiteSpace(status.Name))
+                    {
+                        LogToDiagnostics("Checking roll capacity...");
+                        try
+                        {
+                            var rollCapacity = _printerService.GetRollCapacity(status.Name);
+                            if (rollCapacity != null && rollCapacity.IsAvailable)
+                            {
+                                LogToDiagnostics($"   Roll Capacity Source: {rollCapacity.Source}");
+                                LogToDiagnostics($"   Roll Capacity Status: {rollCapacity.Status ?? "Unknown"}");
+                                
+                                if (rollCapacity.RemainingPrints.HasValue)
+                                {
+                                    var capacityText = $"{rollCapacity.RemainingPrints.Value} prints remaining";
+                                    if (PrinterPaperLevelText != null) PrinterPaperLevelText.Text = capacityText;
+                                    LogToDiagnostics($"   Remaining Prints: {rollCapacity.RemainingPrints.Value}");
+                                }
+                                else if (rollCapacity.RemainingPercentage.HasValue)
+                                {
+                                    var capacityText = $"{rollCapacity.RemainingPercentage.Value}% remaining";
+                                    if (PrinterPaperLevelText != null) PrinterPaperLevelText.Text = capacityText;
+                                    LogToDiagnostics($"   Remaining Percentage: {rollCapacity.RemainingPercentage.Value}%");
+                                }
+                                else
+                                {
+                                    var capacityText = rollCapacity.Status ?? "Unknown";
+                                    if (PrinterPaperLevelText != null) PrinterPaperLevelText.Text = capacityText;
+                                    LogToDiagnostics($"   Status: {capacityText}");
+                                }
+                                
+                                if (!string.IsNullOrWhiteSpace(rollCapacity.Details))
+                                {
+                                    LogToDiagnostics($"   Details: {rollCapacity.Details}");
+                                }
+                            }
+                            else
+                            {
+                                if (PrinterPaperLevelText != null) PrinterPaperLevelText.Text = "Level unknown";
+                                LogToDiagnostics("   Roll capacity information not available");
+                            }
+                        }
+                        catch (Exception rollEx)
+                        {
+                            LogToDiagnostics($"   ⚠️ Failed to get roll capacity: {rollEx.Message}");
+                            if (PrinterPaperLevelText != null) PrinterPaperLevelText.Text = "Check failed";
+                        }
+                    }
+                    
+                    if (PrinterLastErrorText != null) PrinterLastErrorText.Text = status.IsOnline ? "None" : "Printer is offline";
+                    
+                    // Update hardware status indicator
+                    UpdateHardwareStatus("printer", status.IsOnline, 
+                        status.IsOnline ? $"{printerName} - Online" : $"{printerName} - Offline", 
+                        statusText);
+                    
+                    LogToDiagnostics("=== STATUS CHECK COMPLETE ===");
+                    
+                    // Show success/info notification based on printer status
+                    if (status.IsOnline)
+                    {
+                        var capacityInfo = "";
+                        if (PrinterPaperLevelText != null && !string.IsNullOrWhiteSpace(PrinterPaperLevelText.Text) && 
+                            PrinterPaperLevelText.Text != "Checking..." && PrinterPaperLevelText.Text != "Level unknown")
+                        {
+                            capacityInfo = $" ({PrinterPaperLevelText.Text})";
+                        }
+                        
+                        NotificationService.Instance.ShowSuccess("Printer Status", 
+                            $"{printerName} is online and ready{capacityInfo}", 
+                            autoCloseSeconds: 4);
+                    }
+                    else
+                    {
+                        NotificationService.Instance.ShowWarning("Printer Status", 
+                            $"{printerName} is offline. Please check the printer connection.", 
+                            autoCloseSeconds: 5);
+                    }
+                }
+                else
+                {
+                    if (PrinterStatusDetailsText != null) PrinterStatusDetailsText.Text = "Not Available";
+                    if (PrinterPaperLevelText != null) PrinterPaperLevelText.Text = "Unknown";
+                    if (PrinterLastErrorText != null) PrinterLastErrorText.Text = "No printer detected";
+                    
+                    UpdateHardwareStatus("printer", false, "No printer detected", "Not Available");
+                    LogToDiagnostics("❌ ERROR: No printer status available");
+                    LogToDiagnostics("=== STATUS CHECK FAILED ===");
+                    
+                    // Show error notification
+                    NotificationService.Instance.ShowError("Printer Status", 
+                        "No printer detected. Please ensure a printer is installed and configured.", 
+                        autoCloseSeconds: 6);
+                }
             }
             catch (Exception ex)
             {
                 LoggingService.Application.Error("Check printer status failed", ex);
-                LogToDiagnostics($"ERROR: Check printer status failed - {ex.Message}");
+                LogToDiagnostics($"❌ ERROR: Check printer status failed - {ex.Message}");
+                LogToDiagnostics($"   Stack Trace: {ex.StackTrace}");
+                LogToDiagnostics("=== STATUS CHECK FAILED ===");
+                
+                // Show error notification
+                NotificationService.Instance.ShowError("Printer Status", 
+                    $"Failed to check printer status: {ex.Message}", 
+                    autoCloseSeconds: 6);
             }
         }
 

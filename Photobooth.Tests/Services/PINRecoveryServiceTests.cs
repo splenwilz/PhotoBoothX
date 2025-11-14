@@ -175,13 +175,14 @@ namespace Photobooth.Tests.Services
         [TestMethod]
         public void IsRateLimited_NewUser_ReturnsFalse()
         {
-            // Arrange
-            var username = "testuser";
+            // Arrange: Use unique username to ensure no previous rate limiting data exists
+            // This prevents test interference from other tests that might have used the same username
+            var username = "testuser_new_" + Guid.NewGuid().ToString();
 
             // Act
             var result = _pinService.IsRateLimited(username);
 
-            // Assert
+            // Assert: New user should not be rate limited
             result.Should().BeFalse("new user should not be rate limited");
         }
 
