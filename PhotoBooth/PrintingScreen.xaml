@@ -160,6 +160,16 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
+                <!-- Back Button (visible when error or success) -->
+                <Button x:Name="BackButton"
+                        Grid.Column="0"
+                        Content="← Back"
+                        Style="{StaticResource ModernButtonStyle}"
+                        VerticalAlignment="Center"
+                        Visibility="Collapsed"
+                        Click="BackButton_Click"
+                        Padding="20,10"/>
+
                 <!-- Credits Display -->
                 <Border Grid.Column="2" 
                         Style="{StaticResource CreditsStyle}"
@@ -395,7 +405,8 @@
 
                 <!-- Error Card -->
                 <Border x:Name="ErrorCard" Grid.Row="3" Style="{StaticResource InfoCardStyle}" 
-                       Visibility="Collapsed" MaxWidth="600" HorizontalAlignment="Center">
+                       Visibility="Collapsed" MaxWidth="600" HorizontalAlignment="Center"
+                       Panel.ZIndex="100">
                     <StackPanel HorizontalAlignment="Center">
                         <TextBlock Text="⚠️" FontSize="80" HorizontalAlignment="Center" Margin="0,0,0,20"/>
                         <TextBlock Text="Printing Error" 
@@ -409,14 +420,20 @@
                         
                         <Button x:Name="RetryButton" Content="🔄 Retry Print" 
                                Style="{StaticResource ModernButtonStyle}"
-                               Click="RetryButton_Click"/>
+                               Click="RetryButton_Click"
+                               PreviewMouseDown="RetryButton_PreviewMouseDown"
+                               HorizontalAlignment="Center"
+                               IsHitTestVisible="True"
+                               IsEnabled="True"
+                               Panel.ZIndex="101"
+                               Margin="0,0,0,20"/>
                     </StackPanel>
                 </Border>
             </Grid>
         </Grid>
 
         <!-- Bottom Gradient Overlay -->
-        <Border VerticalAlignment="Bottom" Height="128">
+        <Border VerticalAlignment="Bottom" Height="128" IsHitTestVisible="False">
             <Border.Background>
                 <LinearGradientBrush StartPoint="0,1" EndPoint="0,0">
                     <GradientStop Color="#33000000" Offset="0"/>

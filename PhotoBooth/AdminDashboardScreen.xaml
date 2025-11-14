@@ -1019,7 +1019,7 @@
                                     <TextBlock Text="System tools and tests" FontSize="14" Foreground="#64748B" Margin="0,0,0,16"/>
                                             
                                             <StackPanel>
-                                                <Button Margin="0,0,0,8" Height="44" Background="White" BorderBrush="#E5E7EB" BorderThickness="1" Cursor="Hand">
+                                                <Button Name="SettingsTestCameraButton" Margin="0,0,0,8" Height="44" Background="White" BorderBrush="#E5E7EB" BorderThickness="1" Cursor="Hand" Click="SettingsTestCameraButton_Click">
                                                     <Button.Template>
                                                         <ControlTemplate TargetType="Button">
                                                             <Border Background="{TemplateBinding Background}" 
@@ -1030,28 +1030,6 @@
                                                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                                                     <TextBlock Text="📷" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center"/>
                                                                     <TextBlock Text="Test Camera" FontSize="14" Foreground="#374151" VerticalAlignment="Center"/>
-                                </StackPanel>
-                            </Border>
-                                                            <ControlTemplate.Triggers>
-                                                                <Trigger Property="IsMouseOver" Value="True">
-                                                                    <Setter Property="Background" Value="#F8FAFC"/>
-                                                                </Trigger>
-                                                            </ControlTemplate.Triggers>
-                                                        </ControlTemplate>
-                                                    </Button.Template>
-                                                </Button>
-                                                
-                                                <Button Margin="0,0,0,8" Height="44" Background="White" BorderBrush="#E5E7EB" BorderThickness="1" Cursor="Hand">
-                                                    <Button.Template>
-                                                        <ControlTemplate TargetType="Button">
-                                                            <Border Background="{TemplateBinding Background}" 
-                                                                    BorderBrush="{TemplateBinding BorderBrush}"
-                                                                    BorderThickness="{TemplateBinding BorderThickness}"
-                                                                    CornerRadius="8" 
-                                                                    Padding="12,0">
-                                                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                                                    <TextBlock Text="🖨️" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center"/>
-                                                                    <TextBlock Text="Test Printer" FontSize="14" Foreground="#374151" VerticalAlignment="Center"/>
                                                                 </StackPanel>
                                                             </Border>
                                                             <ControlTemplate.Triggers>
@@ -1063,7 +1041,29 @@
                                                     </Button.Template>
                                                 </Button>
                                                 
-                                                <Button Margin="0,0,0,8" Height="44" Background="White" BorderBrush="#E5E7EB" BorderThickness="1" Cursor="Hand">
+                                                <Button Name="SettingsTestPrintButton" Margin="0,0,0,8" Height="44" Background="White" BorderBrush="#E5E7EB" BorderThickness="1" Cursor="Hand" Click="SettingsTestPrintButton_Click">
+                                                    <Button.Template>
+                                                        <ControlTemplate TargetType="Button">
+                                                            <Border Background="{TemplateBinding Background}" 
+                                                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                                                    CornerRadius="8" 
+                                                                    Padding="12,0">
+                                                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                                    <TextBlock Text="🖨️" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                                                                    <TextBlock Text="Test Print" FontSize="14" Foreground="#374151" VerticalAlignment="Center"/>
+                                                                </StackPanel>
+                                                            </Border>
+                                                            <ControlTemplate.Triggers>
+                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                    <Setter Property="Background" Value="#F8FAFC"/>
+                                                                </Trigger>
+                                                            </ControlTemplate.Triggers>
+                                                        </ControlTemplate>
+                                                    </Button.Template>
+                                                </Button>
+                                                
+                                                <Button Name="SettingsAddFreeCreditButton" Margin="0,0,0,8" Height="44" Background="White" BorderBrush="#E5E7EB" BorderThickness="1" Cursor="Hand" Click="SettingsAddFreeCreditButton_Click">
                                                     <Button.Template>
                                                         <ControlTemplate TargetType="Button">
                                                             <Border Background="{TemplateBinding Background}" 
@@ -1074,28 +1074,6 @@
                                                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                                                     <TextBlock Text="💰" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center"/>
                                                                     <TextBlock Text="Add Free Credit" FontSize="14" Foreground="#374151" VerticalAlignment="Center"/>
-                                                                </StackPanel>
-                                                            </Border>
-                                                            <ControlTemplate.Triggers>
-                                                                <Trigger Property="IsMouseOver" Value="True">
-                                                                    <Setter Property="Background" Value="#F8FAFC"/>
-                                                                </Trigger>
-                                                            </ControlTemplate.Triggers>
-                                                        </ControlTemplate>
-                                                    </Button.Template>
-                                                </Button>
-                                                
-                                                <Button Height="44" Background="White" BorderBrush="#E5E7EB" BorderThickness="1" Cursor="Hand">
-                                                    <Button.Template>
-                                                        <ControlTemplate TargetType="Button">
-                                                            <Border Background="{TemplateBinding Background}" 
-                                                                    BorderBrush="{TemplateBinding BorderBrush}"
-                                                                    BorderThickness="{TemplateBinding BorderThickness}"
-                                                                    CornerRadius="8" 
-                                                                    Padding="12,0">
-                                                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                                                    <TextBlock Text="🖥️" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center"/>
-                                                                    <TextBlock Text="Calibrate Touch" FontSize="14" Foreground="#374151" VerticalAlignment="Center"/>
                                                                 </StackPanel>
                                                             </Border>
                                                             <ControlTemplate.Triggers>
