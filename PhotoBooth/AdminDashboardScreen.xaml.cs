@@ -5026,6 +5026,7 @@ namespace Photobooth
         private async Task TestCameraAvailabilityAsync()
         {
             CameraService? cameraService = null;
+            bool cameraStarted = false;
             try
             {
                 // Check if cameras are available
@@ -5042,6 +5043,7 @@ namespace Photobooth
                 
                 // Try to start the camera to verify it works
                 bool started = await cameraService.StartCameraAsync();
+                cameraStarted = started; // Track if camera was started for cleanup
                 
                 if (started)
                 {
@@ -5050,8 +5052,7 @@ namespace Photobooth
                     
                     // Stop the camera immediately (we just wanted to verify it works)
                     cameraService.StopCamera();
-                    cameraService.Dispose();
-                    cameraService = null;
+                    cameraStarted = false; // Camera is now stopped
                     
                     // Show success notification with camera details
                     var cameraNames = string.Join(", ", cameras.Select(c => c.Name));
@@ -5066,9 +5067,6 @@ namespace Photobooth
                 else
                 {
                     // Camera service exists but couldn't start
-                    cameraService?.Dispose();
-                    cameraService = null;
-                    
                     NotificationService.Instance.ShowError("Camera Test", 
                         "Camera detected but failed to start. The camera may be in use by another application.", 
                         autoCloseSeconds: 6);
@@ -5076,21 +5074,35 @@ namespace Photobooth
             }
             catch (Exception ex)
             {
-                // Clean up camera service if it was created
-                try
-                {
-                    cameraService?.StopCamera();
-                    cameraService?.Dispose();
-                }
-                catch
-                {
-                    // Ignore cleanup errors
-                }
-                
                 LoggingService.Application.Error("Camera availability test failed", ex);
                 NotificationService.Instance.ShowError("Camera Test", 
                     $"Camera test failed: {ex.Message}", 
                     autoCloseSeconds: 6);
+            }
+            finally
+            {
+                // CRITICAL: Always clean up camera resources, regardless of success or failure
+                // This ensures the camera is properly released even if exceptions occur
+                // Reference: https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/keywords/try-finally
+                try
+                {
+                    if (cameraService != null)
+                    {
+                        // Stop camera if it was started
+                        if (cameraStarted)
+                        {
+                            cameraService.StopCamera();
+                        }
+                        // Dispose the camera service to release all resources
+                        cameraService.Dispose();
+                    }
+                }
+                catch (Exception cleanupEx)
+                {
+                    // Log cleanup errors but don't throw - we're in a finally block
+                    LoggingService.Application.Warning("Error during camera service cleanup",
+                        ("Exception", cleanupEx.Message));
+                }
             }
         }
 
@@ -5191,10 +5203,14 @@ namespace Photobooth
         /// </summary>
         private async Task PrintTestPageAsync()
         {
+            // CRITICAL: Declare testImagePath outside try block so it's accessible in finally
+            // This ensures the temporary file is always cleaned up, even if exceptions occur
+            string? testImagePath = null;
+            bool isDiagnosticsTab = DiagnosticsTabContent?.Visibility == Visibility.Visible;
+            
             try
             {
                 // Only log to diagnostics if we're in the Diagnostics tab
-                bool isDiagnosticsTab = DiagnosticsTabContent?.Visibility == Visibility.Visible;
                 if (isDiagnosticsTab)
                 {
                     LogToDiagnostics("Printing test page...");
@@ -5239,7 +5255,7 @@ namespace Photobooth
                 }
                 
                 // Create test page image
-                string? testImagePath = CreateTestPageImage(printerName, printerStatus);
+                testImagePath = CreateTestPageImage(printerName, printerStatus);
                 
                 if (string.IsNullOrWhiteSpace(testImagePath) || !File.Exists(testImagePath))
                 {
@@ -5265,25 +5281,6 @@ namespace Photobooth
                     imagesPerPage: 1,
                     waitForCompletion: true); // Wait for actual completion
                 
-                // Clean up test image file
-                try
-                {
-                    if (File.Exists(testImagePath))
-                    {
-                        File.Delete(testImagePath);
-                        if (isDiagnosticsTab)
-                        {
-                            LogToDiagnostics("Test page image file cleaned up");
-                        }
-                    }
-                }
-                catch (Exception cleanupEx)
-                {
-                    LoggingService.Application.Warning("Failed to delete test page image file",
-                        ("FilePath", testImagePath),
-                        ("Exception", cleanupEx.Message));
-                }
-                
                 if (success)
                 {
                     if (isDiagnosticsTab)
@@ -5305,12 +5302,35 @@ namespace Photobooth
             catch (Exception ex)
             {
                 LoggingService.Application.Error("Print test page failed", ex);
-                bool isDiagnosticsTab = DiagnosticsTabContent?.Visibility == Visibility.Visible;
                 if (isDiagnosticsTab)
                 {
                     LogToDiagnostics($"ERROR: Print test page failed - {ex.Message}");
                 }
                 NotificationService.Instance.ShowError("Print Test", $"Failed to print test page: {ex.Message}");
+            }
+            finally
+            {
+                // CRITICAL: Always clean up test image file, regardless of success or failure
+                // This prevents temporary files from accumulating on disk if exceptions occur
+                // Reference: https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/keywords/try-finally
+                if (!string.IsNullOrWhiteSpace(testImagePath) && File.Exists(testImagePath))
+                {
+                    try
+                    {
+                        File.Delete(testImagePath);
+                        if (isDiagnosticsTab)
+                        {
+                            LogToDiagnostics("Test page image file cleaned up");
+                        }
+                    }
+                    catch (Exception cleanupEx)
+                    {
+                        // Log cleanup errors but don't throw - we're in a finally block
+                        LoggingService.Application.Warning("Failed to delete test page image file",
+                            ("FilePath", testImagePath),
+                            ("Exception", cleanupEx.Message));
+                    }
+                }
             }
         }
         
@@ -5342,17 +5362,30 @@ namespace Photobooth
                     // Fill background with white
                     graphics.Clear(System.Drawing.Color.White);
                     
-                    // Create fonts - use FontFamily constructor
-                    var arialFamily = new System.Drawing.FontFamily("Arial");
-                    var titleFont = new System.Drawing.Font(arialFamily, 72, System.Drawing.FontStyle.Bold);
-                    var headerFont = new System.Drawing.Font(arialFamily, 48, System.Drawing.FontStyle.Bold);
-                    var bodyFont = new System.Drawing.Font(arialFamily, 36, System.Drawing.FontStyle.Regular);
-                    var smallFont = new System.Drawing.Font(arialFamily, 24, System.Drawing.FontStyle.Regular);
+                    // Create fonts with fallback if Arial is not available
+                    // Reference: https://learn.microsoft.com/en-us/dotnet/api/system.drawing.fontfamily
+                    System.Drawing.FontFamily fontFamily;
+                    try
+                    {
+                        fontFamily = new System.Drawing.FontFamily("Arial");
+                    }
+                    catch
+                    {
+                        // Fallback to generic sans-serif if Arial is not available
+                        fontFamily = System.Drawing.FontFamily.GenericSansSerif;
+                    }
                     
-                    // Create brushes
-                    var blackBrush = new System.Drawing.SolidBrush(System.Drawing.Color.Black);
-                    var grayBrush = new System.Drawing.SolidBrush(System.Drawing.Color.Gray);
-                    var blueBrush = new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(0, 120, 215));
+                    // Use using var for automatic disposal - prevents resource leaks on exceptions
+                    // Reference: https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/keywords/using-statement
+                    using var titleFont = new System.Drawing.Font(fontFamily, 72, System.Drawing.FontStyle.Bold);
+                    using var headerFont = new System.Drawing.Font(fontFamily, 48, System.Drawing.FontStyle.Bold);
+                    using var bodyFont = new System.Drawing.Font(fontFamily, 36, System.Drawing.FontStyle.Regular);
+                    using var smallFont = new System.Drawing.Font(fontFamily, 24, System.Drawing.FontStyle.Regular);
+                    
+                    // Create brushes with using var for automatic disposal
+                    using var blackBrush = new System.Drawing.SolidBrush(System.Drawing.Color.Black);
+                    using var grayBrush = new System.Drawing.SolidBrush(System.Drawing.Color.Gray);
+                    using var blueBrush = new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(0, 120, 215));
                     
                     // Draw title
                     string title = "PRINTER TEST PAGE";
@@ -5361,7 +5394,10 @@ namespace Photobooth
                     graphics.DrawString(title, titleFont, blueBrush, titleX, 50);
                     
                     // Draw separator line
-                    graphics.DrawLine(new System.Drawing.Pen(System.Drawing.Color.Black, 4), 100, 200, width - 100, 200);
+                    using (var separatorPen = new System.Drawing.Pen(System.Drawing.Color.Black, 4))
+                    {
+                        graphics.DrawLine(separatorPen, 100, 200, width - 100, 200);
+                    }
                     
                     // Draw printer information
                     float yPos = 250;
@@ -5393,17 +5429,25 @@ namespace Photobooth
                     int squareSpacing = 200;
                     int startX = 120;
                     
-                    graphics.FillRectangle(new System.Drawing.SolidBrush(System.Drawing.Color.Red), startX, yPos, squareSize, squareSize);
-                    graphics.DrawRectangle(new System.Drawing.Pen(System.Drawing.Color.Black, 2), startX, yPos, squareSize, squareSize);
-                    
-                    graphics.FillRectangle(new System.Drawing.SolidBrush(System.Drawing.Color.Green), startX + squareSpacing, yPos, squareSize, squareSize);
-                    graphics.DrawRectangle(new System.Drawing.Pen(System.Drawing.Color.Black, 2), startX + squareSpacing, yPos, squareSize, squareSize);
-                    
-                    graphics.FillRectangle(new System.Drawing.SolidBrush(System.Drawing.Color.Blue), startX + squareSpacing * 2, yPos, squareSize, squareSize);
-                    graphics.DrawRectangle(new System.Drawing.Pen(System.Drawing.Color.Black, 2), startX + squareSpacing * 2, yPos, squareSize, squareSize);
-                    
-                    graphics.FillRectangle(new System.Drawing.SolidBrush(System.Drawing.Color.Black), startX + squareSpacing * 3, yPos, squareSize, squareSize);
-                    graphics.DrawRectangle(new System.Drawing.Pen(System.Drawing.Color.Black, 2), startX + squareSpacing * 3, yPos, squareSize, squareSize);
+                    // Draw color squares with proper resource management
+                    using (var redBrush = new System.Drawing.SolidBrush(System.Drawing.Color.Red))
+                    using (var greenBrush = new System.Drawing.SolidBrush(System.Drawing.Color.Green))
+                    using (var blueSquareBrush = new System.Drawing.SolidBrush(System.Drawing.Color.Blue))
+                    using (var blackSquareBrush = new System.Drawing.SolidBrush(System.Drawing.Color.Black))
+                    using (var squarePen = new System.Drawing.Pen(System.Drawing.Color.Black, 2))
+                    {
+                        graphics.FillRectangle(redBrush, startX, yPos, squareSize, squareSize);
+                        graphics.DrawRectangle(squarePen, startX, yPos, squareSize, squareSize);
+                        
+                        graphics.FillRectangle(greenBrush, startX + squareSpacing, yPos, squareSize, squareSize);
+                        graphics.DrawRectangle(squarePen, startX + squareSpacing, yPos, squareSize, squareSize);
+                        
+                        graphics.FillRectangle(blueSquareBrush, startX + squareSpacing * 2, yPos, squareSize, squareSize);
+                        graphics.DrawRectangle(squarePen, startX + squareSpacing * 2, yPos, squareSize, squareSize);
+                        
+                        graphics.FillRectangle(blackSquareBrush, startX + squareSpacing * 3, yPos, squareSize, squareSize);
+                        graphics.DrawRectangle(squarePen, startX + squareSpacing * 3, yPos, squareSize, squareSize);
+                    }
                     
                     yPos += squareSize + 40;
                     
@@ -5413,7 +5457,7 @@ namespace Photobooth
                     
                     // Draw grid pattern
                     int gridSpacing = 100;
-                    var gridPen = new System.Drawing.Pen(System.Drawing.Color.LightGray, 1);
+                    using var gridPen = new System.Drawing.Pen(System.Drawing.Color.LightGray, 1);
                     for (int x = 100; x < width - 100; x += gridSpacing)
                     {
                         graphics.DrawLine(gridPen, x, (int)yPos, x, (int)(yPos + 200));
@@ -5443,18 +5487,28 @@ namespace Photobooth
                     }
                     
                     string testImagePath = Path.Combine(tempDir, $"test_page_{DateTime.Now:yyyyMMddHHmmss}.jpg");
-                    bitmap.Save(testImagePath, System.Drawing.Imaging.ImageFormat.Jpeg);
                     
-                    // Dispose resources
-                    titleFont.Dispose();
-                    headerFont.Dispose();
-                    bodyFont.Dispose();
-                    smallFont.Dispose();
-                    blackBrush.Dispose();
-                    grayBrush.Dispose();
-                    blueBrush.Dispose();
-                    arialFamily.Dispose();
-                    gridPen.Dispose();
+                    // Save with higher JPEG quality (92%) for better print output
+                    // Reference: https://learn.microsoft.com/en-us/dotnet/api/system.drawing.imaging.imagecodecinfo
+                    var jpegEncoder = System.Drawing.Imaging.ImageCodecInfo.GetImageEncoders()
+                        .FirstOrDefault(c => c.FormatID == System.Drawing.Imaging.ImageFormat.Jpeg.Guid);
+                    
+                    if (jpegEncoder != null)
+                    {
+                        // Use encoder with quality parameter (92% quality)
+                        using var encoderParams = new System.Drawing.Imaging.EncoderParameters(1);
+                        encoderParams.Param[0] = new System.Drawing.Imaging.EncoderParameter(
+                            System.Drawing.Imaging.Encoder.Quality, 92L);
+                        bitmap.Save(testImagePath, jpegEncoder, encoderParams);
+                    }
+                    else
+                    {
+                        // Fallback to default save if encoder not found
+                        bitmap.Save(testImagePath, System.Drawing.Imaging.ImageFormat.Jpeg);
+                    }
+                    
+                    // Dispose font family (fonts, brushes, pens are auto-disposed via using var)
+                    fontFamily.Dispose();
                     
                     return testImagePath;
                 }
