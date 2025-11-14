@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Runtime.Versioning;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -5337,10 +5338,12 @@ namespace Photobooth
         /// <summary>
         /// Create a test page image with diagnostic information
         /// Reference: System.Drawing for image creation
+        /// Note: System.Drawing is Windows-only, so this method is platform-specific
         /// </summary>
         /// <param name="printerName">Name of the printer being tested</param>
         /// <param name="printerStatus">Current printer status information</param>
         /// <returns>Path to the created test image file, or null if creation failed</returns>
+        [SupportedOSPlatform("windows")]
         private string? CreateTestPageImage(string printerName, PrinterDevice? printerStatus)
         {
             try
@@ -5374,6 +5377,11 @@ namespace Photobooth
                         // Fallback to generic sans-serif if Arial is not available
                         fontFamily = System.Drawing.FontFamily.GenericSansSerif;
                     }
+                    
+                    // CRITICAL: Ensure FontFamily is disposed AFTER all dependent Font objects
+                    // Font objects depend on FontFamily, so FontFamily must outlive them
+                    // Reference: https://learn.microsoft.com/en-us/dotnet/api/system.drawing.fontfamily
+                    using var fontFamilyLifetime = fontFamily;
                     
                     // Use using var for automatic disposal - prevents resource leaks on exceptions
                     // Reference: https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/keywords/using-statement
@@ -5507,8 +5515,9 @@ namespace Photobooth
                         bitmap.Save(testImagePath, System.Drawing.Imaging.ImageFormat.Jpeg);
                     }
                     
-                    // Dispose font family (fonts, brushes, pens are auto-disposed via using var)
-                    fontFamily.Dispose();
+                    // FontFamily disposed by fontFamilyLifetime at scope end (after Fonts)
+                    // This ensures proper disposal order: Fonts first, then FontFamily
+                    // All other resources (brushes, pens) are auto-disposed via using var
                     
                     return testImagePath;
                 }
