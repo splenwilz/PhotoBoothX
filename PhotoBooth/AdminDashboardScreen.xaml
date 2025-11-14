@@ -1041,7 +1041,7 @@
                                                     </Button.Template>
                                                 </Button>
                                                 
-                                                <Button Margin="0,0,0,8" Height="44" Background="White" BorderBrush="#E5E7EB" BorderThickness="1" Cursor="Hand">
+                                                <Button Name="SettingsTestPrintButton" Margin="0,0,0,8" Height="44" Background="White" BorderBrush="#E5E7EB" BorderThickness="1" Cursor="Hand" Click="SettingsTestPrintButton_Click">
                                                     <Button.Template>
                                                         <ControlTemplate TargetType="Button">
                                                             <Border Background="{TemplateBinding Background}" 
@@ -1051,7 +1051,7 @@
                                                                     Padding="12,0">
                                                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                                                     <TextBlock Text="🖨️" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center"/>
-                                                                    <TextBlock Text="Test Printer" FontSize="14" Foreground="#374151" VerticalAlignment="Center"/>
+                                                                    <TextBlock Text="Test Print" FontSize="14" Foreground="#374151" VerticalAlignment="Center"/>
                                                                 </StackPanel>
                                                             </Border>
                                                             <ControlTemplate.Triggers>
