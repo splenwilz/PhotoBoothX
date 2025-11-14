@@ -261,6 +261,54 @@ namespace Photobooth.Services
                     Directory.CreateDirectory(directory);
                 }
 
+                // ====================================================================
+                // ⚠️ TEMPORARY DEVELOPMENT CODE - DELETE BEFORE PRODUCTION RELEASE ⚠️
+                // ====================================================================
+                // Delete existing database file only once after new installation during development
+                // This ensures users testing in production get a clean database without
+                // schema conflicts or migration issues while we're still in active development.
+                // This runs in production builds so testers don't need to manually delete the DB.
+                // Uses a flag file to ensure deletion only happens once per installation.
+                // TODO: REMOVE THIS ENTIRE BLOCK BEFORE FINAL PRODUCTION RELEASE
+                // ====================================================================
+                if (File.Exists(_databasePath))
+                {
+                    // Check if this is a new installation by looking for a flag file
+                    var flagFilePath = Path.Combine(directory ?? "", ".photoboothx_db_deleted");
+                    var appVersion = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "0.0.0";
+                    var versionFlagPath = Path.Combine(directory ?? "", $".photoboothx_db_deleted_v{appVersion}");
+                    
+                    // Only delete if flag doesn't exist for this version (first run after installation)
+                    if (!File.Exists(versionFlagPath))
+                    {
+                        try
+                        {
+                            LoggingService.Application.Warning("Deleting existing database for fresh installation (development mode)",
+                                ("DatabasePath", _databasePath),
+                                ("AppVersion", appVersion));
+                            File.Delete(_databasePath);
+                            
+                            // Create flag file to prevent deletion on subsequent runs
+                            File.WriteAllText(versionFlagPath, $"Database deleted for version {appVersion} on {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC");
+                            LoggingService.Application.Information("Existing database deleted successfully and flag file created");
+                        }
+                        catch (Exception ex)
+                        {
+                            LoggingService.Application.Error("Failed to delete existing database", ex,
+                                ("DatabasePath", _databasePath));
+                            // Continue anyway - the initialization will handle existing database
+                        }
+                    }
+                    else
+                    {
+                        LoggingService.Application.Information("Database deletion skipped - already deleted for this version",
+                            ("AppVersion", appVersion));
+                    }
+                }
+                // ====================================================================
+                // END OF TEMPORARY DEVELOPMENT CODE
+                // ====================================================================
+
                 using var connection = await CreateConnectionAsync();
 
                 // Check if database is already initialized
