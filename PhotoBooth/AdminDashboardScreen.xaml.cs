@@ -5009,6 +5009,162 @@ namespace Photobooth
         }
 
         /// <summary>
+        /// Test camera button handler for Settings tab Quick Actions
+        /// Performs a quick camera availability test and shows notification
+        /// </summary>
+        private async void SettingsTestCameraButton_Click(object sender, RoutedEventArgs e)
+        {
+            await TestCameraAvailabilityAsync();
+        }
+
+        /// <summary>
+        /// Test camera availability for Quick Actions (Settings tab)
+        /// Checks if cameras are available and can be started, then shows notification
+        /// This is a simpler test than the Diagnostics tab which shows a preview
+        /// Reference: CameraService for camera operations
+        /// </summary>
+        private async Task TestCameraAvailabilityAsync()
+        {
+            CameraService? cameraService = null;
+            try
+            {
+                // Check if cameras are available
+                cameraService = new CameraService();
+                var cameras = cameraService.GetAvailableCameras();
+                
+                if (cameras.Count == 0)
+                {
+                    NotificationService.Instance.ShowError("Camera Test", 
+                        "No cameras detected. Please ensure a camera is connected and try again.", 
+                        autoCloseSeconds: 6);
+                    return;
+                }
+                
+                // Try to start the camera to verify it works
+                bool started = await cameraService.StartCameraAsync();
+                
+                if (started)
+                {
+                    // Camera started successfully - verify it's working by waiting a moment
+                    await Task.Delay(500);
+                    
+                    // Stop the camera immediately (we just wanted to verify it works)
+                    cameraService.StopCamera();
+                    cameraService.Dispose();
+                    cameraService = null;
+                    
+                    // Show success notification with camera details
+                    var cameraNames = string.Join(", ", cameras.Select(c => c.Name));
+                    var message = cameras.Count == 1 
+                        ? $"Camera '{cameraNames}' is working correctly" 
+                        : $"Found {cameras.Count} camera(s): {cameraNames}. All cameras are working correctly";
+                    
+                    NotificationService.Instance.ShowSuccess("Camera Test", 
+                        message, 
+                        autoCloseSeconds: 5);
+                }
+                else
+                {
+                    // Camera service exists but couldn't start
+                    cameraService?.Dispose();
+                    cameraService = null;
+                    
+                    NotificationService.Instance.ShowError("Camera Test", 
+                        "Camera detected but failed to start. The camera may be in use by another application.", 
+                        autoCloseSeconds: 6);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Clean up camera service if it was created
+                try
+                {
+                    cameraService?.StopCamera();
+                    cameraService?.Dispose();
+                }
+                catch
+                {
+                    // Ignore cleanup errors
+                }
+                
+                LoggingService.Application.Error("Camera availability test failed", ex);
+                NotificationService.Instance.ShowError("Camera Test", 
+                    $"Camera test failed: {ex.Message}", 
+                    autoCloseSeconds: 6);
+            }
+        }
+
+        /// <summary>
+        /// Add free credit button handler for Settings tab Quick Actions
+        /// Prompts user for credit amount and adds it to the system
+        /// </summary>
+        private async void SettingsAddFreeCreditButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                // Prompt user for credit amount
+                var input = InputDialog.ShowInputDialog(
+                    "Add Free Credit",
+                    "Enter the amount of credit to add:",
+                    "1.00",
+                    Window.GetWindow(this));
+                
+                if (string.IsNullOrWhiteSpace(input))
+                {
+                    // User cancelled
+                    return;
+                }
+                
+                // Parse the input as decimal
+                // Use InvariantCulture to ensure '.' is used as decimal separator
+                if (decimal.TryParse(input, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out decimal amount))
+                {
+                    if (amount <= 0)
+                    {
+                        NotificationService.Instance.ShowWarning("Invalid Amount", 
+                            "Credit amount must be greater than $0.00", 
+                            autoCloseSeconds: 5);
+                        return;
+                    }
+                    
+                    if (amount > 1000)
+                    {
+                        NotificationService.Instance.ShowWarning("Amount Too Large", 
+                            "Credit amount cannot exceed $1,000.00. Please enter a smaller amount.", 
+                            autoCloseSeconds: 6);
+                        return;
+                    }
+                    
+                    // Add the credits
+                    await AddCreditsAsync(amount, $"Free Credit (Quick Action)");
+                    
+                    // Refresh credit display if we're on the Credits tab
+                    if (CreditsTabContent?.Visibility == Visibility.Visible)
+                    {
+                        await LoadCreditsAsync();
+                    }
+                    
+                    NotificationService.Instance.ShowSuccess("Credits Added", 
+                        $"Successfully added ${amount:F2} to credit balance!", 
+                        autoCloseSeconds: 4);
+                }
+                else
+                {
+                    NotificationService.Instance.ShowWarning("Invalid Amount", 
+                        "Please enter a valid decimal amount (e.g., 1.00 or 5.50)", 
+                        autoCloseSeconds: 5);
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Add free credit failed", ex);
+                NotificationService.Instance.ShowError("Add Credit", 
+                    $"Failed to add credit: {ex.Message}", 
+                    autoCloseSeconds: 6);
+            }
+        }
+
+        /// <summary>
         /// Test print button handler for Settings tab Quick Actions
         /// Calls the same test print functionality as the Diagnostics tab
         /// </summary>
