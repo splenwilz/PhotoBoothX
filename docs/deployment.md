@@ -214,18 +214,18 @@ Copy-Item "C:\Program Files\PhotoBoothX\Templates" "C:\Templates-Backup-$(Get-Da
 ## 📋 Quick Reference
 
 ### File Locations
-| Component | Location |
-|-----------|----------|
+| Component   | Location |
+|-------------|----------|
 | Application | `C:\Program Files\PhotoBoothX\` |
-| Database | `%APPDATA%\PhotoboothX\photobooth.db` |
-| Templates | `C:\Program Files\PhotoBoothX\Templates\` |
-| Logs | `%APPDATA%\PhotoboothX\logs\` |
+| Database    | `%APPDATA%\PhotoboothX\photobooth.db` |
+| Templates   | `C:\Program Files\PhotoBoothX\Templates\` |
+| Logs        | `%APPDATA%\PhotoboothX\logs\` |
 
 ### Default Credentials
-| Account | Username | Password | Access Level |
-|---------|----------|----------|--------------|
-| Master Admin | `admin` | `admin123` | Full access |
-| User Admin | `user` | `user123` | View-only + volume |
+| Account      | Username | Password   | Access Level       |
+|--------------|----------|------------|--------------------|
+| Master Admin | `admin`  | `admin123` | Full access        |
+| User Admin   | `user`   | `user123`  | View-only + volume |
 
 **Security**: You will be forced to change these passwords immediately on first login.
 
@@ -239,4 +239,4 @@ Copy-Item "C:\Program Files\PhotoBoothX\Templates" "C:\Templates-Backup-$(Get-Da
 
 ---
 
-**🤖 Ready for deployment!** Your client can now download and install PhotoBoothX from GitHub releases. 
+**🤖 Ready for deployment!** Your client can now download and install PhotoBoothX from GitHub releases.

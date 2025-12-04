@@ -2069,7 +2069,7 @@
                                             </Grid.ColumnDefinitions>
                                             
                                             <TextBlock Grid.Row="0" Grid.Column="0" Text="Port:" FontSize="12" FontWeight="Medium" Margin="0,0,8,4"/>
-                                            <TextBlock Grid.Row="0" Grid.Column="1" Name="ArduinoPortText" Text="Auto-detect" FontSize="12" Margin="0,0,0,4"/>
+                                            <TextBlock Grid.Row="0" Grid.Column="1" Name="ArduinoPortText" Text="COM5" FontSize="12" Margin="0,0,0,4"/>
                                             
                                             <TextBlock Grid.Row="1" Grid.Column="0" Text="LED:" FontSize="12" FontWeight="Medium" Margin="0,0,8,4"/>
                                             <TextBlock Grid.Row="1" Grid.Column="1" Name="ArduinoLedStatusText" Text="Unknown" FontSize="12" Margin="0,0,0,4"/>
@@ -2109,6 +2109,19 @@
                                                       Background="#0F766E" Foreground="White" FontSize="11"
                                                       Click="TestPaymentPulseButton_Click"/>
                                             </Grid>
+
+                                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                                <Button Name="StartPulseMonitorButton" Content="Start Monitor"
+                                                        Style="{StaticResource ModernButtonStyle}"
+                                                        Background="#4338CA" Foreground="White" FontSize="11"
+                                                        Margin="0,0,8,0"
+                                                        Click="StartPulseMonitorButton_Click"/>
+
+                                                <Button Name="StopPulseMonitorButton" Content="Stop Monitor"
+                                                        Style="{StaticResource ModernButtonStyle}"
+                                                        Background="#9CA3AF" Foreground="White" FontSize="11"
+                                                        Click="StopPulseMonitorButton_Click"/>
+                                            </StackPanel>
                                         </StackPanel>
                                     </StackPanel>
                                 </Border>

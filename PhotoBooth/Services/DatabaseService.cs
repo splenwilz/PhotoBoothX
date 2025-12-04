@@ -94,6 +94,12 @@ namespace Photobooth.Services
         Task<DatabaseResult<List<CreditTransaction>>> GetCreditTransactionsAsync(int limit = 50);
         Task<DatabaseResult> DeleteOldCreditTransactionsAsync(int keepCount = 100);
         
+        // Processed pulse unique ID management methods (for duplicate prevention)
+        Task<DatabaseResult<bool>> IsPulseUniqueIdProcessedAsync(string uniqueId);
+        Task<DatabaseResult> SaveProcessedPulseUniqueIdAsync(string uniqueId, string identifier, int pulseCount, decimal amountCredited);
+        Task<DatabaseResult<HashSet<string>>> LoadProcessedPulseUniqueIdsAsync();
+        Task<DatabaseResult> CleanupOldProcessedPulseUniqueIdsAsync(int keepDays = 30);
+        
         // Transaction management methods
         Task<DatabaseResult<List<Transaction>>> GetRecentTransactionsAsync(int limit);
         
@@ -609,7 +615,39 @@ namespace Photobooth.Services
         {
             // Development phase: No migrations needed - just recreate DB with updated schema
             // Production phase (post v1.0): Implement version-specific migrations here
-            await Task.CompletedTask;
+            
+            // Migration: Add ProcessedPulseUniqueIds table if it doesn't exist (for existing databases)
+            try
+            {
+                var checkTableQuery = "SELECT name FROM sqlite_master WHERE type='table' AND name='ProcessedPulseUniqueIds';";
+                using var checkCmd = new SqliteCommand(checkTableQuery, connection);
+                var tableExists = await checkCmd.ExecuteScalarAsync();
+                
+                if (tableExists == null)
+                {
+                    LoggingService.Application.Information("Creating ProcessedPulseUniqueIds table (migration)");
+                    
+                    var createTableQuery = @"
+                        CREATE TABLE ProcessedPulseUniqueIds (
+                            UniqueId TEXT PRIMARY KEY,
+                            Identifier TEXT NOT NULL CHECK (Identifier IN ('CardAccepter', 'BillAccepter')),
+                            PulseCount INTEGER NOT NULL,
+                            ProcessedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                            AmountCredited DECIMAL(10,2) NOT NULL
+                        );
+                        CREATE INDEX IF NOT EXISTS IX_ProcessedPulseUniqueIds_ProcessedAt ON ProcessedPulseUniqueIds(ProcessedAt);";
+                    
+                    using var createCmd = new SqliteCommand(createTableQuery, connection);
+                    await createCmd.ExecuteNonQueryAsync();
+                    
+                    LoggingService.Application.Information("ProcessedPulseUniqueIds table created successfully");
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Warning("Failed to create ProcessedPulseUniqueIds table (migration)", ("Component", "DatabaseService"), ("Exception", ex.Message));
+                // Don't throw - allow app to continue even if migration fails
+            }
         }
         
 
@@ -3361,6 +3399,174 @@ namespace Photobooth.Services
             catch (Exception ex)
             {
                 return DatabaseResult.ErrorResult($"Failed to cleanup old credit transactions: {ex.Message}", ex);
+            }
+        }
+
+        /// <summary>
+        /// Check if a pulse unique ID has already been processed (to prevent duplicate credits)
+        /// </summary>
+        public async Task<DatabaseResult<bool>> IsPulseUniqueIdProcessedAsync(string uniqueId)
+        {
+            try
+            {
+                var query = "SELECT COUNT(*) FROM ProcessedPulseUniqueIds WHERE UniqueId = @uniqueId";
+
+                using var connection = await CreateConnectionAsync();
+                using var command = new SqliteCommand(query, connection);
+                command.Parameters.AddWithValue("@uniqueId", uniqueId);
+
+                var count = Convert.ToInt32(await command.ExecuteScalarAsync());
+                return DatabaseResult<bool>.SuccessResult(count > 0);
+            }
+            catch (Exception ex)
+            {
+                return DatabaseResult<bool>.ErrorResult($"Failed to check if unique ID is processed: {ex.Message}", ex);
+            }
+        }
+
+        /// <summary>
+        /// Save a processed pulse unique ID to the database (prevents duplicate credits across app restarts)
+        /// </summary>
+        public async Task<DatabaseResult> SaveProcessedPulseUniqueIdAsync(string uniqueId, string identifier, int pulseCount, decimal amountCredited)
+        {
+            try
+            {
+                // Check if table exists first (for old databases that haven't been migrated)
+                var checkTableQuery = "SELECT name FROM sqlite_master WHERE type='table' AND name='ProcessedPulseUniqueIds';";
+                using var checkConnection = await CreateConnectionAsync();
+                using var checkCommand = new SqliteCommand(checkTableQuery, checkConnection);
+                var tableExists = await checkCommand.ExecuteScalarAsync();
+                
+                if (tableExists == null)
+                {
+                    // Table doesn't exist - try to create it (migration)
+                    try
+                    {
+                        var createTableQuery = @"
+                            CREATE TABLE IF NOT EXISTS ProcessedPulseUniqueIds (
+                                UniqueId TEXT PRIMARY KEY,
+                                Identifier TEXT NOT NULL CHECK (Identifier IN ('CardAccepter', 'BillAccepter')),
+                                PulseCount INTEGER NOT NULL,
+                                ProcessedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                                AmountCredited DECIMAL(10,2) NOT NULL
+                            );
+                            CREATE INDEX IF NOT EXISTS IX_ProcessedPulseUniqueIds_ProcessedAt ON ProcessedPulseUniqueIds(ProcessedAt);";
+                        
+                        using var createCommand = new SqliteCommand(createTableQuery, checkConnection);
+                        await createCommand.ExecuteNonQueryAsync();
+                        Console.WriteLine($"[DatabaseService] Created ProcessedPulseUniqueIds table (on-demand migration)");
+                    }
+                    catch (Exception createEx)
+                    {
+                        return DatabaseResult.ErrorResult($"Table doesn't exist and failed to create it: {createEx.Message}", createEx);
+                    }
+                }
+
+                // Use INSERT OR IGNORE to handle race conditions (if two packets arrive simultaneously)
+                var query = @"
+                    INSERT OR IGNORE INTO ProcessedPulseUniqueIds (UniqueId, Identifier, PulseCount, AmountCredited, ProcessedAt)
+                    VALUES (@uniqueId, @identifier, @pulseCount, @amountCredited, @processedAt)";
+
+                using var connection = await CreateConnectionAsync();
+                using var command = new SqliteCommand(query, connection);
+                command.Parameters.AddWithValue("@uniqueId", uniqueId);
+                command.Parameters.AddWithValue("@identifier", identifier);
+                command.Parameters.AddWithValue("@pulseCount", pulseCount);
+                command.Parameters.AddWithValue("@amountCredited", amountCredited);
+                command.Parameters.AddWithValue("@processedAt", DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss"));
+
+                var rowsAffected = await command.ExecuteNonQueryAsync();
+                
+                // Log if row was inserted (rowsAffected = 1) or ignored (rowsAffected = 0, duplicate)
+                if (rowsAffected > 0)
+                {
+                    Console.WriteLine($"[DatabaseService] Saved unique ID to database: {uniqueId} (rows affected: {rowsAffected})");
+                }
+                else
+                {
+                    Console.WriteLine($"[DatabaseService] Unique ID already exists (ignored): {uniqueId}");
+                }
+                
+                return DatabaseResult.SuccessResult();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[DatabaseService] ERROR saving unique ID: {ex.Message}");
+                return DatabaseResult.ErrorResult($"Failed to save processed unique ID: {ex.Message}", ex);
+            }
+        }
+
+        /// <summary>
+        /// Load all processed pulse unique IDs from the database (called on app startup)
+        /// </summary>
+        public async Task<DatabaseResult<HashSet<string>>> LoadProcessedPulseUniqueIdsAsync()
+        {
+            try
+            {
+                var query = "SELECT UniqueId FROM ProcessedPulseUniqueIds";
+
+                using var connection = await CreateConnectionAsync();
+                using var command = new SqliteCommand(query, connection);
+                using var reader = await command.ExecuteReaderAsync();
+
+                var uniqueIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                while (await reader.ReadAsync())
+                {
+                    var uniqueId = GetStringValue(reader, "UniqueId");
+                    if (!string.IsNullOrEmpty(uniqueId))
+                    {
+                        uniqueIds.Add(uniqueId);
+                    }
+                }
+
+                LoggingService.Application.Information("Loaded processed pulse unique IDs from database",
+                    ("Count", uniqueIds.Count));
+
+                return DatabaseResult<HashSet<string>>.SuccessResult(uniqueIds);
+            }
+            catch (Exception ex)
+            {
+                // If table doesn't exist yet (old database), return empty set
+                if (ex.Message.Contains("no such table", StringComparison.OrdinalIgnoreCase))
+                {
+                    LoggingService.Application.Warning("ProcessedPulseUniqueIds table not found, returning empty set (old database schema)");
+                    return DatabaseResult<HashSet<string>>.SuccessResult(new HashSet<string>());
+                }
+
+                return DatabaseResult<HashSet<string>>.ErrorResult($"Failed to load processed unique IDs: {ex.Message}", ex);
+            }
+        }
+
+        /// <summary>
+        /// Clean up old processed pulse unique IDs (keep only recent ones to prevent database bloat)
+        /// </summary>
+        public async Task<DatabaseResult> CleanupOldProcessedPulseUniqueIdsAsync(int keepDays = 30)
+        {
+            try
+            {
+                var cutoffDate = DateTime.UtcNow.AddDays(-keepDays);
+                var query = @"
+                    DELETE FROM ProcessedPulseUniqueIds 
+                    WHERE ProcessedAt < @cutoffDate";
+
+                using var connection = await CreateConnectionAsync();
+                using var command = new SqliteCommand(query, connection);
+                command.Parameters.AddWithValue("@cutoffDate", cutoffDate.ToString("yyyy-MM-dd HH:mm:ss"));
+
+                var deletedCount = await command.ExecuteNonQueryAsync();
+
+                if (deletedCount > 0)
+                {
+                    LoggingService.Application.Information("Cleaned up old processed pulse unique IDs",
+                        ("DeletedCount", deletedCount),
+                        ("KeepDays", keepDays));
+                }
+
+                return DatabaseResult.SuccessResult();
+            }
+            catch (Exception ex)
+            {
+                return DatabaseResult.ErrorResult($"Failed to cleanup old processed unique IDs: {ex.Message}", ex);
             }
         }
 
