@@ -13,7 +13,9 @@ namespace Photobooth.Services.Payment
             Identifier = identifier;
             Delta = delta;
             RawCount = rawCount;
-            UniqueId = uniqueId ?? throw new ArgumentNullException(nameof(uniqueId));
+            // Make a defensive copy to ensure immutability (prevents external modification of the array).
+            if (uniqueId == null) throw new ArgumentNullException(nameof(uniqueId));
+            UniqueId = (byte[])uniqueId.Clone();
             TimestampUtc = timestampUtc;
         }
 

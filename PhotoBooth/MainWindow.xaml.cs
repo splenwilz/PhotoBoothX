@@ -244,13 +244,13 @@ namespace Photobooth
             // Initialize admin dashboard screen for credit management (even for regular users)
             await InitializeAdminDashboardForCreditsAsync();
             
-            // Auto-start pulse monitoring on COM5 (no user interaction required)
+            // Auto-start pulse monitoring (auto-detects COM port, prefers COM5 if available)
             if (adminDashboardScreen != null)
             {
                 try
                 {
                     await adminDashboardScreen.StartPulseMonitoringAutoAsync();
-                    LoggingService.Application.Information("Pulse monitoring auto-started on COM5");
+                    LoggingService.Application.Information("Pulse monitoring auto-started");
                 }
                 catch (Exception ex)
                 {

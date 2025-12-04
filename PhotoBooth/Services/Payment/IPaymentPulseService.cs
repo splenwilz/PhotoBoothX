@@ -17,7 +17,7 @@ namespace Photobooth.Services.Payment
 
         Task StartAsync(string portName, CancellationToken cancellationToken = default);
 
-        Task StopAsync();
+        Task StopAsync(CancellationToken cancellationToken = default);
 
         void ResetCounters();
     }

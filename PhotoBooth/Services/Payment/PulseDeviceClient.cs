@@ -60,7 +60,7 @@ namespace Photobooth.Services.Payment
             await Task.CompletedTask.ConfigureAwait(false); // maintain async signature without extra allocations
         }
 
-        public async Task StopAsync()
+        public async Task StopAsync(CancellationToken cancellationToken = default)
         {
             CancellationTokenSource? ctsSnapshot;
             Task? readTaskSnapshot;
@@ -83,11 +83,20 @@ namespace Photobooth.Services.Payment
             {
                 try
                 {
-                    await readTaskSnapshot.ConfigureAwait(false); // wait for clean shutdown
+                    // Wait for clean shutdown, but respect cancellation token for timeout enforcement
+                    await readTaskSnapshot.WaitAsync(cancellationToken).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
                 {
-                    // expected when cancellation token stops the task
+                    // Expected when cancellation token stops the task or timeout expires
+                    // Log warning if it's from the timeout (not the internal cancellation)
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        LoggingService.Hardware.Warning(
+                            "PulseDeviceClient",
+                            "StopAsync cancelled due to timeout",
+                            ("Port", CurrentPortName ?? "Unknown"));
+                    }
                 }
             }
 
@@ -98,7 +107,29 @@ namespace Photobooth.Services.Payment
 
         public void Dispose()
         {
-            StopAsync().GetAwaiter().GetResult(); // dispose synchronously for kiosk shutdown
+            // Use a timeout during shutdown to prevent hanging (5 seconds should be sufficient for cleanup)
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            try
+            {
+                // NOTE: Blocking on async in Dispose() is generally not ideal, but IDisposable.Dispose() must be synchronous.
+                // This is safe from deadlock because:
+                // 1. ReadLoopAsync uses ConfigureAwait(false) - no synchronization context capture
+                // 2. StopAsync uses ConfigureAwait(false) when waiting - no marshaling back to original context
+                // 3. Timeout (5 seconds) prevents indefinite blocking
+                // 4. ReadLoopAsync is a background task that doesn't interact with UI thread
+                // If deadlock concerns arise in practice, consider implementing IAsyncDisposable for async disposal scenarios.
+                StopAsync(cts.Token).GetAwaiter().GetResult();
+            }
+            catch (OperationCanceledException)
+            {
+                // Timeout expired - log warning but continue with cleanup
+                LoggingService.Hardware.Warning(
+                    "PulseDeviceClient",
+                    "StopAsync timed out during Dispose, forcing cleanup",
+                    ("Port", CurrentPortName ?? "Unknown"));
+                // Force cleanup even if timeout occurred
+                _packetBuffer.Clear();
+            }
         }
 
         private static SerialPort CreateSerialPort(string portName)
@@ -115,7 +146,14 @@ namespace Photobooth.Services.Payment
 
         private async Task ReadLoopAsync(CancellationToken cancellationToken)
         {
-            if (_serialPort == null)
+            // Initial null check - if port doesn't exist at start, exit immediately
+            SerialPort? port;
+            lock (_stateLock)
+            {
+                port = _serialPort;
+            }
+            
+            if (port == null)
             {
                 return; // guard: StartAsync failed before serial port creation
             }
@@ -124,9 +162,22 @@ namespace Photobooth.Services.Payment
 
             while (!cancellationToken.IsCancellationRequested)
             {
+                // Capture serial port reference inside loop to prevent race condition with StopAsync.
+                // StopAsync can set _serialPort to null while we're reading, so we need a stable reference for this iteration.
+                lock (_stateLock)
+                {
+                    port = _serialPort;
+                }
+                
+                if (port == null)
+                {
+                    // Serial port was disposed by StopAsync - exit gracefully
+                    return;
+                }
+                
                 try
                 {
-                    var bytesRead = _serialPort.Read(scratch, 0, scratch.Length); // blocking read with timeout
+                    var bytesRead = port.Read(scratch, 0, scratch.Length); // blocking read with timeout
 
                     if (bytesRead > 0)
                     {
@@ -136,6 +187,11 @@ namespace Photobooth.Services.Payment
                 catch (TimeoutException)
                 {
                     // harmless: ReadTimeout expired and we loop again to honor cancellation
+                }
+                catch (ObjectDisposedException)
+                {
+                    // Serial port was disposed by StopAsync - exit gracefully
+                    return;
                 }
                 catch (Exception ex)
                 {
@@ -179,7 +235,7 @@ namespace Photobooth.Services.Payment
                 }
 
                 // New packet format: payload length is 16 bytes (0x10)
-                // Structure: [Identifier(1)][Padding(3)][PulseCount(2)][Padding(2)][Constant(1)][UniqueId(10)]
+                // Structure: [Identifier(1)][Padding(3)][PulseCount(2)][UniqueId(10)] = 16 bytes total
                 if (payloadLength < 16)
                 {
                     // Old format (6 bytes) - try to parse for backward compatibility

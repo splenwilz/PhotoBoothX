@@ -33,7 +33,8 @@ namespace Photobooth.Services.Payment
         /// <summary>
         /// Stops the background reader, closes the port, and clears buffers.
         /// </summary>
-        Task StopAsync();
+        /// <param name="cancellationToken">Optional cancellation token to enforce timeout during shutdown</param>
+        Task StopAsync(CancellationToken cancellationToken = default);
     }
 }
 

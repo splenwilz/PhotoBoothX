@@ -40,7 +40,11 @@ namespace Photobooth.Services.Payment
         private readonly Dictionary<PulseIdentifier, int> _lastCounts = new(); // Kept for backward compatibility
         // Track unique IDs we've already processed to prevent duplicate credits
         private readonly HashSet<string> _processedUniqueIds = new();
+        // Track failed database saves for retry (prevents data loss on app restart)
+        private readonly Queue<(string uniqueId, string identifier, int pulseCount, decimal amountCredited, DateTime timestamp)> _failedSavesQueue = new();
+        private readonly object _retryQueueLock = new();
         private bool _isInitialized = false;
+        private CancellationTokenSource? _retryCancellationTokenSource;
 
         public event EventHandler<PulseDeltaEventArgs>? PulseDeltaProcessed;
 
@@ -65,7 +69,17 @@ namespace Photobooth.Services.Payment
         /// </summary>
         public void SetDatabaseService(IDatabaseService databaseService)
         {
-            _databaseService = databaseService;
+            if (databaseService == null)
+            {
+                throw new ArgumentNullException(nameof(databaseService), "Database service cannot be null");
+            }
+            
+            lock (_syncRoot)
+            {
+                _databaseService = databaseService;
+            }
+            
+            LoggingService.Application.Information("Database service set on PaymentPulseService", ("Component", "PaymentPulseService"));
         }
 
         /// <summary>
@@ -125,6 +139,9 @@ namespace Photobooth.Services.Payment
                 });
 
                 _isInitialized = true;
+                
+                // Start retry loop for failed database saves
+                StartRetryLoop();
             }
             catch (Exception ex)
             {
@@ -132,15 +149,117 @@ namespace Photobooth.Services.Payment
                 Console.WriteLine($"[PaymentPulseService] {DateTime.Now:HH:mm:ss} INITIALIZATION ERROR: {ex.Message}");
             }
         }
+        
+        /// <summary>
+        /// Background task to retry failed database saves (prevents data loss on app restart)
+        /// </summary>
+        private void StartRetryLoop()
+        {
+            _retryCancellationTokenSource = new CancellationTokenSource();
+            var cancellationToken = _retryCancellationTokenSource.Token;
+            
+            _ = Task.Run(async () =>
+            {
+                while (!cancellationToken.IsCancellationRequested)
+                {
+                    try
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken); // Retry every 5 seconds
+                        
+                        // Process failed saves queue
+                        var itemsToRetry = new List<(string uniqueId, string identifier, int pulseCount, decimal amountCredited, DateTime timestamp)>();
+                        
+                        lock (_retryQueueLock)
+                        {
+                            while (_failedSavesQueue.Count > 0)
+                            {
+                                itemsToRetry.Add(_failedSavesQueue.Dequeue());
+                            }
+                        }
+                        
+                        if (itemsToRetry.Count > 0 && _databaseService != null)
+                        {
+                            Console.WriteLine($"[PaymentPulseService] {DateTime.Now:HH:mm:ss} RETRYING: {itemsToRetry.Count} failed database saves");
+                            
+                            foreach (var item in itemsToRetry)
+                            {
+                                try
+                                {
+                                    var saveResult = await _databaseService.SaveProcessedPulseUniqueIdAsync(
+                                        item.uniqueId,
+                                        item.identifier,
+                                        item.pulseCount,
+                                        item.amountCredited);
+                                    
+                                    if (saveResult.Success)
+                                    {
+                                        Console.WriteLine($"[PaymentPulseService] {DateTime.Now:HH:mm:ss} RETRY SUCCESS: UniqueId={item.uniqueId}");
+                                    }
+                                    else
+                                    {
+                                        // Save failed again - re-queue for next retry (but limit queue size to prevent memory bloat)
+                                        lock (_retryQueueLock)
+                                        {
+                                            if (_failedSavesQueue.Count < 100) // Limit queue size
+                                            {
+                                                _failedSavesQueue.Enqueue(item);
+                                            }
+                                            else
+                                            {
+                                                LoggingService.Application.Error(
+                                                    "Failed save retry queue is full, dropping oldest entry",
+                                                    null,
+                                                    ("Component", "PaymentPulseService"),
+                                                    ("DroppedUniqueId", item.uniqueId));
+                                            }
+                                        }
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    // Re-queue for retry
+                                    lock (_retryQueueLock)
+                                    {
+                                        if (_failedSavesQueue.Count < 100)
+                                        {
+                                            _failedSavesQueue.Enqueue(item);
+                                        }
+                                    }
+                                    LoggingService.Application.Warning("Retry save failed, will retry again", ("Component", "PaymentPulseService"), ("Exception", ex.Message));
+                                }
+                            }
+                        }
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // Expected when cancellation token is triggered
+                        break;
+                    }
+                    catch (Exception ex)
+                    {
+                        LoggingService.Application.Warning("Error in retry loop", ("Component", "PaymentPulseService"), ("Exception", ex.Message));
+                    }
+                }
+            }, cancellationToken);
+        }
 
         public async Task StartAsync(string portName, CancellationToken cancellationToken = default)
         {
+            // Warn if database service is not set (pulses will be processed but not persisted)
+            if (_databaseService == null)
+            {
+                LoggingService.Application.Warning(
+                    "Starting pulse monitoring without database service - unique IDs will not be persisted across restarts",
+                    ("Component", "PaymentPulseService"),
+                    ("Port", portName));
+            }
+            
             await _deviceClient.StartAsync(portName, cancellationToken).ConfigureAwait(false);
         }
 
-        public async Task StopAsync()
+        public async Task StopAsync(CancellationToken cancellationToken = default)
         {
-            await _deviceClient.StopAsync().ConfigureAwait(false);
+            await _deviceClient.StopAsync(cancellationToken).ConfigureAwait(false);
             ResetCounters();
         }
 
@@ -155,6 +274,24 @@ namespace Photobooth.Services.Payment
 
         public void Dispose()
         {
+            // Stop retry loop
+            _retryCancellationTokenSource?.Cancel();
+            
+            // Wait a short time for pending retries to complete (but don't block indefinitely)
+            try
+            {
+                if (_retryCancellationTokenSource != null)
+                {
+                    Task.Delay(TimeSpan.FromSeconds(2)).Wait(); // Give retries 2 seconds to complete
+                }
+            }
+            catch
+            {
+                // Ignore timeout during shutdown
+            }
+            
+            _retryCancellationTokenSource?.Dispose();
+            
             _deviceClient.PulseCountReceived -= HandlePulseCountReceived;
             _deviceClient.Dispose();
         }
@@ -208,20 +345,59 @@ namespace Photobooth.Services.Payment
                                     }
                                     else
                                     {
-                                        Console.WriteLine($"[PaymentPulseService] {DateTime.Now:HH:mm:ss} SAVE FAILED: UniqueId={uniqueIdString} | Error={saveResult.ErrorMessage}");
-                                        LoggingService.Application.Warning("Failed to persist unique ID to database", ("Component", "PaymentPulseService"), ("Error", saveResult.ErrorMessage ?? "Unknown error"));
+                                        // Save failed - add to retry queue to prevent data loss
+                                        Console.WriteLine($"[PaymentPulseService] {DateTime.Now:HH:mm:ss} SAVE FAILED: UniqueId={uniqueIdString} | Error={saveResult.ErrorMessage} | Adding to retry queue");
+                                        LoggingService.Application.Warning("Failed to persist unique ID to database, will retry", ("Component", "PaymentPulseService"), ("Error", saveResult.ErrorMessage ?? "Unknown error"), ("UniqueId", uniqueIdString));
+                                        
+                                        lock (_retryQueueLock)
+                                        {
+                                            if (_failedSavesQueue.Count < 100) // Limit queue size
+                                            {
+                                                _failedSavesQueue.Enqueue((uniqueIdString, e.Identifier.ToString(), e.PulseCount, amountCredited, DateTime.UtcNow));
+                                            }
+                                            else
+                                            {
+                                                LoggingService.Application.Error(
+                                                    "Failed save retry queue is full, cannot queue retry",
+                                                    null,
+                                                    ("Component", "PaymentPulseService"),
+                                                    ("UniqueId", uniqueIdString));
+                                            }
+                                        }
                                     }
                                 }
                                 else
                                 {
+                                    // Database service not set - log warning (should not happen in normal operation)
                                     Console.WriteLine($"[PaymentPulseService] {DateTime.Now:HH:mm:ss} SAVE SKIPPED: Database service is null");
+                                    LoggingService.Application.Warning(
+                                        "Cannot persist unique ID - database service is null. Pulse was credited but will not be tracked across restarts.",
+                                        ("Component", "PaymentPulseService"),
+                                        ("UniqueId", uniqueIdString),
+                                        ("PulseCount", e.PulseCount));
                                 }
                             }
                             catch (Exception ex)
                             {
-                                // Log but don't fail - in-memory tracking still works
-                                Console.WriteLine($"[PaymentPulseService] {DateTime.Now:HH:mm:ss} SAVE EXCEPTION: UniqueId={uniqueIdString} | Exception={ex.Message}");
-                                LoggingService.Application.Warning("Failed to persist unique ID to database", ("Component", "PaymentPulseService"), ("Exception", ex.Message));
+                                // Save exception - add to retry queue to prevent data loss
+                                Console.WriteLine($"[PaymentPulseService] {DateTime.Now:HH:mm:ss} SAVE EXCEPTION: UniqueId={uniqueIdString} | Exception={ex.Message} | Adding to retry queue");
+                                LoggingService.Application.Warning("Exception persisting unique ID to database, will retry", ("Component", "PaymentPulseService"), ("Exception", ex.Message), ("UniqueId", uniqueIdString));
+                                
+                                lock (_retryQueueLock)
+                                {
+                                    if (_failedSavesQueue.Count < 100) // Limit queue size
+                                    {
+                                        _failedSavesQueue.Enqueue((uniqueIdString, e.Identifier.ToString(), e.PulseCount, amountCredited, DateTime.UtcNow));
+                                    }
+                                    else
+                                    {
+                                        LoggingService.Application.Error(
+                                            "Failed save retry queue is full, cannot queue retry",
+                                            ex,
+                                            ("Component", "PaymentPulseService"),
+                                            ("UniqueId", uniqueIdString));
+                                    }
+                                }
                             }
                         });
                         

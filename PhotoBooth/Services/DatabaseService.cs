@@ -3420,6 +3420,14 @@ namespace Photobooth.Services
             }
             catch (Exception ex)
             {
+                // If table doesn't exist yet (old database), treat as not processed (consistent with LoadProcessedPulseUniqueIdsAsync)
+                if (ex.Message.Contains("no such table", StringComparison.OrdinalIgnoreCase))
+                {
+                    LoggingService.Application.Warning("ProcessedPulseUniqueIds table not found when checking unique ID; treating as not processed",
+                        ("UniqueId", uniqueId));
+                    return DatabaseResult<bool>.SuccessResult(false);
+                }
+
                 return DatabaseResult<bool>.ErrorResult($"Failed to check if unique ID is processed: {ex.Message}", ex);
             }
         }
@@ -3427,10 +3435,17 @@ namespace Photobooth.Services
         /// <summary>
         /// Save a processed pulse unique ID to the database (prevents duplicate credits across app restarts)
         /// </summary>
+        /// <param name="identifier">Must be "CardAccepter" or "BillAccepter" (matches PulseIdentifier enum values)</param>
         public async Task<DatabaseResult> SaveProcessedPulseUniqueIdAsync(string uniqueId, string identifier, int pulseCount, decimal amountCredited)
         {
             try
             {
+                // Validate identifier matches expected enum values (database has CHECK constraint)
+                if (identifier != "CardAccepter" && identifier != "BillAccepter")
+                {
+                    return DatabaseResult.ErrorResult($"Invalid identifier '{identifier}'. Must be 'CardAccepter' or 'BillAccepter'.");
+                }
+
                 // Check if table exists first (for old databases that haven't been migrated)
                 var checkTableQuery = "SELECT name FROM sqlite_master WHERE type='table' AND name='ProcessedPulseUniqueIds';";
                 using var checkConnection = await CreateConnectionAsync();
@@ -3480,18 +3495,27 @@ namespace Photobooth.Services
                 // Log if row was inserted (rowsAffected = 1) or ignored (rowsAffected = 0, duplicate)
                 if (rowsAffected > 0)
                 {
-                    Console.WriteLine($"[DatabaseService] Saved unique ID to database: {uniqueId} (rows affected: {rowsAffected})");
+                    LoggingService.Application.Information("Saved processed pulse unique ID to database",
+                        ("UniqueId", uniqueId),
+                        ("Identifier", identifier),
+                        ("PulseCount", pulseCount),
+                        ("AmountCredited", amountCredited));
                 }
                 else
                 {
-                    Console.WriteLine($"[DatabaseService] Unique ID already exists (ignored): {uniqueId}");
+                    LoggingService.Application.Debug("Unique ID already exists in database (ignored)",
+                        ("UniqueId", uniqueId));
                 }
                 
                 return DatabaseResult.SuccessResult();
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[DatabaseService] ERROR saving unique ID: {ex.Message}");
+                LoggingService.Application.Error("Failed to save processed pulse unique ID",
+                    ex,
+                    ("UniqueId", uniqueId),
+                    ("Identifier", identifier),
+                    ("PulseCount", pulseCount));
                 return DatabaseResult.ErrorResult($"Failed to save processed unique ID: {ex.Message}", ex);
             }
         }

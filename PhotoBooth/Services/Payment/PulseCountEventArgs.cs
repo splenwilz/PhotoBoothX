@@ -15,7 +15,9 @@ namespace Photobooth.Services.Payment
             // pulseCount is the raw little-endian counter described in the VHMI guide.
             PulseCount = pulseCount;
             // uniqueId is a 10-byte unique transaction identifier added by the PCB engineer.
-            UniqueId = uniqueId ?? throw new ArgumentNullException(nameof(uniqueId));
+            // Make a defensive copy to ensure immutability (prevents external modification of the array).
+            if (uniqueId == null) throw new ArgumentNullException(nameof(uniqueId));
+            UniqueId = (byte[])uniqueId.Clone();
             // timestampUtc records when we decoded the packet so downstream services can order events.
             TimestampUtc = timestampUtc;
         }

@@ -1233,16 +1233,10 @@ namespace Photobooth
                 await progressTask;
 
                 // Stage 4: Finishing (85-100%)
+                // Note: printSuccess is guaranteed to be true here because we return early if it's false (line 1221)
                 Dispatcher.Invoke(() =>
                 {
-                if (printSuccess)
-                {
                     StatusText.Text = "Finishing...";
-                }
-                else
-                {
-                    StatusText.Text = "Some prints may have failed...";
-                }
                 });
                 
                 // Final delay before completing (minimum 2 seconds)

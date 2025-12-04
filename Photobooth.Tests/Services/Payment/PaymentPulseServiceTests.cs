@@ -4,6 +4,7 @@ using Photobooth.Services.Payment;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Moq;
 using Photobooth.Services;
@@ -91,8 +92,8 @@ namespace Photobooth.Tests.Services.Payment
 
             // Assert
             _processedEvents.Should().NotBeNull();
-            _processedEvents!.Should().HaveCount(1);
-            _processedEvents[0].Delta.Should().Be(5); // Full pulse count credited
+            _processedEvents.Should().HaveCount(1);
+            _processedEvents![0].Delta.Should().Be(5); // Full pulse count credited
             _processedEvents[0].Identifier.Should().Be(PulseIdentifier.BillAccepter);
             _processedEvents[0].RawCount.Should().Be(5);
         }
@@ -146,8 +147,8 @@ namespace Photobooth.Tests.Services.Payment
 
             // Assert: Both should be processed
             _processedEvents.Should().NotBeNull();
-            _processedEvents!.Should().HaveCount(2);
-            _processedEvents[0].Delta.Should().Be(5);
+            _processedEvents.Should().HaveCount(2);
+            _processedEvents![0].Delta.Should().Be(5);
             _processedEvents[1].Delta.Should().Be(5);
         }
 
@@ -175,8 +176,8 @@ namespace Photobooth.Tests.Services.Payment
 
             // Assert: All 3 should be credited
             _processedEvents.Should().NotBeNull();
-            _processedEvents!.Should().HaveCount(3);
-            _processedEvents.Sum(e => e.Delta).Should().Be(15); // Total $15
+            _processedEvents.Should().HaveCount(3);
+            _processedEvents!.Sum(e => e.Delta).Should().Be(15); // Total $15
         }
 
         #endregion
@@ -229,8 +230,9 @@ namespace Photobooth.Tests.Services.Payment
             _mockDeviceClient.Raise(x => x.PulseCountReceived += null, _mockDeviceClient.Object, args2);
 
             // Assert: Both should be processed (different pulse counts)
-            _processedEvents!.Should().HaveCount(2);
-            _processedEvents[0].Delta.Should().Be(5);
+            _processedEvents.Should().NotBeNull();
+            _processedEvents.Should().HaveCount(2);
+            _processedEvents![0].Delta.Should().Be(5);
             _processedEvents[1].Delta.Should().Be(8);
         }
 
@@ -255,8 +257,9 @@ namespace Photobooth.Tests.Services.Payment
             _mockDeviceClient.Raise(x => x.PulseCountReceived += null, _mockDeviceClient.Object, args2);
 
             // Assert: Both should be processed (counter reset detected)
-            _processedEvents!.Should().HaveCount(2);
-            _processedEvents[1].Delta.Should().Be(3);
+            _processedEvents.Should().NotBeNull();
+            _processedEvents.Should().HaveCount(2);
+            _processedEvents![1].Delta.Should().Be(3);
         }
 
         #endregion
@@ -431,13 +434,14 @@ namespace Photobooth.Tests.Services.Payment
         public async Task StopAsync_DelegatesToDeviceClient()
         {
             // Arrange
-            _mockDeviceClient!.Setup(x => x.StopAsync()).Returns(Task.CompletedTask);
+            // Explicitly pass CancellationToken to avoid expression tree error with optional parameters
+            _mockDeviceClient!.Setup(x => x.StopAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
             // Act
             await _service!.StopAsync();
 
             // Assert
-            _mockDeviceClient.Verify(x => x.StopAsync(), Times.Once);
+            _mockDeviceClient.Verify(x => x.StopAsync(It.IsAny<CancellationToken>()), Times.Once);
         }
 
         [TestMethod]

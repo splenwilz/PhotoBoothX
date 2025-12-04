@@ -622,8 +622,13 @@ namespace Photobooth
             // Unsubscribe from PropertyChanged events to prevent memory leaks
             UnsubscribeFromProductViewModels();
 
+            // Unsubscribe from pulse events (service continues running for app-wide credit processing)
+            // The service is managed at app startup and should run continuously throughout the session
             _paymentPulseService.PulseDeltaProcessed -= PaymentPulseService_PulseDeltaProcessed;
-            _ = _paymentPulseService.StopAsync();
+            
+            // Note: We do NOT stop the service here - it should run continuously.
+            // App.xaml.cs subscribes to PulseDeltaProcessed at startup, and MainWindow
+            // auto-starts the service. The dashboard only manages UI event subscriptions.
             UpdatePulseMonitorUi();
         }
 
@@ -3671,7 +3676,11 @@ namespace Photobooth
 
             if (!Dispatcher.CheckAccess())
             {
-                await Dispatcher.InvokeAsync(() => ApplyPulseCreditsInternalAsync(args));
+                // Use double await to properly await the inner async work
+                // Dispatcher.InvokeAsync returns DispatcherOperation<Task>, which completes when
+                // the delegate returns the Task, not when that Task finishes. The double await
+                // ensures we await both the dispatcher operation AND the actual async operation completion.
+                await await Dispatcher.InvokeAsync(() => ApplyPulseCreditsInternalAsync(args));
                 return;
             }
 
@@ -3682,9 +3691,10 @@ namespace Photobooth
         {
             try
             {
-                // Note: args.Delta now contains the full pulse count to credit (not a delta)
-                // This is because pulseCount = dollar amount (5 pulses = $5)
-                var pulseCount = args.Delta; // Full pulse count from PCB
+                // Note: args.Delta contains the pre-computed credit amount (pulse count to credit)
+                // args.RawCount is the cumulative hardware count from the PCB
+                // args.Delta is the processed amount that should be credited (1 pulse = $1)
+                var pulseCount = args.Delta; // Pre-computed credit amount (not raw hardware count)
                 var amount = pulseCount * 1.00m; // 1 pulse = $1 credit per current policy
                 var source = args.Identifier == PulseIdentifier.BillAccepter ? "Bill Accepter" : "Card Accepter";
 
@@ -5927,6 +5937,7 @@ namespace Photobooth
 
         /// <summary>
         /// Automatically start pulse monitoring on app startup (called from MainWindow)
+        /// Auto-detects available COM ports, preferring COM5 if available, then any COM port.
         /// </summary>
         public async Task StartPulseMonitoringAutoAsync()
         {
@@ -5937,11 +5948,25 @@ namespace Photobooth
                 return;
             }
 
-            const string portName = "COM5"; // Hardcoded port as per user requirement
-            
             try
             {
                 _isPulseMonitorBusy = true;
+                
+                // Auto-detect COM port (prefers COM5 if available, then any COM port)
+                var availablePorts = System.IO.Ports.SerialPort.GetPortNames();
+                if (availablePorts.Length == 0)
+                {
+                    throw new InvalidOperationException("No serial ports detected on system");
+                }
+                
+                // Prefer COM5 if available, otherwise use first available COM port
+                var portName = availablePorts.FirstOrDefault(p => string.Equals(p, "COM5", StringComparison.OrdinalIgnoreCase))
+                    ?? availablePorts.FirstOrDefault(p => p.StartsWith("COM", StringComparison.OrdinalIgnoreCase));
+                
+                if (portName == null)
+                {
+                    throw new InvalidOperationException("No COM ports available for pulse monitoring");
+                }
                 
                 Console.WriteLine($"[AdminDashboard] Auto-starting pulse monitor on {portName}...");
                 LogToDiagnostics($"Auto-starting pulse monitor on {portName}...");
@@ -5951,14 +5976,13 @@ namespace Photobooth
                 Console.WriteLine($"[AdminDashboard] Pulse monitor auto-started successfully on {portName}");
                 LogToDiagnostics($"✓ Pulse monitor listening on {portName} (auto-started)");
                 
-                // Update UI if available
                 UpdatePulseMonitorUi();
             }
             catch (Exception ex)
             {
                 // Log but don't show notification (silent failure on startup)
                 Console.WriteLine($"[AdminDashboard] Auto-start pulse monitor failed: {ex.Message}");
-                LoggingService.Application.Warning("Pulse monitor auto-start failed", ("Component", "AdminDashboard"), ("Port", portName), ("Exception", ex.Message));
+                LoggingService.Application.Warning("Pulse monitor auto-start failed", ("Component", "AdminDashboard"), ("Exception", ex.Message));
                 LogToDiagnostics($"⚠ Auto-start failed: {ex.Message} (monitor can be started manually)");
             }
             finally
