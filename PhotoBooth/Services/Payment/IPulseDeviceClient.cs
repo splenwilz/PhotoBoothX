@@ -26,6 +26,12 @@ namespace Photobooth.Services.Payment
         bool IsRunning { get; }
 
         /// <summary>
+        /// True if the serial port connection has encountered an error (device disconnected, etc.)
+        /// This helps detect immediate disconnections rather than waiting for the 60-second data timeout.
+        /// </summary>
+        bool HasConnectionError { get; }
+
+        /// <summary>
         /// Opens the provided COM port and begins parsing VHMI packets.
         /// </summary>
         Task StartAsync(string portName, CancellationToken cancellationToken = default);

@@ -45,6 +45,8 @@ namespace Photobooth.Services.Payment
         private readonly object _retryQueueLock = new();
         private bool _isInitialized = false;
         private CancellationTokenSource? _retryCancellationTokenSource;
+        private DateTime? _lastDataReceivedAt; // Track when we last received data from PCB
+        private readonly object _lastDataLock = new();
 
         public event EventHandler<PulseDeltaEventArgs>? PulseDeltaProcessed;
 
@@ -52,14 +54,40 @@ namespace Photobooth.Services.Payment
 
         public string? CurrentPortName => _deviceClient.CurrentPortName;
 
+        public bool HasConnectionError => _deviceClient.HasConnectionError;
+
+        /// <summary>
+        /// Returns true if we've received data from the PCB recently (within the last 60 seconds).
+        /// This helps distinguish between "port is open" vs "PCB is actually connected and responding".
+        /// </summary>
+        public bool HasReceivedDataRecently
+        {
+            get
+            {
+                lock (_lastDataLock)
+                {
+                    if (_lastDataReceivedAt == null)
+                    {
+                        return false; // Never received data
+                    }
+                    // Consider "recent" if data was received within the last 60 seconds
+                    return (DateTime.UtcNow - _lastDataReceivedAt.Value).TotalSeconds < 60;
+                }
+            }
+        }
+
         public PaymentPulseService()
             : this(new PulseDeviceClient(), null)
         {
         }
 
-        internal PaymentPulseService(IPulseDeviceClient deviceClient, IDatabaseService? databaseService)
+        /// <summary>
+        /// Constructor for dependency injection and testing.
+        /// Allows injecting mock dependencies for unit testing.
+        /// </summary>
+        public PaymentPulseService(IPulseDeviceClient deviceClient, IDatabaseService? databaseService)
         {
-            _deviceClient = deviceClient;
+            _deviceClient = deviceClient ?? throw new ArgumentNullException(nameof(deviceClient));
             _databaseService = databaseService;
             _deviceClient.PulseCountReceived += HandlePulseCountReceived;
         }
@@ -254,12 +282,21 @@ namespace Photobooth.Services.Payment
                     ("Port", portName));
             }
             
+            // Reset last data received timestamp when starting (will be updated when we receive data)
+            lock (_lastDataLock)
+            {
+                _lastDataReceivedAt = null;
+            }
+            
             await _deviceClient.StartAsync(portName, cancellationToken).ConfigureAwait(false);
         }
 
         public async Task StopAsync(CancellationToken cancellationToken = default)
         {
             await _deviceClient.StopAsync(cancellationToken).ConfigureAwait(false);
+            // NOTE: We intentionally do NOT clear _processedUniqueIds here to prevent duplicate credits
+            // if the service is restarted without calling InitializeAsync again.
+            // Only clear _lastCounts (used for backward compatibility with old packet format).
             ResetCounters();
         }
 
@@ -267,8 +304,23 @@ namespace Photobooth.Services.Payment
         {
             lock (_syncRoot)
             {
-                _lastCounts.Clear();
+                _lastCounts.Clear(); // Clear old format counters (backward compatibility)
+                // DO NOT clear _processedUniqueIds - it must persist across stop/start cycles
+                // to prevent duplicate credits. The set is loaded from database on InitializeAsync
+                // and should only be cleared on explicit reset or app shutdown.
+            }
+        }
+
+        /// <summary>
+        /// Clear all processed unique IDs from memory (for testing/reset purposes).
+        /// This should be called after deleting all unique IDs from the database to keep them in sync.
+        /// </summary>
+        public void ClearProcessedUniqueIds()
+        {
+            lock (_syncRoot)
+            {
                 _processedUniqueIds.Clear();
+                LoggingService.Application.Information("Cleared all processed unique IDs from memory", ("Component", "PaymentPulseService"));
             }
         }
 
@@ -298,6 +350,12 @@ namespace Photobooth.Services.Payment
 
         private void HandlePulseCountReceived(object? sender, PulseCountEventArgs e)
         {
+            // Update last data received timestamp to track if PCB is actually responding
+            lock (_lastDataLock)
+            {
+                _lastDataReceivedAt = DateTime.UtcNow;
+            }
+
             // Use unique ID to prevent duplicate credits (new format from PCB engineer)
             // If unique ID is all zeros (old format), fall back to pulseCount-based tracking
             bool shouldCredit;
@@ -408,6 +466,7 @@ namespace Photobooth.Services.Payment
                 else
                 {
                     // Old format (no unique ID) - fall back to pulseCount-based tracking
+                    // NOTE: PulseCount is CUMULATIVE, so we must calculate the delta to avoid double-crediting
                     var lastCreditedCount = _lastCounts.TryGetValue(e.Identifier, out var value) ? value : -1;
 
                     if (e.PulseCount == lastCreditedCount)
@@ -418,17 +477,26 @@ namespace Photobooth.Services.Payment
                     }
                     else if (e.PulseCount < lastCreditedCount)
                     {
-                        // Counter reset detected (PCB rebooted or reset)
+                        // Counter reset detected (PCB rebooted or reset) - treat as new transaction
                         Console.WriteLine($"[PaymentPulseService] {DateTime.Now:HH:mm:ss} COUNTER RESET DETECTED: {e.Identifier} - LastCredited={lastCreditedCount}, Received={e.PulseCount}, treating as new transaction");
                         shouldCredit = true;
-                        pulsesToCredit = e.PulseCount;
+                        pulsesToCredit = e.PulseCount; // First value after reset is the full amount
                         _lastCounts[e.Identifier] = e.PulseCount;
                     }
                     else
                     {
-                        // New pulseCount value - credit the full amount
+                        // New pulseCount value - credit only the delta (increment since last credited)
+                        // Example: lastCredited=3, new=6 -> credit 3 (not 6) to avoid double-crediting
+                        pulsesToCredit = e.PulseCount - lastCreditedCount;
+                        
+                        // Defensive check: if delta is negative (shouldn't happen after reset check), treat as new
+                        if (pulsesToCredit < 0)
+                        {
+                            Console.WriteLine($"[PaymentPulseService] {DateTime.Now:HH:mm:ss} WARNING: Negative delta detected: LastCredited={lastCreditedCount}, Received={e.PulseCount}, treating as new transaction");
+                            pulsesToCredit = e.PulseCount;
+                        }
+                        
                         shouldCredit = true;
-                        pulsesToCredit = e.PulseCount;
                         _lastCounts[e.Identifier] = e.PulseCount;
                     }
                 }

@@ -2120,7 +2120,14 @@
                                                 <Button Name="StopPulseMonitorButton" Content="Stop Monitor"
                                                         Style="{StaticResource ModernButtonStyle}"
                                                         Background="#9CA3AF" Foreground="White" FontSize="11"
+                                                        Margin="0,0,8,0"
                                                         Click="StopPulseMonitorButton_Click"/>
+
+                                                <Button Name="ClearPulseUniqueIdsButton" Content="Clear All Unique IDs"
+                                                        Style="{StaticResource ModernButtonStyle}"
+                                                        Background="#DC2626" Foreground="White" FontSize="11"
+                                                        ToolTip="Delete all processed pulse unique IDs from database (for testing/reset)"
+                                                        Click="ClearPulseUniqueIdsButton_Click"/>
                                             </StackPanel>
                                         </StackPanel>
                                     </StackPanel>

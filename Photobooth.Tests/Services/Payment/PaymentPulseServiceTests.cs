@@ -45,15 +45,10 @@ namespace Photobooth.Tests.Services.Payment
                     It.IsAny<decimal>()))
                 .ReturnsAsync(Photobooth.Models.DatabaseResult.SuccessResult());
 
-            // Create service with mocks using reflection (constructor is internal)
-            var constructor = typeof(PaymentPulseService).GetConstructor(
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance,
-                null,
-                new[] { typeof(IPulseDeviceClient), typeof(IDatabaseService) },
-                null);
-            _service = (PaymentPulseService)constructor!.Invoke(new object[] { _mockDeviceClient.Object, _mockDatabaseService.Object });
+            // Create service with mocks using public constructor (allows dependency injection for testing)
+            _service = new PaymentPulseService(_mockDeviceClient.Object, _mockDatabaseService.Object);
             
-            // Ensure database service is set (in case constructor sets it to null)
+            // Ensure database service is set (constructor accepts nullable, but we want it set for tests)
             _service.SetDatabaseService(_mockDatabaseService.Object);
             
             _service.PulseDeltaProcessed += (sender, args) => _processedEvents!.Add(args);
@@ -352,9 +347,7 @@ namespace Photobooth.Tests.Services.Payment
                 uniqueId: uniqueId,
                 timestampUtc: DateTime.UtcNow);
 
-            // Set database service on the service instance
-            _service!.SetDatabaseService(_mockDatabaseService!.Object);
-
+            // Database service is already set in Setup() - no need to set again
             var expectedUniqueIdHex = Convert.ToHexString(uniqueId).ToLowerInvariant();
             var saveCalled = false;
 
@@ -370,19 +363,21 @@ namespace Photobooth.Tests.Services.Payment
             // Act
             _mockDeviceClient!.Raise(x => x.PulseCountReceived += null, _mockDeviceClient.Object, args);
 
-            // Wait for async save to complete (Task.Run needs time to execute)
-            // Retry verification with exponential backoff
-            for (int i = 0; i < 10; i++)
+            // Wait for async save to complete (fire-and-forget Task.Run needs time to execute)
+            // NOTE: Production code uses fire-and-forget pattern to avoid blocking event handler.
+            // This polling is necessary to test the async save operation.
+            var maxWaitTime = TimeSpan.FromSeconds(2); // Reasonable timeout for test
+            var pollInterval = TimeSpan.FromMilliseconds(50);
+            var elapsed = TimeSpan.Zero;
+            
+            while (!saveCalled && elapsed < maxWaitTime)
             {
-                await Task.Delay(100);
-                if (saveCalled)
-                {
-                    break;
-                }
+                await Task.Delay(pollInterval);
+                elapsed = elapsed.Add(pollInterval);
             }
 
             // Assert: Verify the save was called
-            saveCalled.Should().BeTrue("Database save should have been called");
+            saveCalled.Should().BeTrue($"Database save should have been called within {maxWaitTime.TotalSeconds} seconds");
             _mockDatabaseService.Verify(
                 x => x.SaveProcessedPulseUniqueIdAsync(
                     It.Is<string>(id => id == expectedUniqueIdHex),

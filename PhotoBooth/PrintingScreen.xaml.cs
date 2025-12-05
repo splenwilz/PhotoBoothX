@@ -1372,8 +1372,8 @@ namespace Photobooth
                             Console.WriteLine($"!!! RetryButton.IsEnabled set to: {RetryButton.IsEnabled} !!!");
                     }
                     
-                    // Start countdown timer to return to welcome screen
-                    StartCountdownTimer();
+                    // Don't start countdown timer on credit deduction failure - user needs time to read error
+                    // and decide whether to retry or contact staff. Timer will start on success path above.
                     }
                 });
 

@@ -254,6 +254,9 @@ namespace Photobooth
         // Pulse monitoring
         private readonly IPaymentPulseService _paymentPulseService = PaymentPulseService.Instance;
         private bool _isPulseMonitorBusy;
+        private System.Windows.Threading.DispatcherTimer? _pulseMonitorRetryTimer;
+        private bool _userManuallyStopped = false; // Track if user intentionally stopped monitoring
+        private bool _wasReceivingData = false; // Track if we were previously receiving data (for reconnection detection)
 
         #endregion
 
@@ -625,6 +628,9 @@ namespace Photobooth
             // Unsubscribe from pulse events (service continues running for app-wide credit processing)
             // The service is managed at app startup and should run continuously throughout the session
             _paymentPulseService.PulseDeltaProcessed -= PaymentPulseService_PulseDeltaProcessed;
+            
+            // Stop the retry timer
+            StopPulseMonitorRetryTimer();
             
             // Note: We do NOT stop the service here - it should run continuously.
             // App.xaml.cs subscribes to PulseDeltaProcessed at startup, and MainWindow
@@ -5914,6 +5920,10 @@ namespace Photobooth
                 await _paymentPulseService.StartAsync(portName);
                 LogToDiagnostics($"Pulse monitor listening on {portName}");
 
+                // Reset manual stop flag and stop retry timer since user manually started
+                _userManuallyStopped = false;
+                StopPulseMonitorRetryTimer();
+
                 NotificationService.Instance.ShowSuccess(
                     "Pulse Monitor",
                     $"Listening for VHMI pulses on {portName}",
@@ -5941,10 +5951,15 @@ namespace Photobooth
         /// </summary>
         public async Task StartPulseMonitoringAutoAsync()
         {
+            var timestamp = DateTime.Now.ToString("HH:mm:ss");
+            Console.WriteLine($"[AdminDashboard] [{timestamp}] ===== STARTING AUTO-START PULSE MONITOR ===== ");
+            Console.WriteLine($"[AdminDashboard] [{timestamp}]   - IsRunning: {_paymentPulseService.IsRunning}");
+            Console.WriteLine($"[AdminDashboard] [{timestamp}]   - IsBusy: {_isPulseMonitorBusy}");
+            
             // Don't start if already running or busy
             if (_paymentPulseService.IsRunning || _isPulseMonitorBusy)
             {
-                Console.WriteLine($"[AdminDashboard] Pulse monitor already running, skipping auto-start");
+                Console.WriteLine($"[AdminDashboard] [{timestamp}] ⏭️ Pulse monitor already running, skipping auto-start");
                 return;
             }
 
@@ -5954,6 +5969,8 @@ namespace Photobooth
                 
                 // Auto-detect COM port (prefers COM5 if available, then any COM port)
                 var availablePorts = System.IO.Ports.SerialPort.GetPortNames();
+                Console.WriteLine($"[AdminDashboard] [{timestamp}] Available COM ports: {string.Join(", ", availablePorts)}");
+                
                 if (availablePorts.Length == 0)
                 {
                     throw new InvalidOperationException("No serial ports detected on system");
@@ -5968,13 +5985,26 @@ namespace Photobooth
                     throw new InvalidOperationException("No COM ports available for pulse monitoring");
                 }
                 
-                Console.WriteLine($"[AdminDashboard] Auto-starting pulse monitor on {portName}...");
+                // Log why this port was selected
+                if (string.Equals(portName, "COM5", StringComparison.OrdinalIgnoreCase))
+                {
+                    Console.WriteLine($"[AdminDashboard] [{timestamp}] Selected COM5 (preferred port)");
+                }
+                else
+                {
+                    Console.WriteLine($"[AdminDashboard] [{timestamp}] COM5 not available, selected {portName} (first available COM port)");
+                }
+                
+                Console.WriteLine($"[AdminDashboard] [{timestamp}] Auto-starting pulse monitor on {portName}...");
                 LogToDiagnostics($"Auto-starting pulse monitor on {portName}...");
                 
                 await _paymentPulseService.StartAsync(portName);
                 
                 Console.WriteLine($"[AdminDashboard] Pulse monitor auto-started successfully on {portName}");
                 LogToDiagnostics($"✓ Pulse monitor listening on {portName} (auto-started)");
+                
+                // Reset manual stop flag since we successfully started
+                _userManuallyStopped = false;
                 
                 UpdatePulseMonitorUi();
             }
@@ -5983,12 +6013,23 @@ namespace Photobooth
                 // Log but don't show notification (silent failure on startup)
                 Console.WriteLine($"[AdminDashboard] Auto-start pulse monitor failed: {ex.Message}");
                 LoggingService.Application.Warning("Pulse monitor auto-start failed", ("Component", "AdminDashboard"), ("Exception", ex.Message));
-                LogToDiagnostics($"⚠ Auto-start failed: {ex.Message} (monitor can be started manually)");
+                LogToDiagnostics($"⚠ Auto-start failed: {ex.Message} (will retry automatically when PCB is connected)");
             }
             finally
             {
                 _isPulseMonitorBusy = false;
                 UpdatePulseMonitorUi();
+                
+                // Always start retry timer as a safety net - even if port opened successfully,
+                // the PCB might not actually be connected/responding. The timer will stop itself
+                // if monitoring is actually working (receiving data).
+                var finalTimestamp = DateTime.Now.ToString("HH:mm:ss");
+                Console.WriteLine($"[AdminDashboard] [{finalTimestamp}] Finally block - IsRunning: {_paymentPulseService.IsRunning}");
+                
+                // Start retry timer regardless - it will check if we're actually receiving data
+                // and stop itself if monitoring is working properly
+                Console.WriteLine($"[AdminDashboard] [{finalTimestamp}] Starting retry timer as safety net (will stop if PCB is actually working)...");
+                StartPulseMonitorRetryTimer();
             }
         }
 
@@ -6013,6 +6054,10 @@ namespace Photobooth
                 LogToDiagnostics("Stopping pulse monitor...");
                 await _paymentPulseService.StopAsync();
                 LogToDiagnostics("Pulse monitor stopped and counters reset.");
+
+                // Mark that user manually stopped - don't auto-retry
+                _userManuallyStopped = true;
+                StopPulseMonitorRetryTimer();
 
                 NotificationService.Instance.ShowInfo(
                     "Pulse Monitor",
@@ -6071,6 +6116,412 @@ namespace Photobooth
             if (StopPulseMonitorButton != null)
             {
                 StopPulseMonitorButton.IsEnabled = isRunning && !isBusy;
+            }
+        }
+
+        /// <summary>
+        /// Start the retry timer to periodically attempt auto-start when PCB is connected
+        /// </summary>
+        private void StartPulseMonitorRetryTimer()
+        {
+            // Don't start if user manually stopped or timer already running
+            if (_userManuallyStopped)
+            {
+                Console.WriteLine($"[AdminDashboard] Retry timer NOT started: User manually stopped monitoring");
+                return;
+            }
+            
+            if (_pulseMonitorRetryTimer != null)
+            {
+                Console.WriteLine($"[AdminDashboard] Retry timer already running, skipping start");
+                return;
+            }
+
+            _pulseMonitorRetryTimer = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromSeconds(30) // Check every 30 seconds
+            };
+            _pulseMonitorRetryTimer.Tick += PulseMonitorRetryTimer_Tick;
+            _pulseMonitorRetryTimer.Start();
+            
+            Console.WriteLine($"[AdminDashboard] ✓✓✓ STARTED PULSE MONITOR RETRY TIMER ✓✓✓ (checks every 30 seconds)");
+            Console.WriteLine($"[AdminDashboard] Timer will attempt to auto-start when PCB is connected");
+            LogToDiagnostics("Retry timer started - will auto-detect PCB connection");
+        }
+
+        /// <summary>
+        /// Stop the retry timer
+        /// </summary>
+        private void StopPulseMonitorRetryTimer()
+        {
+            if (_pulseMonitorRetryTimer != null)
+            {
+                _pulseMonitorRetryTimer.Stop();
+                _pulseMonitorRetryTimer.Tick -= PulseMonitorRetryTimer_Tick;
+                _pulseMonitorRetryTimer = null;
+                Console.WriteLine($"[AdminDashboard] Stopped pulse monitor retry timer");
+            }
+        }
+
+        /// <summary>
+        /// Timer callback: Attempt to auto-start pulse monitoring if not running and PCB is connected
+        /// Also checks if monitoring is running but might need to be restarted (port open but no PCB)
+        /// </summary>
+        private async void PulseMonitorRetryTimer_Tick(object? sender, EventArgs e)
+        {
+            var timestamp = DateTime.Now.ToString("HH:mm:ss");
+            Console.WriteLine($"[AdminDashboard] [{timestamp}] ===== RETRY TIMER TICK ===== Checking for PCB connection...");
+            Console.WriteLine($"[AdminDashboard] [{timestamp}]   - IsRunning: {_paymentPulseService.IsRunning}");
+            Console.WriteLine($"[AdminDashboard] [{timestamp}]   - CurrentPort: {_paymentPulseService.CurrentPortName ?? "None"}");
+            Console.WriteLine($"[AdminDashboard] [{timestamp}]   - IsBusy: {_isPulseMonitorBusy}");
+            Console.WriteLine($"[AdminDashboard] [{timestamp}]   - UserManuallyStopped: {_userManuallyStopped}");
+            
+            // Don't retry if user manually stopped
+            if (_userManuallyStopped)
+            {
+                Console.WriteLine($"[AdminDashboard] [{timestamp}] ❌ Retry SKIPPED: User manually stopped monitoring");
+                return;
+            }
+            
+            // If monitoring is running, check if we're actually receiving data from the PCB
+            // Port can open even if PCB isn't connected, so we need to verify data is coming
+            if (_paymentPulseService.IsRunning)
+            {
+                bool isReceivingData = _paymentPulseService.HasReceivedDataRecently;
+                bool hasConnectionError = _paymentPulseService.HasConnectionError;
+                
+                // Check for immediate connection errors (device unplugged, etc.)
+                if (hasConnectionError)
+                {
+                    Console.WriteLine($"[AdminDashboard] [{timestamp}] ⚠️ CONNECTION ERROR DETECTED: Serial port error (PCB may have been unplugged)");
+                    Console.WriteLine($"[AdminDashboard] [{timestamp}]   Attempting immediate reconnection...");
+                    LogToDiagnostics("PCB connection error detected - attempting immediate reconnection");
+                    _wasReceivingData = false; // Reset tracking since we had an error
+                    
+                    var currentPort = _paymentPulseService.CurrentPortName;
+                    var availablePorts = System.IO.Ports.SerialPort.GetPortNames();
+                    Console.WriteLine($"[AdminDashboard] [{timestamp}]   Available ports: {string.Join(", ", availablePorts)}");
+                    
+                    // Try to reconnect - first try current port, then try other ports
+                    bool reconnected = false;
+                    
+                    if (currentPort != null && availablePorts.Contains(currentPort, StringComparer.OrdinalIgnoreCase))
+                    {
+                        try
+                        {
+                            Console.WriteLine($"[AdminDashboard] [{timestamp}] 🔄 Reconnecting on {currentPort} due to connection error...");
+                            _isPulseMonitorBusy = true;
+                            await _paymentPulseService.StopAsync();
+                            await Task.Delay(1000); // Delay to ensure port is fully released
+                            await _paymentPulseService.StartAsync(currentPort);
+                            Console.WriteLine($"[AdminDashboard] [{timestamp}] ✓ Reconnected on {currentPort} - waiting for data...");
+                            LogToDiagnostics($"Reconnected on {currentPort} after connection error");
+                            reconnected = true;
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"[AdminDashboard] [{timestamp}] ❌ Reconnection on {currentPort} failed: {ex.Message}");
+                            LoggingService.Application.Warning("Failed to reconnect after connection error", ("Port", currentPort), ("Exception", ex.Message));
+                        }
+                        finally
+                        {
+                            _isPulseMonitorBusy = false;
+                            UpdatePulseMonitorUi();
+                        }
+                    }
+                    
+                    // If reconnection on current port failed, try other ports
+                    if (!reconnected)
+                    {
+                        var preferredPort = availablePorts.FirstOrDefault(p => string.Equals(p, "COM5", StringComparison.OrdinalIgnoreCase));
+                        var portToTry = preferredPort ?? availablePorts.FirstOrDefault(p => p.StartsWith("COM", StringComparison.OrdinalIgnoreCase));
+                        
+                        if (portToTry != null)
+                        {
+                            try
+                            {
+                                Console.WriteLine($"[AdminDashboard] [{timestamp}] 🔄 Trying alternative port {portToTry} after connection error...");
+                                _isPulseMonitorBusy = true;
+                                // Port might already be stopped from previous attempt, but try anyway
+                                try { await _paymentPulseService.StopAsync(); } catch { }
+                                await Task.Delay(1000);
+                                await _paymentPulseService.StartAsync(portToTry);
+                                Console.WriteLine($"[AdminDashboard] [{timestamp}] ✓ Reconnected on {portToTry} - waiting for data...");
+                                LogToDiagnostics($"Reconnected on {portToTry} after connection error");
+                                reconnected = true;
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"[AdminDashboard] [{timestamp}] ❌ Reconnection on {portToTry} failed: {ex.Message}");
+                                LoggingService.Application.Warning("Failed to reconnect on alternative port", ("Port", portToTry), ("Exception", ex.Message));
+                            }
+                            finally
+                            {
+                                _isPulseMonitorBusy = false;
+                                UpdatePulseMonitorUi();
+                            }
+                        }
+                        else
+                        {
+                            Console.WriteLine($"[AdminDashboard] [{timestamp}] ⚠️ No COM ports available - PCB may be unplugged. Will retry in 30 seconds.");
+                            LogToDiagnostics("No COM ports available - waiting for PCB to be reconnected");
+                        }
+                    }
+                    
+                    // Don't stop retry timer - keep checking until we successfully reconnect AND receive data
+                    return;
+                }
+                
+                // Only stop timer if we're receiving data AND there's no connection error
+                // (connection error takes priority - even if we received data recently, if there's an error, keep trying)
+                if (isReceivingData && !hasConnectionError)
+                {
+                    // PCB is actually connected and responding (no errors) - stop retry timer
+                    _wasReceivingData = true; // Track that we were receiving data
+                    Console.WriteLine($"[AdminDashboard] [{timestamp}] ✓ PCB is connected and responding on {_paymentPulseService.CurrentPortName} - stopping retry timer");
+                    StopPulseMonitorRetryTimer();
+                    return;
+                }
+                
+                // If we have connection error, don't stop timer even if we received data recently
+                // (the recent data might be stale from before the error occurred)
+                if (hasConnectionError)
+                {
+                    // Already handled above - return to keep timer running
+                    return;
+                }
+                else
+                {
+                    // Port is open but no data received
+                    var availablePorts = System.IO.Ports.SerialPort.GetPortNames();
+                    var currentPort = _paymentPulseService.CurrentPortName;
+                    var preferredPort = availablePorts.FirstOrDefault(p => string.Equals(p, "COM5", StringComparison.OrdinalIgnoreCase));
+                    
+                    // Check if we were previously receiving data (PCB was unplugged/reconnected)
+                    if (_wasReceivingData)
+                    {
+                        // We were receiving data but now we're not - PCB was likely unplugged
+                        Console.WriteLine($"[AdminDashboard] [{timestamp}] ⚠️ DATA LOSS DETECTED: PCB was receiving data but stopped (may have been unplugged)");
+                        Console.WriteLine($"[AdminDashboard] [{timestamp}]   Attempting to reconnect...");
+                        LogToDiagnostics("PCB data loss detected - attempting reconnection");
+                        _wasReceivingData = false; // Reset flag
+                        
+                        // Try reconnecting on current port first (PCB might still be on same port)
+                        if (currentPort == null)
+                        {
+                            Console.WriteLine($"[AdminDashboard] [{timestamp}] ❌ Cannot reconnect: current port is null");
+                            return;
+                        }
+                        
+                        try
+                        {
+                            Console.WriteLine($"[AdminDashboard] [{timestamp}] 🔄 Reconnecting on current port {currentPort}...");
+                            _isPulseMonitorBusy = true;
+                            await _paymentPulseService.StopAsync();
+                            await Task.Delay(1000); // Longer delay to ensure port is fully released
+                            await _paymentPulseService.StartAsync(currentPort);
+                            Console.WriteLine($"[AdminDashboard] [{timestamp}] ✓ Reconnected on {currentPort} - waiting for data...");
+                            LogToDiagnostics($"Reconnected on {currentPort}");
+                            _isPulseMonitorBusy = false;
+                            UpdatePulseMonitorUi();
+                            return; // Wait for next check to see if data resumes
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"[AdminDashboard] [{timestamp}] ❌ Reconnection on {currentPort} failed: {ex.Message}");
+                            Console.WriteLine($"[AdminDashboard] [{timestamp}]   Will try other ports...");
+                            _isPulseMonitorBusy = false;
+                            UpdatePulseMonitorUi();
+                            // Fall through to try other ports
+                        }
+                    }
+                    
+                    // Port is open but no data received - PCB might not be connected OR we're on the wrong port
+                    Console.WriteLine($"[AdminDashboard] [{timestamp}] ⚠️ Port {currentPort} is open but no data received");
+                    Console.WriteLine($"[AdminDashboard] [{timestamp}]   Available ports: {string.Join(", ", availablePorts)}");
+                    
+                    // If we're not on COM5 and COM5 is now available, switch to it
+                    if (preferredPort != null && !string.Equals(currentPort, preferredPort, StringComparison.OrdinalIgnoreCase))
+                    {
+                        Console.WriteLine($"[AdminDashboard] [{timestamp}] 🔄 Switching from {currentPort} to preferred port {preferredPort}...");
+                        LogToDiagnostics($"Switching from {currentPort} to {preferredPort} (PCB may be on preferred port)");
+                        
+                        try
+                        {
+                            _isPulseMonitorBusy = true;
+                            await _paymentPulseService.StopAsync();
+                            await Task.Delay(500); // Brief delay to ensure port is fully closed
+                            await _paymentPulseService.StartAsync(preferredPort);
+                            Console.WriteLine($"[AdminDashboard] [{timestamp}] ✓ Switched to {preferredPort} - waiting for data...");
+                            LogToDiagnostics($"✓ Switched to {preferredPort}");
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"[AdminDashboard] [{timestamp}] ❌ Failed to switch to {preferredPort}: {ex.Message}");
+                            LoggingService.Application.Warning("Failed to switch pulse monitor port", ("FromPort", currentPort ?? "Unknown"), ("ToPort", preferredPort), ("Exception", ex.Message));
+                        }
+                        finally
+                        {
+                            _isPulseMonitorBusy = false;
+                            UpdatePulseMonitorUi();
+                        }
+                        return;
+                    }
+                    
+                    // If we're already on COM5 (or preferred port) but no data, check if other ports are available
+                    // and we haven't tried them yet (this handles cases where PCB might be on COM4, COM6, etc.)
+                    if (preferredPort == null || string.Equals(currentPort, preferredPort, StringComparison.OrdinalIgnoreCase))
+                    {
+                        // We're on the preferred port (or no preferred port available) but no data
+                        // Try other available ports one by one
+                        var otherPorts = availablePorts
+                            .Where(p => !string.Equals(p, currentPort, StringComparison.OrdinalIgnoreCase))
+                            .Where(p => p.StartsWith("COM", StringComparison.OrdinalIgnoreCase))
+                            .ToList();
+                        
+                        if (otherPorts.Count > 0)
+                        {
+                            // Try the first available port we haven't tried yet
+                            var nextPort = otherPorts.First();
+                            Console.WriteLine($"[AdminDashboard] [{timestamp}] 🔄 Trying alternative port {nextPort} (current {currentPort} has no data)...");
+                            LogToDiagnostics($"Trying alternative port {nextPort}");
+                            
+                            try
+                            {
+                                _isPulseMonitorBusy = true;
+                                await _paymentPulseService.StopAsync();
+                                await Task.Delay(500); // Brief delay to ensure port is fully closed
+                                await _paymentPulseService.StartAsync(nextPort);
+                                Console.WriteLine($"[AdminDashboard] [{timestamp}] ✓ Switched to {nextPort} - waiting for data...");
+                                LogToDiagnostics($"✓ Switched to {nextPort}");
+                                _wasReceivingData = false; // Reset tracking after port switch
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"[AdminDashboard] [{timestamp}] ❌ Failed to switch to {nextPort}: {ex.Message}");
+                                LoggingService.Application.Warning("Failed to switch pulse monitor port", ("FromPort", currentPort ?? "Unknown"), ("ToPort", nextPort), ("Exception", ex.Message));
+                            }
+                            finally
+                            {
+                                _isPulseMonitorBusy = false;
+                                UpdatePulseMonitorUi();
+                            }
+                        }
+                        else
+                        {
+                            Console.WriteLine($"[AdminDashboard] [{timestamp}]   No other ports available - waiting for PCB to connect on {currentPort}");
+                        }
+                    }
+                    
+                    return;
+                }
+            }
+            
+            if (_isPulseMonitorBusy)
+            {
+                Console.WriteLine($"[AdminDashboard] [{timestamp}] ⏳ Retry SKIPPED: Monitor is busy");
+                return;
+            }
+
+            // Attempt auto-start
+            try
+            {
+                var availablePorts = System.IO.Ports.SerialPort.GetPortNames();
+                Console.WriteLine($"[AdminDashboard] [{timestamp}] 🔍 Available COM ports: {string.Join(", ", availablePorts)}");
+                
+                if (availablePorts.Length == 0)
+                {
+                    Console.WriteLine($"[AdminDashboard] [{timestamp}] ⚠️ Retry SKIPPED: No COM ports detected (will retry in 30s)");
+                    return; // No ports available yet, try again next interval
+                }
+
+                // Prefer COM5 if available, otherwise use first available COM port
+                var portName = availablePorts.FirstOrDefault(p => string.Equals(p, "COM5", StringComparison.OrdinalIgnoreCase))
+                    ?? availablePorts.FirstOrDefault(p => p.StartsWith("COM", StringComparison.OrdinalIgnoreCase));
+
+                if (portName == null)
+                {
+                    Console.WriteLine($"[AdminDashboard] [{timestamp}] ⚠️ Retry SKIPPED: No valid COM port found (will retry in 30s)");
+                    return; // No valid COM port, try again next interval
+                }
+
+                Console.WriteLine($"[AdminDashboard] [{timestamp}] 🚀 ATTEMPTING to start pulse monitor on {portName}...");
+                LogToDiagnostics($"Retry: Attempting to start on {portName}...");
+                
+                // Attempt to start
+                await _paymentPulseService.StartAsync(portName);
+                
+                // Success! Stop retry timer and log
+                StopPulseMonitorRetryTimer();
+                _userManuallyStopped = false; // Reset flag since we successfully started
+                
+                Console.WriteLine($"[AdminDashboard] [{timestamp}] ✅✅✅ SUCCESS! Pulse monitor auto-started on {portName} (retry succeeded) ✅✅✅");
+                LogToDiagnostics($"✓ Pulse monitor auto-started on {portName} (PCB connected)");
+                UpdatePulseMonitorUi();
+            }
+            catch (Exception ex)
+            {
+                // Log all retry failures for debugging
+                Console.WriteLine($"[AdminDashboard] [{timestamp}] ❌ Retry FAILED: {ex.GetType().Name} - {ex.Message}");
+                Console.WriteLine($"[AdminDashboard] [{timestamp}]   StackTrace: {ex.StackTrace}");
+                LogToDiagnostics($"Retry failed: {ex.Message} (will retry in 30s)");
+            }
+        }
+
+        private async void ClearPulseUniqueIdsButton_Click(object sender, RoutedEventArgs e)
+        {
+            // Show confirmation dialog - this is a destructive operation
+            var result = System.Windows.MessageBox.Show(
+                "Are you sure you want to delete ALL processed pulse unique IDs from the database?\n\n" +
+                "This will reset duplicate detection and allow previously processed pulses to be credited again.\n\n" +
+                "This action cannot be undone.",
+                "Clear All Unique Pulse IDs",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning,
+                MessageBoxResult.No);
+
+            if (result != MessageBoxResult.Yes)
+            {
+                return;
+            }
+
+            try
+            {
+                LogToDiagnostics("Deleting all processed pulse unique IDs from database...");
+                
+                var deleteResult = await _databaseService.DeleteAllProcessedPulseUniqueIdsAsync();
+                
+                if (deleteResult.Success)
+                {
+                    var deletedCount = deleteResult.Data;
+                    LogToDiagnostics($"✓ Deleted {deletedCount} unique pulse ID(s) from database");
+                    
+                    NotificationService.Instance.ShowSuccess(
+                        "Pulse Unique IDs",
+                        $"Successfully deleted {deletedCount} unique ID(s) from database.",
+                        autoCloseSeconds: 4);
+                    
+                    // Also clear the in-memory set in PaymentPulseService to keep them in sync
+                    _paymentPulseService.ClearProcessedUniqueIds();
+                    LogToDiagnostics("✓ Cleared in-memory unique ID cache");
+                }
+                else
+                {
+                    LogToDiagnostics($"ERROR: Failed to delete unique IDs - {deleteResult.ErrorMessage}");
+                    NotificationService.Instance.ShowError(
+                        "Pulse Unique IDs",
+                        $"Failed to delete unique IDs: {deleteResult.ErrorMessage}",
+                        autoCloseSeconds: 5);
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Application.Error("Failed to delete all processed pulse unique IDs", ex);
+                LogToDiagnostics($"ERROR: Exception while deleting unique IDs - {ex.Message}");
+                NotificationService.Instance.ShowError(
+                    "Pulse Unique IDs",
+                    $"Error: {ex.Message}",
+                    autoCloseSeconds: 5);
             }
         }
 

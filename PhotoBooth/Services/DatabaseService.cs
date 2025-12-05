@@ -99,6 +99,7 @@ namespace Photobooth.Services
         Task<DatabaseResult> SaveProcessedPulseUniqueIdAsync(string uniqueId, string identifier, int pulseCount, decimal amountCredited);
         Task<DatabaseResult<HashSet<string>>> LoadProcessedPulseUniqueIdsAsync();
         Task<DatabaseResult> CleanupOldProcessedPulseUniqueIdsAsync(int keepDays = 30);
+        Task<DatabaseResult<int>> DeleteAllProcessedPulseUniqueIdsAsync(); // Delete all unique IDs (for testing/reset)
         
         // Transaction management methods
         Task<DatabaseResult<List<Transaction>>> GetRecentTransactionsAsync(int limit);
@@ -3591,6 +3592,38 @@ namespace Photobooth.Services
             catch (Exception ex)
             {
                 return DatabaseResult.ErrorResult($"Failed to cleanup old processed unique IDs: {ex.Message}", ex);
+            }
+        }
+
+        /// <summary>
+        /// Delete all processed pulse unique IDs from the database (for testing/reset purposes)
+        /// Returns the number of deleted records
+        /// </summary>
+        public async Task<DatabaseResult<int>> DeleteAllProcessedPulseUniqueIdsAsync()
+        {
+            try
+            {
+                var query = "DELETE FROM ProcessedPulseUniqueIds";
+
+                using var connection = await CreateConnectionAsync();
+                using var command = new SqliteCommand(query, connection);
+
+                var deletedCount = await command.ExecuteNonQueryAsync();
+
+                LoggingService.Application.Information("Deleted all processed pulse unique IDs from database",
+                    ("DeletedCount", deletedCount));
+
+                return DatabaseResult<int>.SuccessResult(deletedCount);
+            }
+            catch (Exception ex)
+            {
+                if (ex.Message.Contains("no such table", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Table doesn't exist - return 0 deleted (not an error)
+                    LoggingService.Application.Warning("ProcessedPulseUniqueIds table not found when deleting all unique IDs");
+                    return DatabaseResult<int>.SuccessResult(0);
+                }
+                return DatabaseResult<int>.ErrorResult($"Failed to delete all processed unique IDs: {ex.Message}", ex);
             }
         }
 

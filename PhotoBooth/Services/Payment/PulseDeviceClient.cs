@@ -23,12 +23,24 @@ namespace Photobooth.Services.Payment
         private SerialPort? _serialPort;
         private Task? _readLoopTask;
         private CancellationTokenSource? _cts;
+        private bool _hasConnectionError = false; // Track if serial port has encountered an error
 
         public event EventHandler<PulseCountEventArgs>? PulseCountReceived;
 
         public string? CurrentPortName { get; private set; }
 
         public bool IsRunning => _readLoopTask != null && !_readLoopTask.IsCompleted;
+
+        public bool HasConnectionError
+        {
+            get
+            {
+                lock (_stateLock)
+                {
+                    return _hasConnectionError;
+                }
+            }
+        }
 
         public async Task StartAsync(string portName, CancellationToken cancellationToken = default)
         {
@@ -49,12 +61,17 @@ namespace Photobooth.Services.Payment
                     throw new InvalidOperationException("Stop the active client before starting another port.");
                 }
 
-                _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken); // propagate host cancellation
-                _serialPort = CreateSerialPort(portName);
-                _serialPort.Open(); // throws immediately if device missing
-                CurrentPortName = portName;
+                // Use local variables first to avoid half-initialized state if Open() throws
+                var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken); // propagate host cancellation
+                var port = CreateSerialPort(portName);
+                port.Open(); // throws immediately if device missing
 
-                _readLoopTask = Task.Run(() => ReadLoopAsync(_cts.Token), CancellationToken.None); // background worker
+                // Only assign to class fields after successful port open to maintain consistent state
+                _cts = linkedCts;
+                _serialPort = port;
+                CurrentPortName = portName;
+                _hasConnectionError = false; // Reset error flag on successful start
+                _readLoopTask = Task.Run(() => ReadLoopAsync(linkedCts.Token), CancellationToken.None); // background worker
             }
 
             await Task.CompletedTask.ConfigureAwait(false); // maintain async signature without extra allocations
@@ -195,6 +212,12 @@ namespace Photobooth.Services.Payment
                 }
                 catch (Exception ex)
                 {
+                    // Mark connection error for immediate reconnection detection
+                    lock (_stateLock)
+                    {
+                        _hasConnectionError = true;
+                    }
+
                     LoggingService.Hardware.Error(
                         "PulseDeviceClient",
                         "Serial read failed",
