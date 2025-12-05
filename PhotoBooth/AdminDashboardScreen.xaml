@@ -2061,7 +2061,6 @@
                                             <Grid.RowDefinitions>
                                                 <RowDefinition Height="Auto"/>
                                                 <RowDefinition Height="Auto"/>
-                                                <RowDefinition Height="Auto"/>
                                             </Grid.RowDefinitions>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="Auto"/>
@@ -2069,13 +2068,10 @@
                                             </Grid.ColumnDefinitions>
                                             
                                             <TextBlock Grid.Row="0" Grid.Column="0" Text="Port:" FontSize="12" FontWeight="Medium" Margin="0,0,8,4"/>
-                                            <TextBlock Grid.Row="0" Grid.Column="1" Name="ArduinoPortText" Text="Auto-detect" FontSize="12" Margin="0,0,0,4"/>
+                                            <TextBlock Grid.Row="0" Grid.Column="1" Name="ArduinoPortText" Text="Not connected" FontSize="12" Margin="0,0,0,4"/>
                                             
-                                            <TextBlock Grid.Row="1" Grid.Column="0" Text="LED:" FontSize="12" FontWeight="Medium" Margin="0,0,8,4"/>
-                                            <TextBlock Grid.Row="1" Grid.Column="1" Name="ArduinoLedStatusText" Text="Unknown" FontSize="12" Margin="0,0,0,4"/>
-                                            
-                                            <TextBlock Grid.Row="2" Grid.Column="0" Text="Pulse:" FontSize="12" FontWeight="Medium" Margin="0,0,8,0"/>
-                                            <TextBlock Grid.Row="2" Grid.Column="1" Name="ArduinoLastPulseText" Text="None" FontSize="12"/>
+                                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Pulse:" FontSize="12" FontWeight="Medium" Margin="0,0,8,0"/>
+                                            <TextBlock Grid.Row="1" Grid.Column="1" Name="ArduinoLastPulseText" Text="None" FontSize="12"/>
                                         </Grid>
                                         
                                         <!-- Arduino Controls -->
@@ -2084,30 +2080,36 @@
                                                   Style="{StaticResource ModernButtonStyle}" 
                                                   Background="#0284C7" Foreground="White" FontSize="12"
                                                   Margin="0,0,0,8" Click="TestArduinoButton_Click"/>
-                                            
-                                            <Grid>
+
+                                            <!-- Pulse Monitor Controls - Full Width Buttons -->
+                                            <Grid Margin="0,8,0,0">
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="*"/>
-                                                    <ColumnDefinition Width="4"/>
-                                                    <ColumnDefinition Width="*"/>
-                                                    <ColumnDefinition Width="4"/>
+                                                    <ColumnDefinition Width="8"/>
                                                     <ColumnDefinition Width="*"/>
                                                 </Grid.ColumnDefinitions>
                                                 
-                                                <Button Grid.Column="0" Name="TestLEDOnButton" Content="LED On" 
-                                                      Style="{StaticResource ModernButtonStyle}" 
-                                                      Background="#059669" Foreground="White" FontSize="11"
-                                                      Click="TestLEDOnButton_Click"/>
-                                                
-                                                <Button Grid.Column="2" Name="TestLEDOffButton" Content="LED Off" 
-                                                      Style="{StaticResource ModernButtonStyle}" 
-                                                      Background="#64748B" Foreground="White" FontSize="11"
-                                                      Click="TestLEDOffButton_Click"/>
-                                                
-                                                <Button Grid.Column="4" Name="TestPaymentPulseButton" Content="Pulse" 
-                                                      Style="{StaticResource ModernButtonStyle}" 
-                                                      Background="#0F766E" Foreground="White" FontSize="11"
-                                                      Click="TestPaymentPulseButton_Click"/>
+                                                <Button Grid.Column="0" Name="StartPulseMonitorButton" Content="Start Monitor"
+                                                        Style="{StaticResource ModernButtonStyle}"
+                                                        Background="#4338CA" Foreground="White" FontSize="11"
+                                                        Click="StartPulseMonitorButton_Click"/>
+
+                                                <Button Grid.Column="2" Name="StopPulseMonitorButton" Content="Stop Monitor"
+                                                        Style="{StaticResource ModernButtonStyle}"
+                                                        Background="#9CA3AF" Foreground="White" FontSize="11"
+                                                        Click="StopPulseMonitorButton_Click"/>
+
+                                                <!-- DEV/TEST ONLY: Clear All Unique IDs button - Commented out for production use -->
+                                                <!-- This button allows deletion of all processed pulse unique IDs from the database -->
+                                                <!-- WARNING: This is a destructive operation that will reset duplicate detection -->
+                                                <!-- Uncomment only for development/testing purposes -->
+                                                <!--
+                                                <Button Name="ClearPulseUniqueIdsButton" Content="Clear All Unique IDs"
+                                                        Style="{StaticResource ModernButtonStyle}"
+                                                        Background="#DC2626" Foreground="White" FontSize="11"
+                                                        ToolTip="⚠️ DEV/TEST ONLY: Delete all processed pulse unique IDs from database. This will reset duplicate detection and allow previously processed pulses to be re-credited. Use with extreme caution!"
+                                                        Click="ClearPulseUniqueIdsButton_Click"/>
+                                                -->
                                             </Grid>
                                         </StackPanel>
                                     </StackPanel>

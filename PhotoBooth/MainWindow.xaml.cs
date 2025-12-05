@@ -8,6 +8,7 @@ using System.Windows.Input;
 using System.Windows.Threading;
 using Photobooth.Models;
 using Photobooth.Services;
+using Photobooth.Services.Payment;
 
 namespace Photobooth
 {
@@ -225,8 +226,38 @@ namespace Photobooth
             // Load operation mode from settings
             await LoadOperationModeAsync();
             
+            // Initialize PaymentPulseService to load processed unique IDs from database
+            // This prevents duplicate credits if the app restarts
+            try
+            {
+                // Set the database service instance first
+                PaymentPulseService.Instance.SetDatabaseService(_databaseService);
+                await PaymentPulseService.Instance.InitializeAsync();
+                LoggingService.Application.Information("PaymentPulseService initialized on startup");
+            }
+            catch (Exception ex)
+            {
+                // Don't block app startup if pulse service initialization fails
+                LoggingService.Application.Warning("Failed to initialize PaymentPulseService on startup", ("Component", "PaymentPulseService"), ("Exception", ex.Message));
+            }
+            
             // Initialize admin dashboard screen for credit management (even for regular users)
             await InitializeAdminDashboardForCreditsAsync();
+            
+            // Auto-start pulse monitoring (auto-detects COM port, prefers COM5 if available)
+            if (adminDashboardScreen != null)
+            {
+                try
+                {
+                    await adminDashboardScreen.StartPulseMonitoringAutoAsync();
+                    LoggingService.Application.Information("Pulse monitoring auto-started");
+                }
+                catch (Exception ex)
+                {
+                    // Don't block app startup if auto-start fails
+                    LoggingService.Application.Warning("Failed to auto-start pulse monitoring", ("Component", "MainWindow"), ("Exception", ex.Message));
+                }
+            }
             
             // Initialize printer status cache on app startup
             // This ensures printer status is available immediately without lag when navigating to printing screen
@@ -351,6 +382,8 @@ namespace Photobooth
                 LoggingService.Application.Error("Failed to initialize admin dashboard for credit management", ex);
             }
         }
+
+        public AdminDashboardScreen? AdminDashboard => adminDashboardScreen;
 
         #endregion
 

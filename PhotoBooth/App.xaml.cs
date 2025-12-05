@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using System;
 using System.Threading.Tasks;
 using Photobooth.Services;
+using Photobooth.Services.Payment;
 
 namespace PhotoBooth
 {
@@ -68,6 +69,17 @@ namespace PhotoBooth
             Console.WriteLine("Master Password Debugging Enabled");
             Console.WriteLine("===========================================");
             Console.WriteLine();
+
+            PaymentPulseService.Instance.PulseDeltaProcessed += (_, args) =>
+            {
+                _ = Application.Current.Dispatcher.InvokeAsync(async () =>
+                {
+                    if (Current.MainWindow is Photobooth.MainWindow mainWindow && mainWindow.AdminDashboard != null)
+                    {
+                        await mainWindow.AdminDashboard.ApplyPulseCreditsAsync(args);
+                    }
+                });
+            };
         }
 
         protected override void OnExit(ExitEventArgs e)

@@ -259,6 +259,19 @@ CREATE TABLE CreditTransactions (
     FOREIGN KEY (RelatedTransactionId) REFERENCES Transactions(Id)
 );
 
+-- Processed pulse unique IDs to prevent duplicate credits across app restarts
+-- Stores the unique transaction IDs from VHMI pulse packets that have already been credited
+CREATE TABLE ProcessedPulseUniqueIds (
+    UniqueId TEXT PRIMARY KEY, -- Hex string representation of the 10-byte unique ID
+    Identifier TEXT NOT NULL CHECK (Identifier IN ('CardAccepter', 'BillAccepter')), -- Which accepter sent the pulse
+    PulseCount INTEGER NOT NULL, -- Pulse count from the packet (for audit trail)
+    ProcessedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, -- When this unique ID was processed
+    AmountCredited DECIMAL(10,2) NOT NULL -- Amount that was credited (for audit trail)
+);
+
+-- Index for cleanup queries (remove old records)
+CREATE INDEX IF NOT EXISTS IX_ProcessedPulseUniqueIds_ProcessedAt ON ProcessedPulseUniqueIds(ProcessedAt);
+
 -- =============================================
 -- 5. SYSTEM SETTINGS & CONFIGURATION
 -- =============================================

@@ -115,10 +115,10 @@ namespace Photobooth
                     {
                         // Run on background thread to avoid blocking UI
                         // StartPrintingProcess() will use Dispatcher.Invoke for UI updates
-                        await StartPrintingProcess();
-                    }
-                    catch (Exception ex)
-                    {
+                await StartPrintingProcess();
+            }
+            catch (Exception ex)
+            {
                         LoggingService.Application.Error("Failed to start printing process asynchronously", ex);
                         Dispatcher.Invoke(() => ShowError("Failed to start printing process. Please try again."));
                     }
@@ -515,7 +515,7 @@ namespace Photobooth
                 int jobsAhead = queuePosition.Value - 1;
                 int queueWaitTime = jobsAhead * baseTimeSeconds;
                 int totalSeconds = queueWaitTime + ourCopiesTime;
-                return FormatTime(totalSeconds);
+            return FormatTime(totalSeconds);
             }
             
             // Fallback: just our copies time
@@ -547,7 +547,7 @@ namespace Photobooth
         private async void PrintingScreen_Loaded(object sender, RoutedEventArgs e)
         {
             try
-            {
+        {
                 // Load printer status asynchronously AFTER navigation (non-blocking)
                 // Navigation happens instantly, then we update the UI with printer info
                 // Do expensive WMI queries on background thread, then update UI with results
@@ -789,9 +789,9 @@ namespace Photobooth
             // Run validation and printer check asynchronously to avoid blocking UI
             // WMI queries are slow, so we do them on a background thread
             _ = Task.Run(() =>
+        {
+            try
             {
-                try
-                {
                     LoggingService.Application.Information("Retry button clicked - starting retry process");
                     
                     // Step 2: Validate we have the required data
@@ -799,9 +799,9 @@ namespace Photobooth
                     {
                         Dispatcher.Invoke(() => ShowError("Cannot retry: Template information is missing. Please start a new order."));
                         Dispatcher.Invoke(() => RetryButton.IsEnabled = true);
-                        return;
-                    }
-                    
+                    return;
+                }
+
                     if (_product == null)
                     {
                         Dispatcher.Invoke(() => ShowError("Cannot retry: Product information is missing. Please start a new order."));
@@ -860,20 +860,20 @@ namespace Photobooth
                     Dispatcher.Invoke(() =>
                     {
                         // Reset printing state (hides error card, resets progress, etc.)
-                        ResetPrintingState();
-                        
+                ResetPrintingState();
+                
                         // Hide retry button since we're starting a new print attempt
                         RetryButton.Visibility = Visibility.Collapsed;
                         RetryButton.IsEnabled = false;
                     });
-                    
+
                     // Restart printing process asynchronously (same pattern as InitializePrintJob)
                     // This runs on background thread, so StartPrintingProcess() will use Dispatcher.Invoke for UI updates
                     _ = Task.Run(async () =>
                     {
                         try
                         {
-                            await StartPrintingProcess();
+                await StartPrintingProcess();
                         }
                         catch (Exception printEx)
                         {
@@ -881,9 +881,9 @@ namespace Photobooth
                             Dispatcher.Invoke(() => ShowError($"Retry printing failed: {printEx.Message}"));
                         }
                     });
-                }
-                catch (Exception ex)
-                {
+            }
+            catch (Exception ex)
+            {
                     LoggingService.Application.Error("Retry button click handler failed", ex);
                     Dispatcher.Invoke(() => ShowError($"Retry failed: {ex.Message}"));
                     Dispatcher.Invoke(() => RetryButton.IsEnabled = true);
@@ -969,7 +969,7 @@ namespace Photobooth
                         // Update UI to show offline status immediately (on UI thread)
                         Dispatcher.Invoke(() =>
                         {
-                            UpdatePrinterStatusDisplay(currentStatus);
+                        UpdatePrinterStatusDisplay(currentStatus);
                             ShowError("Printer is offline. Please power on the printer and try again.");
                         });
                         return; // Exit early - do NOT start progress timer or continue
@@ -993,16 +993,16 @@ namespace Photobooth
                 // Update status on UI thread (we're in Task.Run, so need Dispatcher)
                 Dispatcher.Invoke(() =>
                 {
-                    StatusText.Text = "Preparing print job...";
-                    HeaderText.Text = "Now Printing...";
-                    SubHeaderText.Text = "Your photos are being prepared";
-                    
-                    // Start progress timer
-                    StartProgressTimer();
+                StatusText.Text = "Preparing print job...";
+                HeaderText.Text = "Now Printing...";
+                SubHeaderText.Text = "Your photos are being prepared";
+
+                // Start progress timer
+                StartProgressTimer();
                 });
 
                 Console.WriteLine($"!!! ABOUT TO CALL SimulatePrintingStages() !!!");
-                
+
                 // Simulate the actual printing process
                 await SimulatePrintingStages();
                 
@@ -1233,16 +1233,10 @@ namespace Photobooth
                 await progressTask;
 
                 // Stage 4: Finishing (85-100%)
+                // Note: printSuccess is guaranteed to be true here because we return early if it's false (line 1221)
                 Dispatcher.Invoke(() =>
                 {
-                    if (printSuccess)
-                    {
-                        StatusText.Text = "Finishing...";
-                    }
-                    else
-                    {
-                        StatusText.Text = "Some prints may have failed...";
-                    }
+                    StatusText.Text = "Finishing...";
                 });
                 
                 // Final delay before completing (minimum 2 seconds)
@@ -1319,33 +1313,33 @@ namespace Photobooth
                 // Update header based on credit deduction result (on UI thread)
                 Dispatcher.Invoke(() =>
                 {
-                    if (creditDeductionSuccess)
-                    {
-                        HeaderText.Text = "Printing Complete!";
-                        SubHeaderText.Text = "Your photos are ready";
-                        StatusText.Text = "Complete";
+                if (creditDeductionSuccess)
+                {
+                HeaderText.Text = "Printing Complete!";
+                SubHeaderText.Text = "Your photos are ready";
+                StatusText.Text = "Complete";
 
-                        // Show completion card
-                        CompletionCard.Visibility = Visibility.Visible;
-                        
+                // Show completion card
+                CompletionCard.Visibility = Visibility.Visible;
+
                         // Show back button
                         BackButton.Visibility = Visibility.Visible;
 
-                        // Start countdown timer
-                        StartCountdownTimer();
-                    }
-                    else
+                // Start countdown timer
+                StartCountdownTimer();
+                }
+                else
+                {
+                    // Credit deduction failed - show error state
+                    if (_mainWindow?.IsFreePlayMode == true)
                     {
-                        // Credit deduction failed - show error state
-                        if (_mainWindow?.IsFreePlayMode == true)
-                        {
-                            // In free play mode, this shouldn't happen, but if it does, show a generic error
-                            HeaderText.Text = "Printing Error";
-                            SubHeaderText.Text = "Please contact staff for assistance";
-                            StatusText.Text = "Error";
-                            
-                            ErrorMessageText.Text = "An unexpected error occurred during printing. Please contact staff for assistance.";
-                            ErrorCard.Visibility = Visibility.Visible;
+                        // In free play mode, this shouldn't happen, but if it does, show a generic error
+                        HeaderText.Text = "Printing Error";
+                        SubHeaderText.Text = "Please contact staff for assistance";
+                        StatusText.Text = "Error";
+                        
+                        ErrorMessageText.Text = "An unexpected error occurred during printing. Please contact staff for assistance.";
+                        ErrorCard.Visibility = Visibility.Visible;
                             
                             // Show back button
                             BackButton.Visibility = Visibility.Visible;
@@ -1356,16 +1350,16 @@ namespace Photobooth
                             RetryButton.IsEnabled = true;
                             Console.WriteLine($"!!! RetryButton.Visibility set to: {RetryButton.Visibility} !!!");
                             Console.WriteLine($"!!! RetryButton.IsEnabled set to: {RetryButton.IsEnabled} !!!");
-                        }
-                        else
-                        {
-                            // Credit deduction failed in coin mode - show payment error
-                            HeaderText.Text = "Payment Required";
-                            SubHeaderText.Text = "Please contact staff to add credits";
-                            StatusText.Text = "Payment Failed";
-                            
-                            ErrorMessageText.Text = "Your photos were printed but payment could not be processed. Please contact staff to resolve the payment issue.";
-                            ErrorCard.Visibility = Visibility.Visible;
+                    }
+                    else
+                    {
+                        // Credit deduction failed in coin mode - show payment error
+                        HeaderText.Text = "Payment Required";
+                        SubHeaderText.Text = "Please contact staff to add credits";
+                        StatusText.Text = "Payment Failed";
+                        
+                        ErrorMessageText.Text = "Your photos were printed but payment could not be processed. Please contact staff to resolve the payment issue.";
+                        ErrorCard.Visibility = Visibility.Visible;
                             
                             // Show back button
                             BackButton.Visibility = Visibility.Visible;
@@ -1376,10 +1370,10 @@ namespace Photobooth
                             RetryButton.IsEnabled = true;
                             Console.WriteLine($"!!! RetryButton.Visibility set to: {RetryButton.Visibility} !!!");
                             Console.WriteLine($"!!! RetryButton.IsEnabled set to: {RetryButton.IsEnabled} !!!");
-                        }
-                        
-                        // Start countdown timer to return to welcome screen
-                        StartCountdownTimer();
+                    }
+                    
+                    // Don't start countdown timer on credit deduction failure - user needs time to read error
+                    // and decide whether to retry or contact staff. Timer will start on success path above.
                     }
                 });
 
@@ -1838,7 +1832,7 @@ namespace Photobooth
                     Console.WriteLine($"!!! ErrorCard.Visibility: {ErrorCard.Visibility} !!!");
                     Console.WriteLine($"!!! ErrorCard.IsVisible: {ErrorCard.IsVisible} !!!");
                 }
-                
+
                 LoggingService.Application.Error("Printing error displayed", null, ("ErrorMessage", errorMessage));
             }
             catch (Exception ex)

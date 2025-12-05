@@ -21,6 +21,7 @@ using Microsoft.Win32;
 using Photobooth.Controls;
 using Photobooth.Models;
 using Photobooth.Services;
+using Photobooth.Services.Payment;
 // Note: System.Drawing types are used with fully qualified names to avoid conflicts with System.Windows.Media
 
 namespace Photobooth
@@ -250,6 +251,10 @@ namespace Photobooth
         // Transaction history
         private List<Transaction> _recentTransactions = new();
 
+        // Pulse monitoring
+        private readonly IPaymentPulseService _paymentPulseService = PaymentPulseService.Instance;
+        private bool _isPulseMonitorBusy;
+
         #endregion
 
         #region Initialization
@@ -270,26 +275,25 @@ namespace Photobooth
                 InitializeComponent();
 
 
-                _databaseService = databaseService;
-                _mainWindow = mainWindow;
-                _printerService = printerService;
+            _databaseService = databaseService;
+            _mainWindow = mainWindow;
+            _printerService = printerService;
 
 
-                InitializeTabMapping();
+            InitializeTabMapping();
 
 
-                InitializeSalesData();
+            InitializeSalesData();
 
 
-                InitializeProductViewModels();
+            InitializeProductViewModels();
 
 
-                InitializeTemplatesTab();
+            InitializeTemplatesTab();
 
 
-                // Set up virtual keyboard callback for price input completion
-                SetupVirtualKeyboardCallback();
-
+            // Set up virtual keyboard callback for price input completion
+            SetupVirtualKeyboardCallback();
 
             }
             catch (Exception ex)
@@ -509,6 +513,9 @@ namespace Photobooth
         /// </summary>
         private void AdminDashboardScreen_Loaded(object sender, RoutedEventArgs e)
         {
+            _paymentPulseService.PulseDeltaProcessed -= PaymentPulseService_PulseDeltaProcessed;
+            _paymentPulseService.PulseDeltaProcessed += PaymentPulseService_PulseDeltaProcessed;
+
             // Set the ItemsSource for the product ItemsControl
             if (ProductsItemsControl != null)
             {
@@ -518,6 +525,8 @@ namespace Photobooth
             // Initialize printer status display using cached status for immediate display
             // Cache is initialized on app startup, so this is fast and doesn't cause lag
             InitializePrinterStatusDisplay();
+
+            UpdatePulseMonitorUi();
         }
         
         /// <summary>
@@ -612,6 +621,20 @@ namespace Photobooth
         {
             // Unsubscribe from PropertyChanged events to prevent memory leaks
             UnsubscribeFromProductViewModels();
+
+            // Unsubscribe from pulse events (service continues running for app-wide credit processing)
+            // The service is managed at app startup and should run continuously throughout the session
+            _paymentPulseService.PulseDeltaProcessed -= PaymentPulseService_PulseDeltaProcessed;
+            
+            // the dashboard is not visible. The timer will stop itself when:
+            // 1. Monitoring is successfully established and receiving data
+            // 2. User manually stops monitoring
+            // This ensures the PCB can be reconnected even if the user navigates away.
+            
+            // Note: We do NOT stop the service here - it should run continuously.
+            // App.xaml.cs subscribes to PulseDeltaProcessed at startup, and MainWindow
+            // auto-starts the service. The dashboard only manages UI event subscriptions.
+            UpdatePulseMonitorUi();
         }
 
         #endregion
@@ -3649,6 +3672,58 @@ namespace Photobooth
             }
         }
 
+        public async Task ApplyPulseCreditsAsync(PulseDeltaEventArgs args)
+        {
+            if (args == null || args.Delta <= 0)
+            {
+                return;
+            }
+
+            if (!Dispatcher.CheckAccess())
+            {
+                // Use double await to properly await the inner async work
+                // Dispatcher.InvokeAsync returns DispatcherOperation<Task>, which completes when
+                // the delegate returns the Task, not when that Task finishes. The double await
+                // ensures we await both the dispatcher operation AND the actual async operation completion.
+                await await Dispatcher.InvokeAsync(() => ApplyPulseCreditsInternalAsync(args));
+                return;
+            }
+
+            await ApplyPulseCreditsInternalAsync(args);
+        }
+
+        private async Task ApplyPulseCreditsInternalAsync(PulseDeltaEventArgs args)
+        {
+            try
+            {
+                // Note: args.Delta contains the pre-computed credit amount (pulse count to credit)
+                // args.RawCount is the cumulative hardware count from the PCB
+                // args.Delta is the processed amount that should be credited (1 pulse = $1)
+                var pulseCount = args.Delta; // Pre-computed credit amount (not raw hardware count)
+                var amount = pulseCount * 1.00m; // 1 pulse = $1 credit per current policy
+                var source = args.Identifier == PulseIdentifier.BillAccepter ? "Bill Accepter" : "Card Accepter";
+
+                // Enhanced logging to show what was received vs what was credited
+                var uniqueIdHex = Convert.ToHexString(args.UniqueId).ToLowerInvariant();
+                Console.WriteLine($"[ApplyPulseCredits] {DateTime.Now:HH:mm:ss} CREDITING: {source} | RawPulseCount={args.RawCount} | Crediting={pulseCount} pulses | UniqueId={uniqueIdHex} | Amount=${amount:F2}");
+
+                await AddCreditsAsync(amount, $"VHMI {source} pulse ({pulseCount} pulse{(pulseCount == 1 ? "" : "s")} = +${amount:F2})");
+
+                // Clear diagnostic log showing the full picture
+                LogToDiagnostics($"[{source}] Received: {pulseCount} pulse{(pulseCount == 1 ? "" : "s")} | UniqueId={uniqueIdHex} | Credited: ${amount:F2}");
+                
+                NotificationService.Instance.ShowSuccess(
+                    "Pulse Credit",
+                    $"+${amount:F2} added from {source} ({pulseCount} pulse{(pulseCount == 1 ? "" : "s")})",
+                    autoCloseSeconds: 3);
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Hardware.Error("PulseService", "Failed to apply pulse credits", ex);
+                LogToDiagnostics($"ERROR: Failed to apply pulse credits - {ex.Message}");
+            }
+        }
+
         /// <summary>
         /// Deduct credits from the system (for purchases)
         /// </summary>
@@ -5718,7 +5793,8 @@ namespace Photobooth
                 
                 if (availablePorts.Length > 0)
                 {
-                    var arduinoPort = availablePorts.FirstOrDefault(p => p.StartsWith("COM"));
+                    var arduinoPort = availablePorts.FirstOrDefault(p => string.Equals(p, "COM5", StringComparison.OrdinalIgnoreCase))
+                        ?? availablePorts.FirstOrDefault(p => p.StartsWith("COM"));
                     if (arduinoPort != null)
                     {
                         UpdateHardwareStatus("arduino", true, "Arduino Uno detected");
@@ -5726,19 +5802,22 @@ namespace Photobooth
                         
                         // Update Arduino details
                         if (ArduinoPortText != null) ArduinoPortText.Text = arduinoPort;
-                        if (ArduinoLedStatusText != null) ArduinoLedStatusText.Text = "Ready";
                         if (ArduinoLastPulseText != null) ArduinoLastPulseText.Text = "Ready to receive";
                     }
                     else
                     {
                         UpdateHardwareStatus("arduino", false, "No Arduino ports found");
                         LogToDiagnostics("ERROR: No Arduino-compatible ports found");
+                        // Reset port text to indicate no connection
+                        if (ArduinoPortText != null) ArduinoPortText.Text = "Not connected";
                     }
                 }
                 else
                 {
                     UpdateHardwareStatus("arduino", false, "No serial ports available");
                     LogToDiagnostics("ERROR: No serial ports detected");
+                    // Reset port text to indicate no connection
+                    if (ArduinoPortText != null) ArduinoPortText.Text = "Not connected";
                 }
             }
             catch (Exception ex)
@@ -5746,71 +5825,417 @@ namespace Photobooth
                 LoggingService.Application.Error("Arduino test failed", ex);
                 UpdateHardwareStatus("arduino", false, $"Test failed: {ex.Message}");
                 LogToDiagnostics($"ERROR: Arduino test failed - {ex.Message}");
+                // Reset port text to indicate no connection on error
+                if (ArduinoPortText != null) ArduinoPortText.Text = "Not connected";
             }
         }
 
-        private async void TestLEDOnButton_Click(object sender, RoutedEventArgs e)
+        private async void StartPulseMonitorButton_Click(object sender, RoutedEventArgs e)
         {
+            if (_isPulseMonitorBusy)
+            {
+                return;
+            }
+
+            // Try to get port from text field first, otherwise auto-detect
+            var portName = ArduinoPortText?.Text?.Trim();
+            if (string.IsNullOrWhiteSpace(portName) ||
+                portName.Equals("Auto-detect", StringComparison.OrdinalIgnoreCase) ||
+                portName.Equals("None", StringComparison.OrdinalIgnoreCase) ||
+                portName.Equals("Not connected", StringComparison.OrdinalIgnoreCase))
+            {
+                // Auto-detect COM port (same logic as auto-start)
+                string[] availablePorts;
+                try
+                {
+                    availablePorts = System.IO.Ports.SerialPort.GetPortNames();
+                }
+                catch (Exception ex)
+                {
+                    LoggingService.Application.Error(
+                        "Failed to enumerate serial ports during manual pulse monitor start",
+                        ex,
+                        ("Component", "AdminDashboard"));
+                    LogToDiagnostics($"ERROR: Failed to enumerate serial ports - {ex.Message}");
+                    NotificationService.Instance.ShowError(
+                        "Pulse Monitor",
+                        $"Failed to enumerate serial ports: {ex.Message}",
+                        autoCloseSeconds: 5);
+                    return;
+                }
+                
+                if (availablePorts.Length == 0)
+                {
+                    NotificationService.Instance.ShowError(
+                        "Pulse Monitor",
+                        "No COM ports detected. Please connect the PCB and try again.",
+                        autoCloseSeconds: 5);
+                    LogToDiagnostics("Pulse monitor start aborted - no COM ports available.");
+                    return;
+                }
+                
+                // Prefer COM5 if available, otherwise use first available COM port
+                portName = availablePorts.FirstOrDefault(p => string.Equals(p, "COM5", StringComparison.OrdinalIgnoreCase))
+                    ?? availablePorts.FirstOrDefault(p => p.StartsWith("COM", StringComparison.OrdinalIgnoreCase));
+                
+                if (portName == null)
+                {
+                    NotificationService.Instance.ShowError(
+                        "Pulse Monitor",
+                        "No valid COM port found. Please connect the PCB and try again.",
+                        autoCloseSeconds: 5);
+                    LogToDiagnostics("Pulse monitor start aborted - no valid COM port found.");
+                    return;
+                }
+                
+                LogToDiagnostics($"Auto-detected COM port: {portName}");
+            }
+
             try
             {
-                LogToDiagnostics("Turning LED ON...");
-                
-                // TODO: Implement actual Arduino LED control when service is available
-                await Task.Delay(500);
-                
-                if (ArduinoLedStatusText != null) ArduinoLedStatusText.Text = "ON";
-                LogToDiagnostics("LED turned ON (simulated)");
-                NotificationService.Instance.ShowSuccess("Arduino Test", "LED turned ON");
+                _isPulseMonitorBusy = true;
+                UpdatePulseMonitorUi();
+
+                // If monitor is running but not receiving data or has connection error, stop it first
+                if (_paymentPulseService.IsRunning)
+                {
+                    var hasError = _paymentPulseService.HasConnectionError;
+                    var hasData = _paymentPulseService.HasReceivedDataRecently;
+                    
+                    if (!hasError && hasData)
+                    {
+                        // Already running with no errors and receiving data - nothing to do
+                        LogToDiagnostics($"Pulse monitor is already running on {_paymentPulseService.CurrentPortName ?? portName} and receiving data");
+                        NotificationService.Instance.ShowInfo(
+                            "Pulse Monitor",
+                            $"Already listening on {_paymentPulseService.CurrentPortName ?? portName}",
+                            autoCloseSeconds: 3);
+                        return;
+                    }
+                    
+                    if (hasError || !hasData)
+                    {
+                        LogToDiagnostics($"Monitor is running but {(hasError ? "has connection error" : "not receiving data")} - stopping before restart...");
+                        try
+                        {
+                            await _paymentPulseService.StopAsync();
+                            await Task.Delay(500); // Brief delay to ensure port is fully released
+                        }
+                        catch (Exception stopEx)
+                        {
+                            LoggingService.Application.Warning("Failed to stop monitor before restart", ("Exception", stopEx.Message));
+                            // Continue anyway - StartAsync will handle it
+                        }
+                    }
+                }
+
+                LogToDiagnostics($"Starting pulse monitor on {portName}...");
+                await _paymentPulseService.StartAsync(portName);
+                LogToDiagnostics($"Pulse monitor listening on {portName}");
+
+                NotificationService.Instance.ShowSuccess(
+                    "Pulse Monitor",
+                    $"Listening for VHMI pulses on {portName}",
+                    autoCloseSeconds: 4);
             }
             catch (Exception ex)
             {
-                LoggingService.Application.Error("LED ON test failed", ex);
-                LogToDiagnostics($"ERROR: LED ON test failed - {ex.Message}");
+                LoggingService.Application.Error("Pulse monitor start failed", ex);
+                LogToDiagnostics($"ERROR: Pulse monitor start failed - {ex.Message}");
+                NotificationService.Instance.ShowError(
+                    "Pulse Monitor",
+                    $"Failed to start monitor: {ex.Message}",
+                    autoCloseSeconds: 5);
+            }
+            finally
+            {
+                _isPulseMonitorBusy = false;
+                UpdatePulseMonitorUi();
             }
         }
 
-        private async void TestLEDOffButton_Click(object sender, RoutedEventArgs e)
+        /// <summary>
+        /// Automatically start pulse monitoring on app startup (called from MainWindow)
+        /// Auto-detects available COM ports, preferring COM5 if available, then any COM port.
+        /// </summary>
+        public async Task StartPulseMonitoringAutoAsync()
         {
+            var timestamp = DateTime.Now.ToString("HH:mm:ss");
+            Console.WriteLine($"[AdminDashboard] [{timestamp}] ===== STARTING AUTO-START PULSE MONITOR ===== ");
+            Console.WriteLine($"[AdminDashboard] [{timestamp}]   - IsRunning: {_paymentPulseService.IsRunning}");
+            Console.WriteLine($"[AdminDashboard] [{timestamp}]   - IsBusy: {_isPulseMonitorBusy}");
+            
+            // Don't start if already running or busy
+            if (_paymentPulseService.IsRunning || _isPulseMonitorBusy)
+            {
+                Console.WriteLine($"[AdminDashboard] [{timestamp}] ⏭️ Pulse monitor already running, skipping auto-start");
+                return;
+            }
+
             try
             {
-                LogToDiagnostics("Turning LED OFF...");
+                _isPulseMonitorBusy = true;
                 
-                // TODO: Implement actual Arduino LED control when service is available
-                await Task.Delay(500);
+                // Auto-detect COM port (prefers COM5 if available, then any COM port)
+                string[] availablePorts;
+                try
+                {
+                    availablePorts = System.IO.Ports.SerialPort.GetPortNames();
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[AdminDashboard] [{timestamp}] Auto-start: failed to enumerate serial ports - {ex.Message}");
+                    LoggingService.Application.Warning(
+                        "Pulse monitor auto-start failed while enumerating serial ports",
+                        ("Component", "AdminDashboard"),
+                        ("Exception", ex.Message));
+                    LogToDiagnostics($"⚠ Auto-start aborted: unable to access serial ports - {ex.Message}");
+                    return; // Silent failure on startup - will rely on manual start or retry
+                }
                 
-                if (ArduinoLedStatusText != null) ArduinoLedStatusText.Text = "OFF";
-                LogToDiagnostics("LED turned OFF (simulated)");
-                NotificationService.Instance.ShowSuccess("Arduino Test", "LED turned OFF");
+                Console.WriteLine($"[AdminDashboard] [{timestamp}] Available COM ports: {string.Join(", ", availablePorts)}");
+                
+                if (availablePorts.Length == 0)
+                {
+                    throw new InvalidOperationException("No serial ports detected on system");
+                }
+                
+                // Prefer COM5 if available, otherwise use first available COM port
+                var portName = availablePorts.FirstOrDefault(p => string.Equals(p, "COM5", StringComparison.OrdinalIgnoreCase))
+                    ?? availablePorts.FirstOrDefault(p => p.StartsWith("COM", StringComparison.OrdinalIgnoreCase));
+                
+                if (portName == null)
+                {
+                    throw new InvalidOperationException("No COM ports available for pulse monitoring");
+                }
+                
+                // Log why this port was selected
+                if (string.Equals(portName, "COM5", StringComparison.OrdinalIgnoreCase))
+                {
+                    Console.WriteLine($"[AdminDashboard] [{timestamp}] Selected COM5 (preferred port)");
+                }
+                else
+                {
+                    Console.WriteLine($"[AdminDashboard] [{timestamp}] COM5 not available, selected {portName} (first available COM port)");
+                }
+                
+                Console.WriteLine($"[AdminDashboard] [{timestamp}] Auto-starting pulse monitor on {portName}...");
+                LogToDiagnostics($"Auto-starting pulse monitor on {portName}...");
+                
+                await _paymentPulseService.StartAsync(portName);
+                
+                Console.WriteLine($"[AdminDashboard] Pulse monitor auto-started successfully on {portName}");
+                LogToDiagnostics($"✓ Pulse monitor listening on {portName} (auto-started)");
+                
+                UpdatePulseMonitorUi();
             }
             catch (Exception ex)
             {
-                LoggingService.Application.Error("LED OFF test failed", ex);
-                LogToDiagnostics($"ERROR: LED OFF test failed - {ex.Message}");
+                // Log but don't show notification (silent failure on startup)
+                Console.WriteLine($"[AdminDashboard] Auto-start pulse monitor failed: {ex.Message}");
+                LoggingService.Application.Warning("Pulse monitor auto-start failed", ("Component", "AdminDashboard"), ("Exception", ex.Message));
+                LogToDiagnostics($"⚠ Auto-start failed: {ex.Message} (will retry automatically when PCB is connected)");
+            }
+            finally
+            {
+                _isPulseMonitorBusy = false;
+                UpdatePulseMonitorUi();
             }
         }
 
-        private async void TestPaymentPulseButton_Click(object sender, RoutedEventArgs e)
+        private async void StopPulseMonitorButton_Click(object sender, RoutedEventArgs e)
         {
+            if (_isPulseMonitorBusy)
+            {
+                return;
+            }
+
             try
             {
-                LogToDiagnostics("Simulating payment pulse...");
-                
-                // TODO: Implement actual pulse simulation when Arduino service is available
-                await Task.Delay(500);
-                
-                if (ArduinoLastPulseText != null) 
-                    ArduinoLastPulseText.Text = DateTime.Now.ToString("HH:mm:ss");
-                
-                LogToDiagnostics("Payment pulse simulated successfully");
-                NotificationService.Instance.ShowSuccess("Arduino Test", "Payment pulse simulated");
-                
-                // Simulate adding $1 credit
-                await AddCreditsAsync(1.00m, "Test pulse simulation");
+                if (!_paymentPulseService.IsRunning)
+                {
+                    LogToDiagnostics("Pulse monitor is not running.");
+                    return;
+                }
+
+                _isPulseMonitorBusy = true;
+                UpdatePulseMonitorUi();
+
+                LogToDiagnostics("Stopping pulse monitor...");
+                await _paymentPulseService.StopAsync();
+                LogToDiagnostics("Pulse monitor stopped and counters reset.");
+
+
+                NotificationService.Instance.ShowInfo(
+                    "Pulse Monitor",
+                    "Monitor stopped.",
+                    autoCloseSeconds: 3);
             }
             catch (Exception ex)
             {
-                LoggingService.Application.Error("Payment pulse test failed", ex);
-                LogToDiagnostics($"ERROR: Payment pulse test failed - {ex.Message}");
+                LoggingService.Application.Error("Pulse monitor stop failed", ex);
+                LogToDiagnostics($"ERROR: Pulse monitor stop failed - {ex.Message}");
+                NotificationService.Instance.ShowError(
+                    "Pulse Monitor",
+                    $"Failed to stop monitor: {ex.Message}",
+                    autoCloseSeconds: 5);
+            }
+            finally
+            {
+                _isPulseMonitorBusy = false;
+                UpdatePulseMonitorUi();
+            }
+        }
+
+        private void PaymentPulseService_PulseDeltaProcessed(object? sender, PulseDeltaEventArgs e)
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.Invoke(() => PaymentPulseService_PulseDeltaProcessed(sender, e));
+                return;
+            }
+
+            var message = $"Pulse Δ{e.Delta} detected from {e.Identifier} (raw {e.RawCount})";
+            LogToDiagnostics(message);
+
+            if (ArduinoLastPulseText != null)
+            {
+                ArduinoLastPulseText.Text = $"{DateTime.Now:HH:mm:ss} Δ{e.Delta} ({e.Identifier})";
+            }
+        }
+
+        private void UpdatePulseMonitorUi()
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.Invoke(UpdatePulseMonitorUi);
+                return;
+            }
+
+            var isRunning = _paymentPulseService.IsRunning;
+            var isBusy = _isPulseMonitorBusy;
+
+            if (StartPulseMonitorButton != null)
+            {
+                // Always enable Start button (unless busy) - it will handle stop/restart automatically
+                // The StartPulseMonitorButton_Click handler will check if running and stop first if needed
+                StartPulseMonitorButton.IsEnabled = !isBusy;
+            }
+
+            if (StopPulseMonitorButton != null)
+            {
+                StopPulseMonitorButton.IsEnabled = isRunning && !isBusy;
+            }
+        }
+
+        private async void ClearPulseUniqueIdsButton_Click(object sender, RoutedEventArgs e)
+        {
+            // Only Master admins should be able to reset duplicate pulse protection
+            // This is a critical security operation that affects payment integrity
+            if (_currentAccessLevel != AdminAccessLevel.Master)
+            {
+                LogToDiagnostics("Clear All Unique IDs blocked - insufficient access level");
+                NotificationService.Instance.ShowWarning(
+                    "Pulse Unique IDs",
+                    "Only Master administrators can clear processed pulse IDs.",
+                    autoCloseSeconds: 5);
+                return;
+            }
+
+            // Show confirmation dialog - this is a destructive operation
+            // WARNING: This action will reset duplicate detection and allow previously processed pulses to be re-credited
+            // This should only be used for testing/reset purposes, not in production
+            var confirmed = ConfirmationDialog.ShowConfirmation(
+                "Clear All Unique Pulse IDs",
+                "⚠️ WARNING: This is a DESTRUCTIVE operation!\n\n" +
+                "This will delete ALL processed pulse unique IDs from the database.\n\n" +
+                "Impact:\n" +
+                "• Duplicate detection will be reset\n" +
+                "• Previously processed pulses can be credited again\n" +
+                "• This action CANNOT be undone\n\n" +
+                "⚠️ FOR TESTING/RESET PURPOSES ONLY\n" +
+                "Do not use in production unless absolutely necessary.",
+                "Yes, Delete All", "Cancel");
+
+            if (!confirmed)
+            {
+                LogToDiagnostics("Clear All Unique IDs operation cancelled by user");
+                return;
+            }
+
+            try
+            {
+                // Log with user context for audit trail
+                var userId = _currentUserId ?? "Unknown";
+                var accessLevel = _currentAccessLevel.ToString();
+                
+                LoggingService.Application.Warning(
+                    "Clear All Unique Pulse IDs operation initiated",
+                    ("Component", "AdminDashboard"),
+                    ("UserId", userId),
+                    ("AccessLevel", accessLevel),
+                    ("Action", "DeleteAllProcessedPulseUniqueIds"));
+                
+                LogToDiagnostics($"Deleting all processed pulse unique IDs from database... (User: {userId}, Access: {accessLevel})");
+                
+                var deleteResult = await _databaseService.DeleteAllProcessedPulseUniqueIdsAsync();
+                
+                if (deleteResult.Success)
+                {
+                    var deletedCount = deleteResult.Data;
+                    
+                    // Log success with full context
+                    LoggingService.Application.Warning(
+                        "All processed pulse unique IDs deleted from database",
+                        ("Component", "AdminDashboard"),
+                        ("UserId", userId),
+                        ("AccessLevel", accessLevel),
+                        ("DeletedCount", deletedCount),
+                        ("Action", "DeleteAllProcessedPulseUniqueIds"));
+                    
+                    LogToDiagnostics($"✓ Deleted {deletedCount} unique pulse ID(s) from database");
+                    
+                    NotificationService.Instance.ShowSuccess(
+                        "Pulse Unique IDs Cleared",
+                        $"Successfully deleted {deletedCount} unique ID(s) from database.\n\n" +
+                        "⚠️ Duplicate detection has been reset.",
+                        autoCloseSeconds: 5);
+                    
+                    // Also clear the in-memory set in PaymentPulseService to keep them in sync
+                    _paymentPulseService.ClearProcessedUniqueIds();
+                    LogToDiagnostics("✓ Cleared in-memory unique ID cache");
+                }
+                else
+                {
+                    LoggingService.Application.Error(
+                        "Failed to delete all processed pulse unique IDs",
+                        null,
+                        ("Component", "AdminDashboard"),
+                        ("UserId", userId),
+                        ("AccessLevel", accessLevel),
+                        ("Error", deleteResult.ErrorMessage ?? "Unknown error"));
+                    
+                    LogToDiagnostics($"ERROR: Failed to delete unique IDs - {deleteResult.ErrorMessage}");
+                    NotificationService.Instance.ShowError(
+                        "Pulse Unique IDs",
+                        $"Failed to delete unique IDs: {deleteResult.ErrorMessage}",
+                        autoCloseSeconds: 5);
+                }
+            }
+            catch (Exception ex)
+            {
+                var userId = _currentUserId ?? "Unknown";
+                LoggingService.Application.Error(
+                    "Failed to delete all processed pulse unique IDs",
+                    ex,
+                    ("Component", "AdminDashboard"),
+                    ("UserId", userId),
+                    ("AccessLevel", _currentAccessLevel.ToString()));
+                LogToDiagnostics($"ERROR: Exception while deleting unique IDs - {ex.Message}");
+                NotificationService.Instance.ShowError(
+                    "Pulse Unique IDs",
+                    $"Error: {ex.Message}",
+                    autoCloseSeconds: 5);
             }
         }
 
