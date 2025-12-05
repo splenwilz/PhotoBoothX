@@ -539,7 +539,23 @@ jobs:
         
         ### Notable Changes
         
-        #### Printer Service Integration (NEW)
+        #### Payment Control Board (PCB) Integration (NEW)
+        - Complete VHMI protocol implementation for bill and card acceptor pulse monitoring
+        - Real-time pulse detection with automatic credit application ($1 per pulse)
+        - Unique transaction ID tracking to prevent duplicate credits across restarts
+        - Database persistence of processed pulse IDs for robust duplicate prevention
+        - Auto-start pulse monitoring on application launch with COM port auto-detection
+        - COM5 port preference with automatic fallback to available ports
+        - Admin dashboard controls for manual start/stop and connection diagnostics
+        - Comprehensive error handling and reconnection logic for device disconnections
+        - Backward compatibility with legacy packet formats (6-byte payload)
+        - Support for new packet format with 10-byte unique IDs (16-byte payload)
+        - Thread-safe concurrent access protection to prevent race conditions
+        - Extensive unit and integration tests for pulse processing and database persistence
+        - Retry mechanism for failed database saves to prevent data loss
+        - Connection error detection and automatic recovery support
+        
+        #### Printer Service Integration
         - Complete printer service implementation with DNP RX1hs support
         - Printer status and queue management with enhanced error handling and logging
         - Real-time printer status monitoring across application screens (Admin, Printing, Upsell)
@@ -561,10 +577,10 @@ jobs:
         - Improved error handling and logging throughout the application
         - Template synchronization on startup for immediate availability
         - Professional installer with automatic cleanup and uninstall support
-        - **NEW**: Enhanced error handling and logging in printing workflow
-        - **NEW**: Improved printer status management and queue handling
-        - **NEW**: Better integration between printer service and UI components
-        - **NEW**: Enhanced diagnostics and monitoring capabilities
+        - Enhanced error handling and logging in printing workflow
+        - Improved printer status management and queue handling
+        - Better integration between printer service and UI components
+        - Enhanced diagnostics and monitoring capabilities
         
         ### Installation
         
@@ -580,6 +596,7 @@ jobs:
         - **Runtime**: .NET 8.0 (included in installer)
         - **Privileges**: Administrator access for installation
         - **Hardware**: USB ports for camera and peripherals
+        - **Payment Hardware**: ESP32-based PCB with VHMI protocol support (COM port connection)
         - **Optional**: Touch screen for virtual keyboard
         
         ### Security Notes
