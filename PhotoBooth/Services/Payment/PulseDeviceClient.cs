@@ -100,6 +100,24 @@ namespace Photobooth.Services.Payment
                 
                 lock (_stateLock)
                 {
+                    // Another StartAsync may have completed while we were creating the port/CTS
+                    // Re-check _serialPort inside the lock to prevent double-opening and orphaned readers
+                    if (_serialPort != null)
+                    {
+                        // Another concurrent call already started - dispose our locals and handle appropriately
+                        port.Dispose();
+                        linkedCts.Dispose();
+                        
+                        if (string.Equals(CurrentPortName, portName, StringComparison.OrdinalIgnoreCase))
+                        {
+                            // Same port - the other call succeeded, we can just return
+                            return;
+                        }
+                        
+                        // Different port - this is an error condition
+                        throw new InvalidOperationException("Stop the active client before starting another port.");
+                    }
+                    
                     port.Open(); // throws immediately if device missing
 
                     // Only assign to class fields after successful port open to maintain consistent state
@@ -127,12 +145,14 @@ namespace Photobooth.Services.Payment
             CancellationTokenSource? ctsSnapshot;
             Task? readTaskSnapshot;
             SerialPort? serialPortSnapshot;
+            string? portNameSnapshot; // Capture port name before nulling for logging
 
             lock (_stateLock)
             {
                 ctsSnapshot = _cts;
                 readTaskSnapshot = _readLoopTask;
                 serialPortSnapshot = _serialPort;
+                portNameSnapshot = CurrentPortName; // Capture before nulling
                 _cts = null;
                 _readLoopTask = null;
                 _serialPort = null;
@@ -158,7 +178,7 @@ namespace Photobooth.Services.Payment
                         LoggingService.Hardware.Warning(
                             "PulseDeviceClient",
                             "StopAsync cancelled due to timeout",
-                            ("Port", CurrentPortName ?? "Unknown"));
+                            ("Port", portNameSnapshot ?? "Unknown"));
                     }
                 }
             }
@@ -170,6 +190,13 @@ namespace Photobooth.Services.Payment
 
         public void Dispose()
         {
+            // Capture port name before calling StopAsync (which will null it)
+            string? portNameSnapshot;
+            lock (_stateLock)
+            {
+                portNameSnapshot = CurrentPortName;
+            }
+
             // Use a timeout during shutdown to prevent hanging (5 seconds should be sufficient for cleanup)
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
             try
@@ -189,7 +216,7 @@ namespace Photobooth.Services.Payment
                 LoggingService.Hardware.Warning(
                     "PulseDeviceClient",
                     "StopAsync timed out during Dispose, forcing cleanup",
-                    ("Port", CurrentPortName ?? "Unknown"));
+                    ("Port", portNameSnapshot ?? "Unknown"));
                 // Force cleanup even if timeout occurred
                 _packetBuffer.Clear();
             }

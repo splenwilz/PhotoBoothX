@@ -46,10 +46,9 @@ namespace Photobooth.Tests.Services.Payment
                 .ReturnsAsync(Photobooth.Models.DatabaseResult.SuccessResult());
 
             // Create service with mocks using public constructor (allows dependency injection for testing)
+            // The constructor already assigns _mockDatabaseService.Object to _databaseService field,
+            // so no need to call SetDatabaseService again (it would be redundant)
             _service = new PaymentPulseService(_mockDeviceClient.Object, _mockDatabaseService.Object);
-            
-            // Ensure database service is set (constructor accepts nullable, but we want it set for tests)
-            _service.SetDatabaseService(_mockDatabaseService.Object);
             
             _service.PulseDeltaProcessed += (sender, args) => _processedEvents!.Add(args);
         }
@@ -464,7 +463,7 @@ namespace Photobooth.Tests.Services.Payment
         }
 
         [TestMethod]
-        public void ResetCounters_ClearsProcessedUniqueIds()
+        public void ResetCounters_DoesNotClearProcessedUniqueIds()
         {
             // Arrange: Process a unique ID first
             var uniqueId = new byte[] { 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
@@ -475,15 +474,16 @@ namespace Photobooth.Tests.Services.Payment
                 timestampUtc: DateTime.UtcNow);
             _mockDeviceClient!.Raise(x => x.PulseCountReceived += null, _mockDeviceClient.Object, args1);
 
-            // Act: Reset counters
+            // Act: Reset counters (only clears _lastCounts, NOT _processedUniqueIds)
             _service!.ResetCounters();
 
             // Act: Try to process same unique ID again
             _processedEvents!.Clear();
             _mockDeviceClient.Raise(x => x.PulseCountReceived += null, _mockDeviceClient.Object, args1);
 
-            // Assert: Should be processed again (reset cleared the tracking)
-            _processedEvents.Should().HaveCount(1);
+            // Assert: Should NOT be processed again (ResetCounters does NOT clear _processedUniqueIds)
+            // This is intentional - _processedUniqueIds must persist across stop/start cycles to prevent duplicate credits
+            _processedEvents.Should().BeEmpty();
         }
 
         #endregion

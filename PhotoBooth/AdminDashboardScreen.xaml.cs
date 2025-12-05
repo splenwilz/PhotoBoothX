@@ -5966,7 +5966,22 @@ namespace Photobooth
                 _isPulseMonitorBusy = true;
                 
                 // Auto-detect COM port (prefers COM5 if available, then any COM port)
-                var availablePorts = System.IO.Ports.SerialPort.GetPortNames();
+                string[] availablePorts;
+                try
+                {
+                    availablePorts = System.IO.Ports.SerialPort.GetPortNames();
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[AdminDashboard] [{timestamp}] Auto-start: failed to enumerate serial ports - {ex.Message}");
+                    LoggingService.Application.Warning(
+                        "Pulse monitor auto-start failed while enumerating serial ports",
+                        ("Component", "AdminDashboard"),
+                        ("Exception", ex.Message));
+                    LogToDiagnostics($"⚠ Auto-start aborted: unable to access serial ports - {ex.Message}");
+                    return; // Silent failure on startup - will rely on manual start or retry
+                }
+                
                 Console.WriteLine($"[AdminDashboard] [{timestamp}] Available COM ports: {string.Join(", ", availablePorts)}");
                 
                 if (availablePorts.Length == 0)
