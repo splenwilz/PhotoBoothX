@@ -5808,12 +5808,16 @@ namespace Photobooth
                     {
                         UpdateHardwareStatus("arduino", false, "No Arduino ports found");
                         LogToDiagnostics("ERROR: No Arduino-compatible ports found");
+                        // Reset port text to indicate no connection
+                        if (ArduinoPortText != null) ArduinoPortText.Text = "Not connected";
                     }
                 }
                 else
                 {
                     UpdateHardwareStatus("arduino", false, "No serial ports available");
                     LogToDiagnostics("ERROR: No serial ports detected");
+                    // Reset port text to indicate no connection
+                    if (ArduinoPortText != null) ArduinoPortText.Text = "Not connected";
                 }
             }
             catch (Exception ex)
@@ -5821,6 +5825,8 @@ namespace Photobooth
                 LoggingService.Application.Error("Arduino test failed", ex);
                 UpdateHardwareStatus("arduino", false, $"Test failed: {ex.Message}");
                 LogToDiagnostics($"ERROR: Arduino test failed - {ex.Message}");
+                // Reset port text to indicate no connection on error
+                if (ArduinoPortText != null) ArduinoPortText.Text = "Not connected";
             }
         }
 
@@ -5835,10 +5841,29 @@ namespace Photobooth
             var portName = ArduinoPortText?.Text?.Trim();
             if (string.IsNullOrWhiteSpace(portName) ||
                 portName.Equals("Auto-detect", StringComparison.OrdinalIgnoreCase) ||
-                portName.Equals("None", StringComparison.OrdinalIgnoreCase))
+                portName.Equals("None", StringComparison.OrdinalIgnoreCase) ||
+                portName.Equals("Not connected", StringComparison.OrdinalIgnoreCase))
             {
                 // Auto-detect COM port (same logic as auto-start)
-                var availablePorts = System.IO.Ports.SerialPort.GetPortNames();
+                string[] availablePorts;
+                try
+                {
+                    availablePorts = System.IO.Ports.SerialPort.GetPortNames();
+                }
+                catch (Exception ex)
+                {
+                    LoggingService.Application.Error(
+                        "Failed to enumerate serial ports during manual pulse monitor start",
+                        ex,
+                        ("Component", "AdminDashboard"));
+                    LogToDiagnostics($"ERROR: Failed to enumerate serial ports - {ex.Message}");
+                    NotificationService.Instance.ShowError(
+                        "Pulse Monitor",
+                        $"Failed to enumerate serial ports: {ex.Message}",
+                        autoCloseSeconds: 5);
+                    return;
+                }
+                
                 if (availablePorts.Length == 0)
                 {
                     NotificationService.Instance.ShowError(
@@ -6079,6 +6104,18 @@ namespace Photobooth
 
         private async void ClearPulseUniqueIdsButton_Click(object sender, RoutedEventArgs e)
         {
+            // Only Master admins should be able to reset duplicate pulse protection
+            // This is a critical security operation that affects payment integrity
+            if (_currentAccessLevel != AdminAccessLevel.Master)
+            {
+                LogToDiagnostics("Clear All Unique IDs blocked - insufficient access level");
+                NotificationService.Instance.ShowWarning(
+                    "Pulse Unique IDs",
+                    "Only Master administrators can clear processed pulse IDs.",
+                    autoCloseSeconds: 5);
+                return;
+            }
+
             // Show confirmation dialog - this is a destructive operation
             // WARNING: This action will reset duplicate detection and allow previously processed pulses to be re-credited
             // This should only be used for testing/reset purposes, not in production

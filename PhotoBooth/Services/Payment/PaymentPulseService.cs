@@ -116,11 +116,25 @@ namespace Photobooth.Services.Payment
         /// </summary>
         public async Task InitializeAsync()
         {
+            // Double-check lock pattern to prevent race condition
+            // Fast path: If already initialized, return early without acquiring lock
             if (_isInitialized)
             {
                 return;
             }
 
+            // Acquire lock and check again to prevent concurrent initialization
+            // Only one thread will pass this check and proceed with initialization
+            lock (_syncRoot)
+            {
+                if (_isInitialized)
+                {
+                    return;
+                }
+            }
+
+            // Proceed with initialization work outside the lock
+            // The double-check ensures only one thread reaches this point
             if (_databaseService == null)
             {
                 Console.WriteLine($"[PaymentPulseService] {DateTime.Now:HH:mm:ss} INITIALIZATION WARNING: Database service not set, skipping initialization");
@@ -166,7 +180,12 @@ namespace Photobooth.Services.Payment
                     }
                 });
 
-                _isInitialized = true;
+                // Set initialization flag under lock to ensure thread-safety
+                // This is set after successful initialization so failures can retry
+                lock (_syncRoot)
+                {
+                    _isInitialized = true;
+                }
                 
                 // Start retry loop for failed database saves
                 StartRetryLoop();

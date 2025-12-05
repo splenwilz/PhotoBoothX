@@ -375,7 +375,10 @@ namespace Photobooth.Tests.Services.Payment
 
             // Database service is already set in Setup() - no need to set again
             var expectedUniqueIdHex = Convert.ToHexString(uniqueId).ToLowerInvariant();
-            var saveCalled = false;
+            
+            // Use TaskCompletionSource to synchronize async database-save test instead of unsynchronized flag
+            // This eliminates data race, removes manual polling, and handles timeout cleanly
+            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
             _mockDatabaseService!
                 .Setup(x => x.SaveProcessedPulseUniqueIdAsync(
@@ -384,26 +387,21 @@ namespace Photobooth.Tests.Services.Payment
                     5,
                     5.00m))
                 .ReturnsAsync(Photobooth.Models.DatabaseResult.SuccessResult())
-                .Callback(() => saveCalled = true);
+                .Callback(() => tcs.TrySetResult(true));
 
             // Act
             _mockDeviceClient!.Raise(x => x.PulseCountReceived += null, _mockDeviceClient.Object, args);
 
             // Wait for async save to complete (fire-and-forget Task.Run needs time to execute)
             // NOTE: Production code uses fire-and-forget pattern to avoid blocking event handler.
-            // This polling is necessary to test the async save operation.
+            // Using TaskCompletionSource ensures proper synchronization without polling.
             var maxWaitTime = TimeSpan.FromSeconds(2); // Reasonable timeout for test
-            var pollInterval = TimeSpan.FromMilliseconds(50);
-            var elapsed = TimeSpan.Zero;
+            var completedTask = await Task.WhenAny(tcs.Task, Task.Delay(maxWaitTime));
             
-            while (!saveCalled && elapsed < maxWaitTime)
-            {
-                await Task.Delay(pollInterval);
-                elapsed = elapsed.Add(pollInterval);
-            }
-
-            // Assert: Verify the save was called
-            saveCalled.Should().BeTrue($"Database save should have been called within {maxWaitTime.TotalSeconds} seconds");
+            // Assert: Verify the save was called within timeout
+            completedTask.Should().BeSameAs(tcs.Task,
+                $"Database save should have been called within {maxWaitTime.TotalSeconds} seconds");
+            
             _mockDatabaseService.Verify(
                 x => x.SaveProcessedPulseUniqueIdAsync(
                     It.Is<string>(id => id == expectedUniqueIdHex),

@@ -84,13 +84,21 @@ namespace Photobooth.Services.Payment
                 await Task.Delay(500, cancellationToken).ConfigureAwait(false);
             }
 
+            // Check for pre-canceled token before opening port to prevent "zombie" connections
+            // If token is already canceled, ReadLoopAsync will exit immediately, leaving port open
+            cancellationToken.ThrowIfCancellationRequested();
+
             // Use local variables first to avoid half-initialized state if Open() throws
-            var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken); // propagate host cancellation
-            var port = CreateSerialPort(portName);
+            // Wrap both creation and opening in try/catch to ensure linkedCts is disposed if CreateSerialPort throws
+            SerialPort? port = null;
+            CancellationTokenSource? linkedCts = null;
             
-            lock (_stateLock)
+            try
             {
-                try
+                linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken); // propagate host cancellation
+                port = CreateSerialPort(portName);
+                
+                lock (_stateLock)
                 {
                     port.Open(); // throws immediately if device missing
 
@@ -101,14 +109,14 @@ namespace Photobooth.Services.Payment
                     _hasConnectionError = false; // Reset error flag on successful start
                     _readLoopTask = Task.Run(() => ReadLoopAsync(linkedCts.Token), CancellationToken.None); // background worker
                 }
-                catch
-                {
-                    // Dispose local resources if Open() fails to prevent resource leaks
-                    // This is especially important with retry logic that may call StartAsync multiple times
-                    port.Dispose();
-                    linkedCts.Dispose();
-                    throw; // Re-throw to propagate the original exception
-                }
+            }
+            catch
+            {
+                // Dispose local resources if creation or Open() fails to prevent resource leaks
+                // This is especially important with retry logic that may call StartAsync multiple times
+                port?.Dispose();
+                linkedCts?.Dispose();
+                throw; // Re-throw to propagate the original exception
             }
 
             await Task.CompletedTask.ConfigureAwait(false); // maintain async signature without extra allocations
@@ -295,40 +303,48 @@ namespace Photobooth.Services.Payment
                     return; // wait for more data
                 }
 
-                // New packet format: payload length is 16 bytes (0x10)
-                // Structure: [Identifier(1)][Padding(3)][PulseCount(2)][UniqueId(10)] = 16 bytes total
-                if (payloadLength < 16)
+                // Protocol specifies only two valid payload lengths:
+                // - Old format: exactly 6 bytes
+                // - New format: exactly 16 bytes
+                // Restrict parsing to documented lengths to prevent mis-crediting on malformed packets
+                if (payloadLength == 6)
                 {
-                    // Old format (6 bytes) - try to parse for backward compatibility
-                    if (payloadLength >= 3)
-                    {
-                        var identifierByte = _packetBuffer[4];
-                        var pulseLowIndex = 4 + payloadLength - 2;
-                        var pulseCount = _packetBuffer[pulseLowIndex] | (_packetBuffer[pulseLowIndex + 1] << 8);
-                        var identifier = Enum.IsDefined(typeof(PulseIdentifier), identifierByte)
-                            ? (PulseIdentifier)identifierByte
-                            : PulseIdentifier.CardAccepter;
-                        
-                        // Old format - no unique ID, create empty array
-                        var emptyUniqueId = new byte[10];
-                        var packetBytes = _packetBuffer.Take(totalLength).ToArray();
-                        var hexString = string.Join(" ", packetBytes.Select(b => b.ToString("X2")));
-                        
-                        Console.WriteLine($"[PulseDeviceClient] {DateTime.Now:HH:mm:ss} RAW PACKET (OLD FORMAT): {hexString}");
-                        Console.WriteLine($"[PulseDeviceClient] {DateTime.Now:HH:mm:ss} PARSED: identifier={identifier} | pulseCount={pulseCount} | WARNING: No unique ID (old format)");
-                        
-                        PulseCountReceived?.Invoke(
-                            this,
-                            new PulseCountEventArgs(identifier, pulseCount, emptyUniqueId, DateTime.UtcNow));
-                        
-                        _packetBuffer.RemoveRange(0, totalLength);
-                        continue;
-                    }
-                    else
-                    {
-                        _packetBuffer.RemoveRange(0, totalLength); // invalid packet, drop it
-                        continue;
-                    }
+                    // Old format (6 bytes) - parse for backward compatibility
+                    var identifierByte = _packetBuffer[4];
+                    var pulseLowIndex = 4 + payloadLength - 2; // 4 + 6 - 2 = 8 (correct for 6-byte format)
+                    var pulseCount = _packetBuffer[pulseLowIndex] | (_packetBuffer[pulseLowIndex + 1] << 8);
+                    var identifier = Enum.IsDefined(typeof(PulseIdentifier), identifierByte)
+                        ? (PulseIdentifier)identifierByte
+                        : PulseIdentifier.CardAccepter;
+                    
+                    // Old format - no unique ID, create empty array
+                    var emptyUniqueId = new byte[10];
+                    var packetBytes = _packetBuffer.Take(totalLength).ToArray();
+                    var hexString = string.Join(" ", packetBytes.Select(b => b.ToString("X2")));
+                    
+                    Console.WriteLine($"[PulseDeviceClient] {DateTime.Now:HH:mm:ss} RAW PACKET (OLD FORMAT): {hexString}");
+                    Console.WriteLine($"[PulseDeviceClient] {DateTime.Now:HH:mm:ss} PARSED: identifier={identifier} | pulseCount={pulseCount} | WARNING: No unique ID (old format)");
+                    
+                    PulseCountReceived?.Invoke(
+                        this,
+                        new PulseCountEventArgs(identifier, pulseCount, emptyUniqueId, DateTime.UtcNow));
+                    
+                    _packetBuffer.RemoveRange(0, totalLength);
+                    continue;
+                }
+                else if (payloadLength != 16)
+                {
+                    // Unknown payload length - drop and log to avoid mis-crediting
+                    var badBytes = _packetBuffer.Take(totalLength).ToArray();
+                    var badHex = string.Join(" ", badBytes.Select(b => b.ToString("X2")));
+                    LoggingService.Hardware.Warning(
+                        "PulseDeviceClient",
+                        $"Dropping packet with unexpected payload length {payloadLength} (expected 6 or 16 bytes)",
+                        ("PayloadHex", badHex),
+                        ("TotalLength", totalLength));
+                    
+                    _packetBuffer.RemoveRange(0, totalLength);
+                    continue;
                 }
 
                 // New format (16 bytes payload)

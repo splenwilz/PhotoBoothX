@@ -2068,7 +2068,7 @@
                                             </Grid.ColumnDefinitions>
                                             
                                             <TextBlock Grid.Row="0" Grid.Column="0" Text="Port:" FontSize="12" FontWeight="Medium" Margin="0,0,8,4"/>
-                                            <TextBlock Grid.Row="0" Grid.Column="1" Name="ArduinoPortText" Text="COM5" FontSize="12" Margin="0,0,0,4"/>
+                                            <TextBlock Grid.Row="0" Grid.Column="1" Name="ArduinoPortText" Text="Not connected" FontSize="12" Margin="0,0,0,4"/>
                                             
                                             <TextBlock Grid.Row="1" Grid.Column="0" Text="Pulse:" FontSize="12" FontWeight="Medium" Margin="0,0,8,0"/>
                                             <TextBlock Grid.Row="1" Grid.Column="1" Name="ArduinoLastPulseText" Text="None" FontSize="12"/>
