@@ -467,9 +467,18 @@ namespace Photobooth.Services.Payment
                 {
                     // Old format (no unique ID) - fall back to pulseCount-based tracking
                     // NOTE: PulseCount is CUMULATIVE, so we must calculate the delta to avoid double-crediting
-                    var lastCreditedCount = _lastCounts.TryGetValue(e.Identifier, out var value) ? value : -1;
-
-                    if (e.PulseCount == lastCreditedCount)
+                    var hasLastCreditedCount = _lastCounts.TryGetValue(e.Identifier, out var lastCreditedCount);
+                    
+                    if (!hasLastCreditedCount)
+                    {
+                        // First value we've seen for this identifier - treat as full amount
+                        // This avoids the off-by-one bug where using -1 as default would cause:
+                        // pulsesToCredit = e.PulseCount - (-1) = e.PulseCount + 1 (over-credit by 1)
+                        shouldCredit = true;
+                        pulsesToCredit = e.PulseCount;
+                        _lastCounts[e.Identifier] = e.PulseCount;
+                    }
+                    else if (e.PulseCount == lastCreditedCount)
                     {
                         // Duplicate packet - we've already credited this pulseCount
                         shouldCredit = false;

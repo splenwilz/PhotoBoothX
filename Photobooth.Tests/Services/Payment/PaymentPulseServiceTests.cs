@@ -225,10 +225,36 @@ namespace Photobooth.Tests.Services.Payment
             _mockDeviceClient.Raise(x => x.PulseCountReceived += null, _mockDeviceClient.Object, args2);
 
             // Assert: Both should be processed (different pulse counts)
+            // First packet: credits full amount (5)
+            // Second packet: credits delta (8 - 5 = 3)
             _processedEvents.Should().NotBeNull();
             _processedEvents.Should().HaveCount(2);
-            _processedEvents![0].Delta.Should().Be(5);
-            _processedEvents[1].Delta.Should().Be(8);
+            _processedEvents![0].Delta.Should().Be(5, "First packet should credit full pulse count");
+            _processedEvents[1].Delta.Should().Be(3, "Second packet should credit delta (8 - 5 = 3), not full amount");
+        }
+
+        [TestMethod]
+        public void HandlePulseCountReceived_OldFormat_FirstPacket_CreditsFullAmount()
+        {
+            // Arrange: First packet for an identifier (no previous entry in _lastCounts)
+            // This tests the fix for the off-by-one bug where using -1 as default would cause:
+            // pulsesToCredit = e.PulseCount - (-1) = e.PulseCount + 1 (over-credit by 1)
+            var emptyUniqueId = new byte[10]; // All zeros (old format)
+            var args = new PulseCountEventArgs(
+                PulseIdentifier.BillAccepter,
+                pulseCount: 3, // First packet with 3 pulses
+                uniqueId: emptyUniqueId,
+                timestampUtc: DateTime.UtcNow);
+
+            // Act: Process first packet (no previous entry)
+            _mockDeviceClient!.Raise(x => x.PulseCountReceived += null, _mockDeviceClient.Object, args);
+
+            // Assert: Should credit exactly 3 pulses (not 4, which would be the bug)
+            _processedEvents.Should().NotBeNull();
+            _processedEvents.Should().HaveCount(1);
+            _processedEvents![0].Delta.Should().Be(3, "First packet should credit the full pulse count, not pulseCount + 1");
+            _processedEvents[0].RawCount.Should().Be(3);
+            _processedEvents[0].Identifier.Should().Be(PulseIdentifier.BillAccepter);
         }
 
         [TestMethod]

@@ -49,29 +49,66 @@ namespace Photobooth.Services.Payment
                 throw new ArgumentException("Port name is required.", nameof(portName)); // avoid guessing ports
             }
 
+            // Check if we need to stop and restart due to connection error
+            bool needsRestart = false;
             lock (_stateLock)
             {
                 if (_serialPort != null)
                 {
                     if (string.Equals(CurrentPortName, portName, StringComparison.OrdinalIgnoreCase))
                     {
-                        return; // already connected to this port; nothing to do
+                        // Already connected to this port
+                        if (_hasConnectionError)
+                        {
+                            // Connection error detected - need to stop and restart to recover
+                            needsRestart = true;
+                        }
+                        else
+                        {
+                            return; // already connected to this port and working; nothing to do
+                        }
                     }
-
-                    throw new InvalidOperationException("Stop the active client before starting another port.");
+                    else
+                    {
+                        // Different port requested - need to stop current one first
+                        throw new InvalidOperationException("Stop the active client before starting another port.");
+                    }
                 }
+            }
 
-                // Use local variables first to avoid half-initialized state if Open() throws
-                var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken); // propagate host cancellation
-                var port = CreateSerialPort(portName);
-                port.Open(); // throws immediately if device missing
+            // If we detected a connection error, stop first before restarting
+            if (needsRestart)
+            {
+                await StopAsync(cancellationToken).ConfigureAwait(false);
+                // Small delay to ensure port is fully released
+                await Task.Delay(500, cancellationToken).ConfigureAwait(false);
+            }
 
-                // Only assign to class fields after successful port open to maintain consistent state
-                _cts = linkedCts;
-                _serialPort = port;
-                CurrentPortName = portName;
-                _hasConnectionError = false; // Reset error flag on successful start
-                _readLoopTask = Task.Run(() => ReadLoopAsync(linkedCts.Token), CancellationToken.None); // background worker
+            // Use local variables first to avoid half-initialized state if Open() throws
+            var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken); // propagate host cancellation
+            var port = CreateSerialPort(portName);
+            
+            lock (_stateLock)
+            {
+                try
+                {
+                    port.Open(); // throws immediately if device missing
+
+                    // Only assign to class fields after successful port open to maintain consistent state
+                    _cts = linkedCts;
+                    _serialPort = port;
+                    CurrentPortName = portName;
+                    _hasConnectionError = false; // Reset error flag on successful start
+                    _readLoopTask = Task.Run(() => ReadLoopAsync(linkedCts.Token), CancellationToken.None); // background worker
+                }
+                catch
+                {
+                    // Dispose local resources if Open() fails to prevent resource leaks
+                    // This is especially important with retry logic that may call StartAsync multiple times
+                    port.Dispose();
+                    linkedCts.Dispose();
+                    throw; // Re-throw to propagate the original exception
+                }
             }
 
             await Task.CompletedTask.ConfigureAwait(false); // maintain async signature without extra allocations
@@ -92,6 +129,7 @@ namespace Photobooth.Services.Payment
                 _readLoopTask = null;
                 _serialPort = null;
                 CurrentPortName = null;
+                _hasConnectionError = false; // Reset error flag when stopping - error state is cleared
             }
 
             ctsSnapshot?.Cancel(); // signal background loop to exit
