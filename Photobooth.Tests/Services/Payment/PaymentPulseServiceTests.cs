@@ -505,6 +505,8 @@ namespace Photobooth.Tests.Services.Payment
             _mockDeviceClient!.Raise(x => x.PulseCountReceived += null, _mockDeviceClient.Object, args);
 
             // Assert
+            _processedEvents.Should().NotBeNull();
+            _processedEvents.Should().HaveCount(1);
             _processedEvents![0].Delta.Should().Be(100);
         }
 
@@ -523,6 +525,8 @@ namespace Photobooth.Tests.Services.Payment
             _mockDeviceClient!.Raise(x => x.PulseCountReceived += null, _mockDeviceClient.Object, args);
 
             // Assert
+            _processedEvents.Should().NotBeNull();
+            _processedEvents.Should().HaveCount(1);
             _processedEvents![0].Delta.Should().Be(0);
         }
 

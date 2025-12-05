@@ -5902,6 +5902,17 @@ namespace Photobooth
                     var hasError = _paymentPulseService.HasConnectionError;
                     var hasData = _paymentPulseService.HasReceivedDataRecently;
                     
+                    if (!hasError && hasData)
+                    {
+                        // Already running with no errors and receiving data - nothing to do
+                        LogToDiagnostics($"Pulse monitor is already running on {_paymentPulseService.CurrentPortName ?? portName} and receiving data");
+                        NotificationService.Instance.ShowInfo(
+                            "Pulse Monitor",
+                            $"Already listening on {_paymentPulseService.CurrentPortName ?? portName}",
+                            autoCloseSeconds: 3);
+                        return;
+                    }
+                    
                     if (hasError || !hasData)
                     {
                         LogToDiagnostics($"Monitor is running but {(hasError ? "has connection error" : "not receiving data")} - stopping before restart...");
@@ -6134,7 +6145,7 @@ namespace Photobooth
             // Show confirmation dialog - this is a destructive operation
             // WARNING: This action will reset duplicate detection and allow previously processed pulses to be re-credited
             // This should only be used for testing/reset purposes, not in production
-            var confirmed = Controls.ConfirmationDialog.ShowConfirmation(
+            var confirmed = ConfirmationDialog.ShowConfirmation(
                 "Clear All Unique Pulse IDs",
                 "⚠️ WARNING: This is a DESTRUCTIVE operation!\n\n" +
                 "This will delete ALL processed pulse unique IDs from the database.\n\n" +
